@@ -212,10 +212,16 @@
 
   .cb-dir-btn {
     background: rgba(45,61,52,.06); color: var(--ink);
-    border: 0; padding: 5px 10px; border-radius: 999px;
+    border: 0; padding: 4px 9px; border-radius: 14px;
     font-size: 10px; font-weight: 500; cursor: pointer;
     letter-spacing: .04em; font-family: inherit;
+    /* Two-line label: 會員<br>名單 — keep both lines tight */
+    line-height: 1.15;
+    text-align: center;
+    white-space: normal;
+    flex-shrink: 0;
   }
+  .cb-dir-btn br { display: block; }
   .cb-dir-btn:hover { background: rgba(45,61,52,.10); }
 
   .cb-me {
@@ -321,12 +327,18 @@
     pointer-events: none;
   }
   .cb-half-tag {
-    position: absolute; left: 12px; top: 6px;
-    font-size: 8px; letter-spacing: .12em;
-    color: rgba(255,255,255,.55); text-transform: uppercase;
+    position: absolute; left: 10px; top: 5px;
+    font-size: 9px; letter-spacing: .14em;
+    color: rgba(255,255,255,.85);
+    text-transform: uppercase; font-weight: 600;
     pointer-events: none; z-index: 2;
+    padding: 2px 7px; border-radius: 999px;
+    background: rgba(0,0,0,.18);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    text-shadow: 0 1px 2px rgba(0,0,0,.25);
   }
-  .cb-half.bottom .cb-half-tag { top: auto; bottom: 6px; }
+  .cb-half.bottom .cb-half-tag { top: auto; bottom: 5px; }
 
   .cb-pill {
     position: absolute;

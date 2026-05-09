@@ -216,19 +216,26 @@
      - The red marker tracks this in real time, independent of activeIdx. */
   function nowTimeMinutesTW(){
     /* Get current minutes-since-midnight in Asia/Taipei, regardless of
-       the device's local timezone. */
+       the device's local timezone. Two-tier strategy:
+       (1) Intl.DateTimeFormat — most correct, handles DST etc.
+       (2) Manual UTC+8 — timezone-independent fallback if Intl returns
+           garbage or hour='24' (some Chromium versions). */
     try {
       const parts = new Intl.DateTimeFormat('en-US', {
         timeZone: 'Asia/Taipei', hour12: false,
         hour: '2-digit', minute: '2-digit'
       }).formatToParts(new Date());
-      const h = Number(parts.find(p => p.type === 'hour').value);
+      let h = Number(parts.find(p => p.type === 'hour').value);
       const m = Number(parts.find(p => p.type === 'minute').value);
-      return h * 60 + m;
-    } catch(_){
-      const d = new Date();
-      return d.getHours() * 60 + d.getMinutes();
-    }
+      if (h === 24) h = 0; /* normalise the en-US 24:xx edge case */
+      if (Number.isFinite(h) && Number.isFinite(m)) return h * 60 + m;
+    } catch(_){}
+    /* Fallback: compute Asia/Taipei (UTC+8) manually so we never
+       accidentally use the device's local timezone. */
+    const now = new Date();
+    const twMs = now.getTime() + (now.getTimezoneOffset() + 8 * 60) * 60000;
+    const tw = new Date(twMs);
+    return tw.getUTCHours() * 60 + tw.getUTCMinutes();
   }
   function nowTimeIdx(){
     const now = nowTimeMinutesTW();
@@ -247,6 +254,14 @@
     const [h, m] = time.split(':').map(Number);
     const slotEndMins = h*60 + m + 30; /* slot ends 30 min after start */
     return slotEndMins <= nowTimeMinutesTW();
+  }
+  /* A slot becomes unbookable the moment it begins — even if it hasn't fully
+     ended yet. Booking guards use this; isSlotEnded is reserved for attendance
+     and the "已結束" display label. */
+  function isSlotStarted(time){
+    const [h, m] = time.split(':').map(Number);
+    const slotStartMins = h*60 + m;
+    return slotStartMins <= nowTimeMinutesTW();
   }
   let activeIdx = nowTimeIdx();
 
@@ -1735,7 +1750,7 @@
     if (context && context.court) return joinSeatAt(context);
     const t = TIMES[activeIdx];
     /* Time guard for auto-find too. */
-    if (isSlotEnded(t)){ showToast('此時段已結束，無法掛牌', true); return; }
+    if (isSlotStarted(t)){ showToast('球賽已開始，請排下一個時段', true); return; }
     /* Cross-court uniqueness — bail out before searching for a seat. */
     if (userOnAnyCourtAt(currentUserId, t)){
       showToast('同一時段只能選擇一個場地', true); return;
@@ -1761,7 +1776,7 @@
   function joinSeatAt(ctx){
     if (!canBook()){ showToast(bookingRejectMessage(), true); return; }
     /* Time guard — already-ended slots can't be booked. */
-    if (isSlotEnded(ctx.time)){ showToast('此時段已結束，無法掛牌', true); return; }
+    if (isSlotStarted(ctx.time)){ showToast('球賽已開始，請排下一個時段', true); return; }
     const slot = courts[ctx.court][ctx.time];
     const half = slot[ctx.side];
     if (!half) return;
@@ -1795,7 +1810,7 @@
 
   function replaceBooking(ctx, targetUid){
     if (!canBook()){ showToast(bookingRejectMessage(), true); return; }
-    if (isSlotEnded(ctx.time)){ showToast('此時段已結束，無法掛牌', true); return; }
+    if (isSlotStarted(ctx.time)){ showToast('球賽已開始，請排下一個時段', true); return; }
     const slot = courts[ctx.court][ctx.time];
     const half = slot[ctx.side];
     if (!half || !isReplaceableEntry(half, targetUid)){ showToast('此預約無法被替補', true); return; }
@@ -2078,9 +2093,68 @@
     persist();
   }
 
+  /* ============================================================
+     FIRESTORE LIVE SYNC — pull remote USERS in real time so admins see
+     a new pending member the moment that member's LINE login writes.
+     Snapshot-doc model only (no schema change this round). Admin panel +
+     app screen re-render on any merged remote change.
+  ============================================================ */
+  let _usersSnapshotUnsubscribe = null;
+  function startUsersListener(){
+    if (typeof db === 'undefined' || !db || !db.collection) return;
+    if (_usersSnapshotUnsubscribe) return;
+    try {
+      _usersSnapshotUnsubscribe = db.collection('users').doc('snapshot').onSnapshot(
+        snap => {
+          const data = snap && snap.data && snap.data();
+          if (!data || !data.data || typeof data.data !== 'object') return;
+          const remote = data.data;
+          /* Diff merge — only mutate USERS when something actually differs,
+             so our own writes don't trigger a redundant render. */
+          let changed = false;
+          Object.keys(remote).forEach(uid => {
+            const r = remote[uid];
+            const l = USERS[uid];
+            if (!l || JSON.stringify(l) !== JSON.stringify(r)){
+              USERS[uid] = r; changed = true;
+            }
+          });
+          /* Drop locally-cached users that were deleted remotely,
+             but never drop OWNER bootstrap. */
+          Object.keys(USERS).forEach(uid => {
+            if (!(uid in remote) && uid !== BOOTSTRAP_ADMIN_ID){
+              delete USERS[uid]; changed = true;
+            }
+          });
+          /* Self-heal OWNER status no matter what remote claims. */
+          if (USERS[BOOTSTRAP_ADMIN_ID] && USERS[BOOTSTRAP_ADMIN_ID].status !== STATUS.OWNER){
+            USERS[BOOTSTRAP_ADMIN_ID].status = STATUS.OWNER;
+            changed = true;
+          }
+          if (!changed) return;
+          /* Mirror to localStorage cache so reloads show fresh data instantly. */
+          try { saveUsers(); } catch(_){}
+          /* Re-render the views that depend on USERS. Admin panel pending
+             count + 待審核 list refresh; app header pending pulse refresh. */
+          if (screens.app && screens.app.classList.contains('active')){
+            try { renderApp(); } catch(_){}
+          }
+          if (sheet && sheet.classList && sheet.classList.contains('is-admin-panel')){
+            try { renderAdminPanel(); } catch(_){}
+          }
+        },
+        err => { console.warn('users onSnapshot error:', err && err.message); }
+      );
+    } catch(e){
+      console.warn('startUsersListener failed:', e && e.message);
+    }
+  }
+
   async function boot(){
     initFromStorage();
     refreshDemoBar();
+    /* Subscribe to remote USERS so admins see new pending members live. */
+    startUsersListener();
     /* Real-time tick: every 60 s re-render the slots/marker and check for
        newly-ended slots so attendance stays current without a page refresh. */
     setInterval(() => {
