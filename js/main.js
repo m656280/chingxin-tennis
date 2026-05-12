@@ -82,14 +82,79 @@
     saveUsers();
     saveCourts();
     saveAttendance();
-    /* Firestore = source of truth across devices. Wrapped in try/catch so a
-       missing/offline `db` never breaks the local UX.
-       TODO: switch to per-document writes (db.collection('users').doc(uid))
-       and add onSnapshot() listeners on collection('users').where('status','==','pending')
-       so admins see new approval requests in real time without refresh. */
+    /* Firestore: per-document writes for users (see saveUserToFirestore /
+       deleteUserFromFirestore — called explicitly at every user mutation
+       point). courts/attendance still use single-doc snapshot for now. */
     try { db.collection("courts").doc("main").set({ data: courts }); } catch(_){}
-    try { db.collection("users").doc("snapshot").set({ data: USERS }); } catch(_){}
     try { db.collection("attendance").doc("snapshot").set({ data: [...attendanceRecords] }); } catch(_){}
+  }
+
+  /* ============================================================
+     PER-USER FIRESTORE WRITES
+     Path: users/{uid}  — each user is a separate Firestore document.
+     This replaces the previous users/snapshot single-doc model, which had
+     a race condition: two devices each writing the whole snapshot would
+     overwrite each other (e.g. admin's stale-cache write would erase a
+     brand-new pending member). Per-doc writes are race-free per user.
+  ============================================================ */
+  /* Internal: queue writes if db isn't ready yet (race protection at boot).
+     Replayed automatically once `db` becomes available. */
+  const _pendingFsOps = [];
+  function _flushPendingFsOps(){
+    if (typeof db === 'undefined' || !db || !db.collection) return;
+    while (_pendingFsOps.length){
+      const op = _pendingFsOps.shift();
+      try { op(); } catch(e){ console.error('[firestore] queued op failed:', e); }
+    }
+  }
+
+  function saveUserToFirestore(uid){
+    if (!uid || !USERS[uid]) return;
+    /* Capture payload at call time so mutations afterwards don't change the
+       write — Firestore set() reads the object reference asynchronously. */
+    const payload = JSON.parse(JSON.stringify(USERS[uid]));
+    const exec = () => {
+      console.info('[firestore] write users/' + uid, '· status=' + (payload.status || '?'));
+      db.collection('users').doc(uid).set(payload)
+        .then(() => { console.info('[firestore] users/' + uid + ' write OK'); })
+        .catch(err => { console.error('[firestore] users/' + uid + ' write FAILED:', err && (err.code || err.message), err); });
+    };
+    if (typeof db === 'undefined' || !db || !db.collection){
+      console.warn('[firestore] db not ready, queuing write for users/' + uid);
+      _pendingFsOps.push(exec);
+      return;
+    }
+    try { exec(); }
+    catch(e){ console.error('[firestore] saveUserToFirestore exception:', e); }
+  }
+
+  function deleteUserFromFirestore(uid){
+    if (!uid) return;
+    const exec = () => {
+      console.info('[firestore] delete users/' + uid);
+      db.collection('users').doc(uid).delete()
+        .then(() => { console.info('[firestore] users/' + uid + ' delete OK'); })
+        .catch(err => { console.error('[firestore] users/' + uid + ' delete FAILED:', err && (err.code || err.message), err); });
+    };
+    if (typeof db === 'undefined' || !db || !db.collection){
+      console.warn('[firestore] db not ready, queuing delete for users/' + uid);
+      _pendingFsOps.push(exec);
+      return;
+    }
+    try { exec(); }
+    catch(e){ console.error('[firestore] deleteUserFromFirestore exception:', e); }
+  }
+
+  /* One-time legacy cleanup: drop the old users/snapshot doc if it still
+     exists. Per-user docs are now the source of truth. Safe to run every
+     boot — Firestore delete on a missing doc is a no-op. */
+  function cleanupLegacyUsersSnapshot(){
+    if (typeof db === 'undefined' || !db || !db.collection) return;
+    try {
+      db.collection('users').doc('snapshot').delete()
+        .then(() => { console.info('[firestore] legacy users/snapshot removed'); })
+        .catch(() => { /* missing doc or rules → ignore */ });
+    } catch(_){}
   }
 
   /* ============================================================
@@ -672,6 +737,7 @@
     const u = getUser(uid);
     if (!u || u.status !== STATUS.PENDING) return;
     u.status = STATUS.MEMBER;
+    saveUserToFirestore(uid);
     showToast(`已核准 ${u.displayName}`);
     rerenderAdminPanel(); renderApp();
   }
@@ -682,6 +748,7 @@
     if (!u || u.status !== STATUS.PENDING) return;
     if (u.status === STATUS.OWNER) return;
     delete USERS[uid];
+    deleteUserFromFirestore(uid);
     showToast(`已拒絕 ${u.displayName} 的申請`);
     rerenderAdminPanel(); renderApp();
   }
@@ -700,6 +767,7 @@
       if (!isOwner()){ showToast('只有 OWNER 可以變更管理員身份', true); return false; }
     }
     u.status = newStatus;
+    saveUserToFirestore(uid);
     showToast(`${u.displayName} 已設為 ${labelForStatus(newStatus)}`);
     rerenderAdminPanel(); renderApp();
     return true;
@@ -712,6 +780,7 @@
     if (u.status === STATUS.ADMIN && !isOwner()){ showToast('只有 OWNER 可以封鎖管理員', true); return; }
     u.status = STATUS.BLOCKED;
     removeFromAllBookings(uid);
+    saveUserToFirestore(uid);
     showToast(`${u.displayName} 已封鎖`);
     rerenderAdminPanel(); renderApp();
   }
@@ -731,6 +800,7 @@
     if (!confirm('確定要刪除這位會員？此操作無法復原。')) return;
     removeFromAllBookings(uid);
     delete USERS[uid];
+    deleteUserFromFirestore(uid);
     persist();
     showToast('會員已刪除');
     rerenderAdminPanel();
@@ -741,6 +811,7 @@
     if (!isAdmin()) return showToast('需要管理員權限', true);
     const u = getUser(uid); if (!u) return;
     u.status = STATUS.MEMBER;
+    saveUserToFirestore(uid);
     showToast(`${u.displayName} 已解除封鎖`);
     rerenderAdminPanel(); renderApp();
   }
@@ -951,6 +1022,7 @@
         const u = USERS[currentUserId]; if (!u) return;
         u.ntrp = sheet._draftNtrp;
         u.strengths = sheet._draftStrengths.slice();
+        saveUserToFirestore(currentUserId);
         persist();
         showToast('個人資料已更新');
         const ntrpVal = sheet.querySelector('.cb-sheet .stats .stat:first-child .v');
@@ -1860,6 +1932,7 @@
         USERS[userId].displayName = displayName || USERS[userId].displayName;
         USERS[userId].pictureUrl = pictureUrl || USERS[userId].pictureUrl;
       }
+      saveUserToFirestore(userId);
       currentUserId = userId;
       refreshDemoBar();
       route();
@@ -1868,6 +1941,7 @@
 
     const isFirstLogin = !USERS[userId];
     if (isFirstLogin){
+      console.info('[handleLogin] first login → creating PENDING user', userId);
       USERS[userId] = {
         userId,
         displayName: displayName || '新會員',
@@ -1880,10 +1954,14 @@
       };
       showToast('已建立帳號 · 等待管理員審核');
     } else {
+      console.info('[handleLogin] returning user', userId, '· status=' + USERS[userId].status);
       const u = USERS[userId];
       if (displayName) { u.displayName = displayName; u.ic = displayName.slice(0,1); }
       if (pictureUrl != null) u.pictureUrl = pictureUrl;
     }
+    /* Per-user Firestore write — race-free with other devices, so a new
+       pending member's record is preserved even if an admin is also writing. */
+    saveUserToFirestore(userId);
     persist();
     currentUserId = userId;
     refreshDemoBar();
@@ -2104,13 +2182,21 @@
     if (typeof db === 'undefined' || !db || !db.collection) return;
     if (_usersSnapshotUnsubscribe) return;
     try {
-      _usersSnapshotUnsubscribe = db.collection('users').doc('snapshot').onSnapshot(
+      /* Listen to the entire users collection. Each snapshot is treated as
+         the authoritative state — local USERS is reconciled to match. */
+      _usersSnapshotUnsubscribe = db.collection('users').onSnapshot(
         snap => {
-          const data = snap && snap.data && snap.data();
-          if (!data || !data.data || typeof data.data !== 'object') return;
-          const remote = data.data;
-          /* Diff merge — only mutate USERS when something actually differs,
-             so our own writes don't trigger a redundant render. */
+          const remote = {};
+          snap.forEach(doc => {
+            const data = doc.data();
+            /* Skip the legacy users/snapshot doc (shape: { data: {...} }) and
+               any other malformed doc. Real user docs always have a userId
+               field matching their doc.id. */
+            if (!data || typeof data !== 'object') return;
+            if (doc.id === 'snapshot') return;
+            if (data.userId !== doc.id) return;
+            remote[doc.id] = data;
+          });
           let changed = false;
           Object.keys(remote).forEach(uid => {
             const r = remote[uid];
@@ -2119,8 +2205,8 @@
               USERS[uid] = r; changed = true;
             }
           });
-          /* Drop locally-cached users that were deleted remotely,
-             but never drop OWNER bootstrap. */
+          /* Drop locally-cached users that no longer exist remotely.
+             Never drop OWNER bootstrap. */
           Object.keys(USERS).forEach(uid => {
             if (!(uid in remote) && uid !== BOOTSTRAP_ADMIN_ID){
               delete USERS[uid]; changed = true;
@@ -2130,12 +2216,12 @@
           if (USERS[BOOTSTRAP_ADMIN_ID] && USERS[BOOTSTRAP_ADMIN_ID].status !== STATUS.OWNER){
             USERS[BOOTSTRAP_ADMIN_ID].status = STATUS.OWNER;
             changed = true;
+            saveUserToFirestore(BOOTSTRAP_ADMIN_ID);
           }
           if (!changed) return;
           /* Mirror to localStorage cache so reloads show fresh data instantly. */
           try { saveUsers(); } catch(_){}
-          /* Re-render the views that depend on USERS. Admin panel pending
-             count + 待審核 list refresh; app header pending pulse refresh. */
+          /* Re-render the views that depend on USERS. */
           if (screens.app && screens.app.classList.contains('active')){
             try { renderApp(); } catch(_){}
           }
@@ -2153,6 +2239,10 @@
   async function boot(){
     initFromStorage();
     refreshDemoBar();
+    /* Replay any Firestore writes that were queued before db was ready. */
+    _flushPendingFsOps();
+    /* Tidy the legacy users/snapshot doc — per-user docs are now canonical. */
+    cleanupLegacyUsersSnapshot();
     /* Subscribe to remote USERS so admins see new pending members live. */
     startUsersListener();
     /* Real-time tick: every 60 s re-render the slots/marker and check for
