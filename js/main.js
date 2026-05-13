@@ -902,9 +902,11 @@
     if (mine){
       sheet._draftNtrp = u.ntrp || '—';
       sheet._draftStrengths = (u.strengths || []).slice();
+      sheet._draftDisplayName = u.displayName || '';
     } else {
       sheet._draftNtrp = null;
       sheet._draftStrengths = null;
+      sheet._draftDisplayName = null;
     }
 
     const role = roleBadgeHTML(u);
@@ -941,7 +943,7 @@
         <div class="label">擅長位置 · Strengths</div>
         <div class="tags">${strengthTagsHTML(u.strengths)}</div>
       </div>
-      ${ mine ? renderMyEditPanel(sheet._draftNtrp, sheet._draftStrengths) : '' }
+      ${ mine ? renderMyEditPanel(sheet._draftNtrp, sheet._draftStrengths, sheet._draftDisplayName) : '' }
       ${ replaceableHere ? `<div style="margin-top:12px; font-size:11px; color:var(--amber); background:var(--amber-pale); padding:8px 10px; border-radius:8px;">此預約為連續第二格，可被尚未預約的會員替補。</div>` : '' }
       ${ adminActionsForUser(u, context) }
     `;
@@ -959,7 +961,7 @@
 
   const NTRP_OPTIONS = ['2.0','2.5','3.0','3.5','4.0','4.5','5.0+'];
 
-  function renderMyEditPanel(draftNtrp, draftStrengths){
+  function renderMyEditPanel(draftNtrp, draftStrengths, draftDisplayName){
     const ntrpHTML = NTRP_OPTIONS.map(v =>
       `<option value="${v}" ${draftNtrp === v ? 'selected' : ''}>${v}</option>`
     ).join('');
@@ -968,9 +970,15 @@
       const on = draftStrengths.indexOf(k) >= 0 ? ' on' : '';
       return `<button type="button" class="strength-opt${on}" data-key="${k}">${k}<span class="en">${en}</span></button>`;
     }).join('');
+    /* Escape user input so it can't break the input value attribute. */
+    const safeName = (draftDisplayName || '').replace(/"/g, '&quot;');
     return `
       <div class="cb-edit-profile" id="my-edit-panel">
         <div class="label">編輯個人資料 · Edit profile</div>
+        <div class="form-row">
+          <label>顯示名稱 · Display name</label>
+          <input type="text" id="my-displayname" maxlength="20" value="${safeName}" placeholder="輸入你想顯示的名稱">
+        </div>
         <div class="form-row">
           <label>NTRP</label>
           <select id="my-ntrp">${ntrpHTML}</select>
@@ -999,6 +1007,15 @@
       });
     });
 
+    /* Display-name input updates the draft only — committed on save. */
+    const nameInput = sheet.querySelector('#my-displayname');
+    if (nameInput){
+      nameInput.addEventListener('input', e => {
+        e.stopPropagation();
+        sheet._draftDisplayName = nameInput.value;
+      });
+    }
+
     const ntrpSel = sheet.querySelector('#my-ntrp');
     if (ntrpSel){
       ntrpSel.addEventListener('change', e => {
@@ -1020,17 +1037,34 @@
       save.addEventListener('click', e => {
         e.preventDefault(); e.stopPropagation();
         const u = USERS[currentUserId]; if (!u) return;
+        /* Trim + minimum-length validation. Empty / whitespace-only names
+           fall back to existing displayName. */
+        const trimmed = (sheet._draftDisplayName || '').trim();
+        const nameChanged = trimmed && trimmed !== u.displayName;
+        if (nameChanged){
+          u.displayName = trimmed;
+          /* Keep ic (avatar initial) in sync with the new name. */
+          u.ic = trimmed.slice(0,1);
+        }
         u.ntrp = sheet._draftNtrp;
         u.strengths = sheet._draftStrengths.slice();
         saveUserToFirestore(currentUserId);
         persist();
         showToast('個人資料已更新');
+        /* In-place DOM patch for read-only header + stats + tags. */
+        const nameEl = sheet.querySelector('.cb-sheet .n');
+        if (nameEl && nameChanged){
+          /* Replace just the leading text node so the role badge survives. */
+          const firstNode = nameEl.firstChild;
+          if (firstNode && firstNode.nodeType === 3) firstNode.nodeValue = u.displayName + ' ';
+        }
         const ntrpVal = sheet.querySelector('.cb-sheet .stats .stat:first-child .v');
         if (ntrpVal) ntrpVal.textContent = u.ntrp || '—';
         const tagsBox = sheet.querySelector('.cb-strengths .tags');
         if (tagsBox) tagsBox.innerHTML = strengthTagsHTML(u.strengths);
         if (screens.app.classList.contains('active')){
-          ['A','B'].forEach(c => renderRoster(c));
+          /* Header me-button + court roster show displayName too. */
+          try { renderApp(); } catch(_){}
         }
       });
     }
@@ -1819,29 +1853,39 @@
   ============================================================ */
   function joinSeat(context){
     if (!canBook()){ showToast(bookingRejectMessage(), true); return; }
+    /* Context-targeted path (empty-seat click) — stick to that exact slot. */
     if (context && context.court) return joinSeatAt(context);
-    const t = TIMES[activeIdx];
-    /* Time guard for auto-find too. */
-    if (isSlotStarted(t)){ showToast('球賽已開始，請排下一個時段', true); return; }
-    /* Cross-court uniqueness — bail out before searching for a seat. */
-    if (userOnAnyCourtAt(currentUserId, t)){
-      showToast('同一時段只能選擇一個場地', true); return;
-    }
+    /* "Quick book" path — scan from the nearest UPCOMING bookable slot
+       onwards. Pick the first (court, side) where the user isn't already
+       on either court and the half has room. */
     let found = null;
-    ['A','B'].forEach(c => {
-      if (found) return;
-      const slot = courts[c][t];
-      ['top','bottom'].forEach(k => {
-        if (found) return;
-        const s = slot[k];
-        if (s.k === 'coach' || s.k === 'coach-tail') return;
-        if ((s.p || []).indexOf(currentUserId) >= 0) return;
-        if ((s.p || []).length < 2){
-          found = { court:c, side:k, time:t };
-        }
+    for (let i = 0; i < TIMES.length; i++){
+      const t = TIMES[i];
+      if (isSlotStarted(t)) continue;             /* skip already-started */
+      if (userOnAnyCourtAt(currentUserId, t)) continue; /* user already there */
+      let pickHere = null;
+      ['A','B'].forEach(c => {
+        if (pickHere) return;
+        const slot = courts[c][t]; if (!slot) return;
+        ['top','bottom'].forEach(k => {
+          if (pickHere) return;
+          const s = slot[k];
+          if (!s || s.k === 'coach' || s.k === 'coach-tail') return;
+          if ((s.p || []).indexOf(currentUserId) >= 0) return;
+          if ((s.p || []).length < 2){
+            pickHere = { court:c, side:k, time:t };
+          }
+        });
       });
-    });
-    if (!found){ showToast('此時段已滿，請選其他時間', true); return; }
+      if (pickHere){ found = pickHere; break; }
+    }
+    if (!found){
+      showToast('目前沒有可用時段，請稍後再試', true);
+      return;
+    }
+    /* Move the visible cursor to the chosen slot so the user sees it. */
+    const idx = TIMES.indexOf(found.time);
+    if (idx >= 0) activeIdx = idx;
     joinSeatAt(found);
   }
 
@@ -1869,11 +1913,13 @@
     }
     if (adj >= 2){ showToast('不可連續超過 2 個時段', true); return; }
     half.p = (half.p || []).concat([currentUserId]);
+    const sideLabel = ctx.side === 'top' ? '前場' : '後場';
+    const successMsg = `預約成功：${ctx.court}場 ${ctx.time} ${sideLabel}`;
     if (adj === 1){
       half.replaceable = (half.replaceable || []).concat([currentUserId]);
-      showToast('已加入 · 此為連續第二格，可被替補', false);
+      showToast(successMsg + '（連續第二格，可被替補）', false);
     } else {
-      showToast(`已加入 · ${ctx.court} ${ctx.side==='top'?'前場':'後場'} · ${ctx.time}`);
+      showToast(successMsg);
     }
     normalizeHalfState(half);
     overlay.classList.remove('show');
@@ -1968,14 +2014,35 @@
     route();
   }
 
-  /* ---- 修正後的三個函式 ---- */
+  /* ---- LIFF init flow with INVALID_ID_TOKEN loop protection ---- */
+
+  function isInvalidTokenError(e){
+    if (!e) return false;
+    const code = e.code || '';
+    const msg = (e.message || '') + '';
+    return /INVALID_ID_TOKEN|invalid_id_token|UNAUTHORIZED|EXPIRED|expired/i.test(code + ' ' + msg);
+  }
 
   function reLoginAfterTokenError(){
+    /* Loop guard: only allow ONE auto-recovery per browser tab session.
+       Without this, a stale token causes init → recover → init → recover
+       indefinitely. */
+    try {
+      if (sessionStorage.getItem('cb.liffRecovered') === '1'){
+        console.warn('[liff] already attempted re-login this session');
+        showLiffErrorScreen(
+          'LINE 登入持續失敗',
+          '請從 LINE 應用內重新開啟，或清除 LINE 暫存後再試'
+        );
+        return;
+      }
+      sessionStorage.setItem('cb.liffRecovered', '1');
+    } catch(_){}
     try { liff.logout(); } catch(_){}
     try { liff.login(); } catch(_){
       showLiffErrorScreen('LINE 登入逾期，無法自動續登', '請從 LINE 內重新開啟此應用');
     }
-  }  /* ← 原本這個 } 不見了 */
+  }
 
   async function initLiff(){
     if (!isLiffEnabled) return false;
@@ -1983,21 +2050,42 @@
       await liff.init({ liffId: LIFF_ID });
     } catch(e){
       console.error('liff.init failed:', e);
+      if (isInvalidTokenError(e)){ reLoginAfterTokenError(); return false; }
       return false;
     }
     if (!liff.isLoggedIn()) {
+      /* Same loop guard applies: only auto-redirect to LINE once per session,
+         so a broken redirect chain can't keep bouncing. */
+      try {
+        if (sessionStorage.getItem('cb.liffRedirect') === '1'){
+          console.warn('[liff] already redirected this session, stopping loop');
+          showLiffErrorScreen(
+            'LINE 登入未完成',
+            '請從 LINE 應用內重新開啟，或檢查網路'
+          );
+          return false;
+        }
+        sessionStorage.setItem('cb.liffRedirect', '1');
+      } catch(_){}
       liff.login();
       return false;
     }
     try {
       const profile = await liff.getProfile();
+      /* Successful login — clear loop-guard flags so future expired tokens
+         in a long-running tab can still be recovered. */
+      try {
+        sessionStorage.removeItem('cb.liffRecovered');
+        sessionStorage.removeItem('cb.liffRedirect');
+      } catch(_){}
       handleLogin(profile.userId, profile.displayName, profile.pictureUrl);
       return true;
     } catch(e){
       console.error('liff.getProfile failed:', e);
+      if (isInvalidTokenError(e)){ reLoginAfterTokenError(); return false; }
       return false;
     }
-  }  /* ← 原本這個 } 不見了，且 liffLogout 被包在裡面 */
+  }
 
   function liffLogout(){
     if (isLiffEnabled && window.liff && liff.isLoggedIn()){
@@ -2236,6 +2324,48 @@
     }
   }
 
+  /* ============================================================
+     COURTS LIVE SYNC — every member sees the same board in real time.
+     Reads from db.collection('courts').doc('main') — same path persist()
+     already writes. Re-renders on any remote change.
+  ============================================================ */
+  let _courtsSnapshotUnsubscribe = null;
+  let _lastCourtsRemoteJson = '';
+  function startCourtsListener(){
+    if (typeof db === 'undefined' || !db || !db.collection) return;
+    if (_courtsSnapshotUnsubscribe) return;
+    try {
+      _courtsSnapshotUnsubscribe = db.collection('courts').doc('main').onSnapshot(
+        snap => {
+          const data = snap && snap.data && snap.data();
+          if (!data || !data.data || typeof data.data !== 'object') return;
+          const remote = data.data;
+          /* Diff: if local already matches remote, do nothing (avoids loops
+             from our own writes). */
+          const remoteJson = JSON.stringify(remote);
+          if (remoteJson === _lastCourtsRemoteJson) return;
+          _lastCourtsRemoteJson = remoteJson;
+          /* Reconcile each known court. Backfill missing time slots so the
+             grid never has holes. */
+          ['A','B'].forEach(c => {
+            if (remote[c]) courts[c] = remote[c];
+            if (!courts[c]) courts[c] = {};
+            TIMES.forEach(t => {
+              if (!courts[c][t]) courts[c][t] = { top:{k:'open',p:[]}, bottom:{k:'open',p:[]} };
+            });
+          });
+          try { saveCourts(); } catch(_){}
+          if (screens.app && screens.app.classList.contains('active')){
+            try { renderApp(); } catch(_){}
+          }
+        },
+        err => { console.warn('courts onSnapshot error:', err && err.message); }
+      );
+    } catch(e){
+      console.warn('startCourtsListener failed:', e && e.message);
+    }
+  }
+
   async function boot(){
     initFromStorage();
     refreshDemoBar();
@@ -2245,6 +2375,8 @@
     cleanupLegacyUsersSnapshot();
     /* Subscribe to remote USERS so admins see new pending members live. */
     startUsersListener();
+    /* Subscribe to remote COURTS so every member sees the same board. */
+    startCourtsListener();
     /* Real-time tick: every 60 s re-render the slots/marker and check for
        newly-ended slots so attendance stays current without a page refresh. */
     setInterval(() => {
