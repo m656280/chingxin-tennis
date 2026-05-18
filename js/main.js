@@ -53,24 +53,43 @@
      Firebase migration: replace with collection('attendance') with the
      same composite key as the document id. */
   const attendanceRecords = new Set();
+  /* Parallel map: attendance key → bookedByUid (only set when proxy-booked).
+     Doesn't change Set semantics — counts still keyed by player uid. */
+  const attendanceBookers = {};
   function saveAttendance(){
     try { safeSet(STORAGE_KEYS.ATTENDANCE, JSON.stringify([...attendanceRecords])); } catch(_){}
+    try { safeSet(STORAGE_KEYS.ATTENDANCE + '.b', JSON.stringify(attendanceBookers)); } catch(_){}
   }
   function loadAttendance(){
-    const raw = safeGet(STORAGE_KEYS.ATTENDANCE); if (!raw) return;
-    try {
-      const arr = JSON.parse(raw);
-      if (Array.isArray(arr)) arr.forEach(k => attendanceRecords.add(k));
-    } catch(_){}
+    const raw = safeGet(STORAGE_KEYS.ATTENDANCE);
+    if (raw){
+      try {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) arr.forEach(k => attendanceRecords.add(k));
+      } catch(_){}
+    }
+    const rawB = safeGet(STORAGE_KEYS.ATTENDANCE + '.b');
+    if (rawB){
+      try {
+        const obj = JSON.parse(rawB);
+        if (obj && typeof obj === 'object'){
+          Object.keys(obj).forEach(k => { attendanceBookers[k] = obj[k]; });
+        }
+      } catch(_){}
+    }
   }
   function attKey(uid, date, court, time){
     return uid + '|' + date + '|' + court + '|' + time;
   }
-  function recordAttendanceOnce(uid, date, court, time){
+  function recordAttendanceOnce(uid, date, court, time, bookedByUid){
     if (!uid) return false;
     const key = attKey(uid, date, court, time);
     if (attendanceRecords.has(key)) return false;
     attendanceRecords.add(key);
+    /* Stamp booker if this was a proxy booking. Counts always go to uid (player). */
+    if (bookedByUid && bookedByUid !== uid){
+      attendanceBookers[key] = bookedByUid;
+    }
     if (USERS[uid]){
       USERS[uid].playCount = (USERS[uid].playCount || 0) + 1;
     }
@@ -86,7 +105,12 @@
        deleteUserFromFirestore — called explicitly at every user mutation
        point). courts/attendance still use single-doc snapshot for now. */
     try { db.collection("courts").doc("main").set({ data: courts }); } catch(_){}
-    try { db.collection("attendance").doc("snapshot").set({ data: [...attendanceRecords] }); } catch(_){}
+    try {
+      db.collection("attendance").doc("snapshot").set({
+        data: [...attendanceRecords],
+        bookers: attendanceBookers
+      });
+    } catch(_){}
   }
 
   /* ============================================================
@@ -446,7 +470,9 @@
             if (recordAttendanceOnce(h.coach, date, c, t)) changed = true;
           }
           (h.p || []).forEach(uid => {
-            if (recordAttendanceOnce(uid, date, c, t)) changed = true;
+            /* Pass bookedByUid when proxy-booked; null otherwise. */
+            const bookerUid = (h.b && h.b[uid]) || null;
+            if (recordAttendanceOnce(uid, date, c, t, bookerUid)) changed = true;
           });
         });
       });
@@ -560,9 +586,17 @@
     el.className = 'cb-pill';
     if (uid === currentUserId) el.classList.add('is-mine');
     if (opt && opt.replaceable) el.classList.add('replaceable');
+    /* Proxy-booked: render second small avatar (the booker) overlapping
+       the player avatar so it's obvious "X booked by Y". */
+    const bookerUid = opt && opt.bookerUid;
+    const bu = bookerUid ? (getUser(bookerUid) || { ic:'?', cl:'#888' }) : null;
+    if (bu) el.classList.add('proxy');
     const fullClass = opt && opt.full ? ' f' : '';
     el.innerHTML =
       `<span class="av" style="background:${u.cl}">${u.ic}${avPicHTML(u)}</span>` +
+      (bu
+        ? `<span class="av booker" style="background:${bu.cl}" title="由 ${bu.displayName || ''} 代掛">${bu.ic}${avPicHTML(bu)}</span>`
+        : '') +
       `<span class="nm">${u.displayName}</span>` +
       (opt && opt.replaceable ? `<span class="repl">替補</span>` : '') +
       `<span class="st${fullClass}"></span>`;
@@ -577,7 +611,17 @@
     const el = document.createElement('button');
     el.className = 'cb-pill empty';
     el.innerHTML = `<span class="av">+</span><span class="nm">空位</span>`;
-    el.addEventListener('click', e => { e.stopPropagation(); joinSeat(context); });
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      /* Admin/owner gets a proxy picker so they can mount the slot under
+         themselves OR another approved member. Regular members go straight
+         to a self-booking. */
+      if (isAdminLike() && context && context.court){
+        openProxyBookPicker(context);
+      } else {
+        joinSeat(context);
+      }
+    });
     return el;
   }
 
@@ -628,6 +672,7 @@
         w.appendChild(pillEl(list[i], {
           full: data.k==='full',
           replaceable: isReplaceableEntry(data, list[i]),
+          bookerUid: (data.b && data.b[list[i]]) || null,
           context: context
         }));
       } else {
@@ -645,9 +690,15 @@
 
     function pillForUser(uid, opts){
       const u = getUser(uid) || { ic:'?', cl:'#888', displayName:'?' };
-      const cls = (uid === currentUserId) ? 'roster-pill is-mine' : 'roster-pill';
+      const bookerUid = opts && opts.bookerUid;
+      const bu = bookerUid ? (getUser(bookerUid) || { ic:'?', cl:'#888', displayName:'?' }) : null;
+      let cls = (uid === currentUserId) ? 'roster-pill is-mine' : 'roster-pill';
+      if (bu) cls += ' proxy';
       const extra = opts && opts.extra ? `<span style="font-size:9px; opacity:.7; margin-left:4px;">${opts.extra}</span>` : '';
-      return `<button class="${cls}" data-uid="${uid}"><span class="av" style="background:${u.cl}">${u.ic}${avPicHTML(u)}</span>${u.displayName}${extra}</button>`;
+      const bookerAv = bu
+        ? `<span class="av booker" style="background:${bu.cl}" title="由 ${bu.displayName || ''} 代掛">${bu.ic}${avPicHTML(bu)}</span>`
+        : '';
+      return `<button class="${cls}" data-uid="${uid}"><span class="av" style="background:${u.cl}">${u.ic}${avPicHTML(u)}</span>${bookerAv}${u.displayName}${extra}</button>`;
     }
 
     wrap.innerHTML = ['top','bottom'].map(side => {
@@ -664,7 +715,9 @@
       if (players.length === 0){
         return `<div class="roster-row"><span class="rl">${label}</span><span class="roster-pill empty">空位</span></div>`;
       }
-      const pills = players.map(uid => pillForUser(uid)).join('');
+      const pills = players.map(uid => pillForUser(uid, {
+        bookerUid: (h.b && h.b[uid]) || null
+      })).join('');
       return `<div class="roster-row"><span class="rl">${label}</span>${pills}</div>`;
     }).join('');
 
@@ -819,10 +872,17 @@
   function removeFromBooking(uid, ctx){
     if (!isAdmin()) return showToast('需要管理員權限', true);
     if (!ctx || !ctx.court) return;
+    /* Same lock as personal cancel — bookings become 成立 once the slot
+       has begun. Admin block/delete-user flows go through
+       removeFromAllBookings which keeps no time guard. */
+    if (isSlotStarted(ctx.time)){
+      showToast('球賽已開始，無法移除預約', true); return;
+    }
     const slot = courts[ctx.court][ctx.time];
     const half = slot[ctx.side];
     half.p = (half.p || []).filter(x => x !== uid);
     half.replaceable = (half.replaceable || []).filter(x => x !== uid);
+    if (half.b) delete half.b[uid];
     normalizeHalfState(half);
     showToast('已從預約移除');
     overlay.classList.remove('show');
@@ -841,6 +901,15 @@
           }
           half.p = half.p.filter(x => x !== uid);
           half.replaceable = (half.replaceable || []).filter(x => x !== uid);
+          if (half.b){
+            /* Drop proxy entry for the removed player AND any entry where
+               this uid was the BOOKER (defensive — if booker is deleted,
+               the proxy record becomes meaningless). */
+            delete half.b[uid];
+            Object.keys(half.b).forEach(pid => {
+              if (half.b[pid] === uid) delete half.b[pid];
+            });
+          }
           normalizeHalfState(half);
         });
       });
@@ -1219,6 +1288,70 @@
     });
     showToast('已移除學員');
     openCoach(headSlot[context.side], { ...context, time: headTime });
+  }
+
+  /* ============================================================
+     PROXY BOOK PICKER — admin/owner pick which member actually plays.
+     Default selection is the current admin (self-book shortcut).
+  ============================================================ */
+  function openProxyBookPicker(context){
+    if (!isAdminLike()) { joinSeat(context); return; }
+    sheet.classList.remove('is-mine','is-admin-panel','is-coach-form');
+    sheet.classList.add('is-coach-form');
+    const sideLabel = context.side === 'top' ? '前場' : '後場';
+    /* Eligible players: any approved user. Sort: self first, then by name. */
+    const allowed = Object.values(USERS).filter(u =>
+      u.status === STATUS.MEMBER || u.status === STATUS.COACH ||
+      u.status === STATUS.ADMIN  || u.status === STATUS.OWNER
+    ).sort((a,b) => {
+      if (a.userId === currentUserId) return -1;
+      if (b.userId === currentUserId) return 1;
+      return (a.displayName||'').localeCompare(b.displayName||'');
+    });
+    const rows = allowed.map(u => {
+      const meTag = u.userId === currentUserId ? '<span style="font-size:9px; color:var(--ink-mute); margin-left:6px;">(自己)</span>' : '';
+      const roleBadge = roleBadgeHTML(u);
+      return `
+        <button type="button" class="user-row" data-uid="${u.userId}" style="width:100%; background:transparent; border:0; text-align:left; cursor:pointer; padding:10px 4px; border-bottom:0.5px solid rgba(45,61,52,.07);">
+          <div class="av" style="background:${u.cl}">${u.ic}${avPicHTML(u)}</div>
+          <div class="info">
+            <div class="nm">${u.displayName}${meTag} ${roleBadge}</div>
+            <div class="uid" style="font-family:inherit; color:var(--ink-soft);">NTRP ${u.ntrp || '—'} · ${u.playCount||0} 次</div>
+          </div>
+        </button>
+      `;
+    }).join('');
+    sheet.innerHTML = `
+      <div class="grab"></div>
+      <div style="font-size:15px; font-weight:600; margin-bottom:2px;">幫球友掛單</div>
+      <div style="font-size:11px; color:var(--ink-soft); margin-bottom:12px;">
+        ${context.court}場 · ${context.time} · ${sideLabel} · 選擇實際打球者
+      </div>
+      <div style="max-height:60vh; overflow-y:auto;">${rows || '<div class="empty-state">沒有可選擇的會員</div>'}</div>
+      <div class="form-actions">
+        <button class="secondary" data-act="cancel-proxy">取消</button>
+      </div>
+    `;
+    overlay.classList.add('show');
+    sheet.querySelectorAll('button.user-row[data-uid]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.preventDefault(); e.stopPropagation();
+        const pid = btn.getAttribute('data-uid');
+        /* Self-book shortcut: pass no opt so existing self-book code path runs. */
+        if (pid === currentUserId){
+          overlay.classList.remove('show');
+          joinSeatAt(context);
+        } else {
+          overlay.classList.remove('show');
+          joinSeatAt(context, { playerUid: pid });
+        }
+      });
+    });
+    const cancel = sheet.querySelector('[data-act="cancel-proxy"]');
+    if (cancel) cancel.addEventListener('click', e => {
+      e.preventDefault(); e.stopPropagation();
+      overlay.classList.remove('show');
+    });
   }
 
   function openStudentPicker(context){
@@ -1889,34 +2022,62 @@
     joinSeatAt(found);
   }
 
-  function joinSeatAt(ctx){
+  function joinSeatAt(ctx, opt){
     if (!canBook()){ showToast(bookingRejectMessage(), true); return; }
     /* Time guard — already-ended slots can't be booked. */
     if (isSlotStarted(ctx.time)){ showToast('球賽已開始，請排下一個時段', true); return; }
+    /* PROXY-BOOK SUPPORT — admin/owner can pass opt.playerUid to book on
+       behalf of a real player. playerUid is the person who actually plays;
+       currentUserId becomes the booker recorded in half.b.
+       Self-book: opt omitted → playerUid = currentUserId, no half.b entry. */
+    const playerUid = (opt && opt.playerUid) || currentUserId;
+    const isProxy = playerUid !== currentUserId;
+    if (isProxy && !isAdminLike()){
+      showToast('只有管理員可以幫他人掛單', true); return;
+    }
+    /* Validate proxy target — must be an existing approved member-like user. */
+    if (isProxy){
+      const tgt = USERS[playerUid];
+      if (!tgt){ showToast('找不到該會員', true); return; }
+      if (tgt.status !== STATUS.MEMBER && tgt.status !== STATUS.COACH &&
+          tgt.status !== STATUS.ADMIN && tgt.status !== STATUS.OWNER){
+        showToast('此會員狀態無法被掛單', true); return;
+      }
+    }
     const slot = courts[ctx.court][ctx.time];
     const half = slot[ctx.side];
     if (!half) return;
     if (half.k === 'coach' || half.k === 'coach-tail'){ showToast('教練課時段', true); return; }
-    if ((half.p || []).indexOf(currentUserId) >= 0){ showToast('你已在此預約', true); return; }
-    /* Cross-court uniqueness — a user can only be on A OR B at this time,
-       not both halves of either court. Replaces the old same-court check. */
-    if (userOnAnyCourtAt(currentUserId, ctx.time)){
-      showToast('同一時段只能選擇一個場地', true); return;
+    if ((half.p || []).indexOf(playerUid) >= 0){
+      showToast(isProxy ? '該球友已在此預約' : '你已在此預約', true); return;
     }
-    const adj = adjacentBookingCount(currentUserId, ctx.court, ctx.time);
+    /* Cross-court uniqueness applies to the PLAYER, not the booker. */
+    if (userOnAnyCourtAt(playerUid, ctx.time)){
+      showToast(isProxy ? '該球友同一時段已在其他場' : '同一時段只能選擇一個場地', true);
+      return;
+    }
+    const adj = adjacentBookingCount(playerUid, ctx.court, ctx.time);
     if ((half.p || []).length >= 2){
       if (halfHasReplaceable(half) && adj === 0){
         const target = half.replaceable[0];
-        return replaceBooking(ctx, target);
+        /* Proxy can also replace a replaceable booking — pass playerUid through. */
+        return replaceBooking(ctx, target, { playerUid });
       }
       showToast('此半場已滿', true); return;
     }
     if (adj >= 2){ showToast('不可連續超過 2 個時段', true); return; }
-    half.p = (half.p || []).concat([currentUserId]);
+    half.p = (half.p || []).concat([playerUid]);
+    if (isProxy){
+      half.b = half.b || {};
+      half.b[playerUid] = currentUserId;
+    }
     const sideLabel = ctx.side === 'top' ? '前場' : '後場';
-    const successMsg = `預約成功：${ctx.court}場 ${ctx.time} ${sideLabel}`;
+    const playerName = (USERS[playerUid] && USERS[playerUid].displayName) || '會員';
+    const successMsg = isProxy
+      ? `已幫 ${playerName} 預約：${ctx.court}場 ${ctx.time} ${sideLabel}`
+      : `預約成功：${ctx.court}場 ${ctx.time} ${sideLabel}`;
     if (adj === 1){
-      half.replaceable = (half.replaceable || []).concat([currentUserId]);
+      half.replaceable = (half.replaceable || []).concat([playerUid]);
       showToast(successMsg + '（連續第二格，可被替補）', false);
     } else {
       showToast(successMsg);
@@ -1926,20 +2087,30 @@
     renderApp();
   }
 
-  function replaceBooking(ctx, targetUid){
+  function replaceBooking(ctx, targetUid, opt){
     if (!canBook()){ showToast(bookingRejectMessage(), true); return; }
     if (isSlotStarted(ctx.time)){ showToast('球賽已開始，請排下一個時段', true); return; }
+    const playerUid = (opt && opt.playerUid) || currentUserId;
+    const isProxy = playerUid !== currentUserId;
+    if (isProxy && !isAdminLike()){ showToast('只有管理員可以幫他人掛單', true); return; }
     const slot = courts[ctx.court][ctx.time];
     const half = slot[ctx.side];
     if (!half || !isReplaceableEntry(half, targetUid)){ showToast('此預約無法被替補', true); return; }
-    /* Cross-court uniqueness applies to replacements too. */
-    if (userOnAnyCourtAt(currentUserId, ctx.time)){
-      showToast('同一時段只能選擇一個場地', true); return;
+    /* Cross-court uniqueness applies to the incoming PLAYER. */
+    if (userOnAnyCourtAt(playerUid, ctx.time)){
+      showToast(isProxy ? '該球友同一時段已在其他場' : '同一時段只能選擇一個場地', true);
+      return;
     }
-    const adj = adjacentBookingCount(currentUserId, ctx.court, ctx.time);
+    const adj = adjacentBookingCount(playerUid, ctx.court, ctx.time);
     if (adj > 0){ showToast('替補者不能在相鄰時段已有預約', true); return; }
-    half.p = (half.p || []).map(x => x === targetUid ? currentUserId : x);
+    half.p = (half.p || []).map(x => x === targetUid ? playerUid : x);
     half.replaceable = (half.replaceable || []).filter(x => x !== targetUid);
+    /* Clean stale proxy entry for the replaced player, write a new one if proxy. */
+    if (half.b){ delete half.b[targetUid]; }
+    if (isProxy){
+      half.b = half.b || {};
+      half.b[playerUid] = currentUserId;
+    }
     normalizeHalfState(half);
     const tu = getUser(targetUid);
     showToast(`已替補 ${tu ? tu.displayName : ''} 的位置`);
@@ -1948,10 +2119,17 @@
   }
 
   function cancelMyBooking(ctx){
+    /* Once a slot has begun, the booking is "成立" — nobody can cancel,
+       not even admin/owner. Current players are on court and any walk-in
+       is a real-world substitution. */
+    if (isSlotStarted(ctx.time)){
+      showToast('球賽已開始，無法取消預約', true); return;
+    }
     const slot = courts[ctx.court][ctx.time];
     const half = slot[ctx.side];
     half.p = (half.p || []).filter(x => x !== currentUserId);
     half.replaceable = (half.replaceable || []).filter(x => x !== currentUserId);
+    if (half.b) delete half.b[currentUserId];
     normalizeHalfState(half);
     showToast('已取消你的預約');
     overlay.classList.remove('show');

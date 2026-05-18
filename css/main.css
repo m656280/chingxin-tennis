@@ -360,6 +360,25 @@
     box-shadow: inset 0 0 0 0.5px rgba(255,255,255,.25);
     position: relative; overflow: hidden;
   }
+  /* Proxy-booked pill: second small avatar (the booker) overlaps the player. */
+  .cb-pill .av.booker {
+    width: 16px; height: 16px;
+    margin-left: -6px;
+    font-size: 8px;
+    border: 1.5px solid #FFF;
+    box-shadow: 0 0 0 0.5px rgba(0,0,0,.15);
+    z-index: 1;
+  }
+  .cb-pill.proxy { padding-right: 11px; }
+  .roster-pill .av.booker {
+    width: 13px; height: 13px;
+    margin-left: -5px;
+    font-size: 7px;
+    border: 1.5px solid #FFF;
+    box-shadow: 0 0 0 0.5px rgba(0,0,0,.12);
+    z-index: 1;
+  }
+  .roster-pill.proxy { padding-right: 10px; }
   .cb-pill .av img,
   .cb-me  .av img,
   .cb-sheet .a img,
