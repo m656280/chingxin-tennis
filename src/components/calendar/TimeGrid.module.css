@@ -1,0 +1,129 @@
+.wrapper {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.courtHeader {
+  display: grid;
+  grid-template-columns: 44px repeat(4, 1fr);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-alt);
+}
+
+.timeAxisHead {
+  /* 空格，留給時間軸 */
+}
+
+.courtLabel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 4px;
+  border-left: 1px solid var(--color-border-soft);
+}
+
+.surfaceTag {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.courtLetter {
+  font-family: var(--font-display);
+  font-size: 18px;
+  color: var(--color-text-primary);
+  line-height: 1.1;
+  margin-top: 2px;
+}
+
+.courtLabel.clay .surfaceTag {
+  color: var(--color-clay);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 44px repeat(4, 1fr);
+  position: relative;
+  /* grid-template-rows 由 inline style 設定 */
+}
+
+/* 背景 slot row（橫向延展，全寬） */
+.slotRow {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--grid-line-soft);
+  display: flex;
+  align-items: flex-start;
+  padding-top: 2px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.slotRow.fullHour {
+  border-top-color: var(--grid-line);
+}
+
+.slotRow.firstRow {
+  border-top: none;
+}
+
+.timeLabel {
+  width: 44px;
+  padding-left: 6px;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+  font-family: var(--font-body);
+}
+
+/* 場地直向分隔線（透過 column 背景畫） */
+.courtDividers {
+  grid-column: 1 / -1;
+  grid-row: 1 / -1;
+  pointer-events: none;
+  display: grid;
+  grid-template-columns: 44px repeat(4, 1fr);
+  z-index: 0;
+}
+
+.courtDividers > div {
+  border-left: 1px solid var(--grid-line-soft);
+}
+
+.courtDividers > div:first-child {
+  border-left: none;
+}
+
+/* Now indicator — 細紅線顯示目前時間 */
+.nowLine {
+  position: absolute;
+  left: 44px;
+  right: 0;
+  height: 1px;
+  background: var(--color-now);
+  z-index: 3;
+  pointer-events: none;
+}
+
+.nowLine::before {
+  content: '';
+  position: absolute;
+  left: -3px;
+  top: -2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-now);
+}
+
+/* Empty state */
+.empty {
+  padding: var(--space-2xl) var(--space-md);
+  text-align: center;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  line-height: 1.8;
+}

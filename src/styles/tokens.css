@@ -1,0 +1,79 @@
+/*
+ * Deta Design Tokens
+ * Quiet Luxury Tennis Club
+ *
+ * 改色請統一在這裡。CSS module 不直接寫死顏色。
+ */
+
+:root {
+  /* --- Surface --- */
+  --color-bg: #faf9f5;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f4f2eb;
+
+  /* --- Text --- */
+  --color-text-primary: #1a1f1c;
+  --color-text-secondary: #5d635a;
+  --color-text-muted: #9b9e95;
+
+  /* --- Border --- */
+  --color-border: #e6e3da;
+  --color-border-soft: #efece4;
+
+  /* --- Role badge dots --- */
+  --dot-owner: #d4cfc1;          /* light */
+  --dot-admin: #2a2e2a;           /* dark */
+  --dot-annual: #2d4a3e;          /* deep green */
+  --dot-monthly: #3d5a80;         /* blue */
+  --dot-coach: #c9a96e;           /* yellow */
+  --dot-pending: #b5b8af;         /* muted */
+
+  /* --- Surface accents --- */
+  --color-clay: #b85c4a;
+  --color-hard: #3d5a80;
+
+  /* --- Event blocks --- */
+  --event-hard-bg: rgba(61, 90, 128, 0.08);
+  --event-hard-bar: rgba(61, 90, 128, 0.5);
+  --event-clay-bg: rgba(184, 92, 74, 0.08);
+  --event-clay-bar: rgba(184, 92, 74, 0.55);
+  --event-lock-bg: rgba(26, 31, 28, 0.05);
+  --event-lock-bar: rgba(26, 31, 28, 0.35);
+
+  /* --- Calendar dots / accents --- */
+  --dot-event: #4a6d4a;
+  --color-now: #6b8a6b;
+  --grid-line: #e9e7e0;
+  --grid-line-soft: #f1efe9;
+
+  /* --- Typography --- */
+  --font-display: 'Cormorant Garamond', 'Noto Serif TC', Georgia, serif;
+  --font-body: -apple-system, BlinkMacSystemFont, 'Inter', 'Noto Sans TC',
+    'PingFang TC', 'Helvetica Neue', sans-serif;
+
+  --letter-wide: 0.18em;
+  --letter-wider: 0.25em;
+
+  /* --- Spacing --- */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+  --space-3xl: 64px;
+  --space-4xl: 96px;
+
+  /* --- Radius --- */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+
+  /* --- Shadow --- */
+  --shadow-soft: 0 1px 3px rgba(26, 31, 28, 0.04);
+  --shadow-medium: 0 4px 12px rgba(26, 31, 28, 0.06);
+
+  /* --- Motion --- */
+  --transition-base: 200ms ease;
+}

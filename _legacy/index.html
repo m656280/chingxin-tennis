@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#EAE2D2">
+<title>Court Board</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+
+<div class="demo-bar">
+  <span class="tag">DEMO</span>
+  <span>登入身份：</span>
+  <select id="demo-user-select"></select>
+  <button id="demo-newuser">+ 模擬首次登入</button>
+  <button id="demo-logout">登出</button>
+  <span class="who" id="demo-who"></span>
+</div>
+
+<div class="screen" id="screen-login">
+  <div class="login-wrap">
+    <div class="login-logo">CB</div>
+    <h1>Court Board</h1>
+    <p class="lead">使用 LINE 帳號登入<br>開始預約您的網球場時段</p>
+    <button class="line-btn" id="line-login">
+      <span class="ico">L</span>使用 LINE 登入
+    </button>
+    <p class="legal">登入即表示您同意服務條款與隱私權政策</p>
+  </div>
+</div>
+
+<div class="screen" id="screen-pending">
+  <div class="status-screen">
+    <div class="status-icon pending">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <polyline points="12 6 12 12 16 14"></polyline>
+      </svg>
+    </div>
+    <h2>會員審核中</h2>
+    <p>您的會員資格尚待管理員審核，通過後才能使用掛牌功能。</p>
+    <p class="en">Your membership is pending approval.<br>Please wait for an administrator to approve your account.</p>
+    <div class="meta-card">
+      <div class="meta-row"><span class="k">LINE userId</span><span class="v" id="pending-uid">—</span></div>
+      <div class="meta-row"><span class="k">顯示名稱</span><span class="v" id="pending-name">—</span></div>
+      <div class="meta-row"><span class="k">申請時間</span><span class="v" id="pending-time">—</span></div>
+      <div class="meta-row"><span class="k">狀態</span><span class="v"><span class="badge pending">PENDING</span></span></div>
+    </div>
+    <p class="small-action">如有疑問，請聯繫管理員</p>
+  </div>
+</div>
+
+<div class="screen" id="screen-blocked">
+  <div class="status-screen">
+    <div class="status-icon blocked">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+      </svg>
+    </div>
+    <h2>帳號已被封鎖</h2>
+    <p>您的帳號已被管理員封鎖，目前無法使用本系統。<br>如有疑問，請聯繫管理員協助處理。</p>
+    <p class="en">Your account has been blocked.<br>Please contact an administrator for assistance.</p>
+    <div class="meta-card">
+      <div class="meta-row"><span class="k">LINE userId</span><span class="v" id="blocked-uid">—</span></div>
+      <div class="meta-row"><span class="k">狀態</span><span class="v"><span class="badge blocked">BLOCKED</span></span></div>
+    </div>
+  </div>
+</div>
+
+<div class="screen" id="screen-app">
+  <div class="cb">
+    <div class="cb-top">
+      <div class="cb-brand">
+        <span class="cb-place">前鋒公園</span>
+        <span class="cb-name">COURT BOARD</span>
+        <span class="d"></span>
+      </div>
+      <div class="cb-actions">
+        <button class="cb-dir-btn" id="directory-open" style="display:none;">會員<br>名單</button>
+        <button class="cb-admin-btn" id="admin-open" style="display:none;">
+          管理 <span class="pcount" id="admin-pcount">0</span>
+        </button>
+        <button class="cb-me" id="me-btn">
+          <span class="av" id="me-av"></span>
+          <span class="nm" id="me-nm"></span>
+        </button>
+      </div>
+    </div>
+
+    <div class="cb-title">今日場次總覽 <span class="cb-date" id="cb-date"></span></div>
+    <div class="cb-sub" id="cb-sub">點任一時段切換球場狀態</div>
+
+    <div class="cb-time" id="cb-time">
+      <span>06</span><span>08</span><span>10</span><span>12</span><span>14</span><span>16</span><span>18</span>
+      <div class="cb-now" id="cb-marker"></div>
+    </div>
+
+    <div class="cb-grid">
+      <div class="cb-card">
+        <div class="cb-info">
+          <div class="lab">COURT</div>
+          <div class="ltr">A</div>
+          <div class="typ">室外硬地</div>
+        </div>
+        <div class="cb-stage">
+          <div class="cb-mark">A</div>
+          <div class="cb-court" data-court="A">
+            <span class="cb-line t"></span><span class="cb-line b"></span>
+            <span class="cb-line lf"></span><span class="cb-line rf"></span>
+            <span class="cb-line svll"></span><span class="cb-line svlr"></span>
+            <span class="cb-net"></span>
+            <div class="cb-half top" id="A-top"></div>
+            <div class="cb-half bottom" id="A-bottom"></div>
+          </div>
+        </div>
+        <div class="cb-roster" id="roster-A"></div>
+        <div class="cb-slots" id="slots-A"></div>
+      </div>
+
+      <div class="cb-card">
+        <div class="cb-info">
+          <div class="lab">COURT</div>
+          <div class="ltr">B</div>
+          <div class="typ">室外硬地</div>
+        </div>
+        <div class="cb-stage">
+          <div class="cb-mark">B</div>
+          <div class="cb-court" data-court="B">
+            <span class="cb-line t"></span><span class="cb-line b"></span>
+            <span class="cb-line lf"></span><span class="cb-line rf"></span>
+            <span class="cb-line svll"></span><span class="cb-line svlr"></span>
+            <span class="cb-net"></span>
+            <div class="cb-half top" id="B-top"></div>
+            <div class="cb-half bottom" id="B-bottom"></div>
+          </div>
+        </div>
+        <div class="cb-roster" id="roster-B"></div>
+        <div class="cb-slots" id="slots-B"></div>
+      </div>
+    </div>
+
+    <div class="cb-legend">
+      <span><i></i>可預約</span>
+      <span><i class="f"></i>已預約</span>
+      <span><i class="c"></i>教練課</span>
+      <span><i class="m"></i>我的預約</span>
+      <span><i class="r"></i>可被替補</span>
+      <span><i class="e"></i>已結束</span>
+    </div>
+  </div>
+
+  <div class="cb-cta">
+    <div class="wrap"><button id="quick"><span class="plus">+</span>快速預約</button></div>
+  </div>
+</div>
+
+<div class="cb-overlay" id="overlay">
+  <div class="cb-sheet" id="sheet"></div>
+</div>
+
+<div class="cb-toast" id="toast"></div>
+
+<script defer src="js/main.js"></script>
+</body>
+</html>

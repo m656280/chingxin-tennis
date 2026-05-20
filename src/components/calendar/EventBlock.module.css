@@ -1,0 +1,66 @@
+.block {
+  position: relative;
+  margin: 1px;
+  padding: 4px 6px 4px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--event-hard-bg);
+  border-left: 2px solid var(--event-hard-bar);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  z-index: 2;
+  min-width: 0;
+}
+
+.block.clay {
+  background: var(--event-clay-bg);
+  border-left-color: var(--event-clay-bar);
+}
+
+.block.eventLock {
+  background: var(--event-lock-bg);
+  border-left-color: var(--event-lock-bar);
+}
+
+.time {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+  line-height: 1.3;
+}
+
+.name {
+  font-size: 11px;
+  color: var(--color-text-primary);
+  line-height: 1.3;
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.meta {
+  font-size: 9px;
+  color: var(--color-text-muted);
+  letter-spacing: 0.02em;
+  margin-top: 2px;
+  line-height: 1.2;
+}
+
+.modeDot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+
+/* 短時段（30 分鐘）排版較窄 — 隱藏 meta */
+.block.short .meta {
+  display: none;
+}
+.block.short .time {
+  display: none;
+}
