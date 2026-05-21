@@ -921,7 +921,7 @@ function renderMonthView(){
   document.getElementById('monthViewLabel').textContent=yr+' 年 '+MONTHS_TC[mo];
   const first=new Date(yr,mo,1),last=new Date(yr,mo+1,0);
   const sdow=first.getDay();
-  // Get bookings data for all days this month  let html='<div class="monthGrid">';
+  let html='<div class="monthGrid">';
   DAYS_TC.forEach(d=>{html+='<div class="monthDayHdr">'+d+'</div>';});
   for(let i=0;i<sdow;i++)html+='<div class="monthCell empty"></div>';
   for(let d=1;d<=last.getDate();d++){
