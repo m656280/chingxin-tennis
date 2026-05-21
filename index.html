@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#faf9f5">
-<title>清心 · Calendar Preview</title>
+<title>清心網球會</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=Noto+Sans+TC:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=Noto+Sans+TC:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
   --color-bg: #faf9f5;
@@ -22,859 +22,1080 @@
   --dot-event: #4a6d4a;
   --color-clay: #b85c4a;
   --color-hard: #3d5a80;
-  --event-hard-bg: rgba(61, 90, 128, 0.08);
-  --event-hard-bar: rgba(61, 90, 128, 0.5);
-  --event-clay-bg: rgba(184, 92, 74, 0.08);
-  --event-clay-bar: rgba(184, 92, 74, 0.55);
-  --event-lock-bg: rgba(26, 31, 28, 0.05);
-  --event-lock-bar: rgba(26, 31, 28, 0.35);
+  --event-hard-bg: rgba(61,90,128,0.08);
+  --event-hard-bar: rgba(61,90,128,0.5);
+  --event-clay-bg: rgba(184,92,74,0.08);
+  --event-clay-bar: rgba(184,92,74,0.55);
+  --event-lock-bg: rgba(26,31,28,0.05);
+  --event-lock-bar: rgba(26,31,28,0.35);
   --color-now: #6b8a6b;
   --grid-line: #e9e7e0;
   --grid-line-soft: #f1efe9;
-  --font-display: 'Cormorant Garamond', 'Noto Serif TC', Georgia, serif;
-  --font-body: -apple-system, BlinkMacSystemFont, 'Inter', 'Noto Sans TC', 'PingFang TC', sans-serif;
+  --font-display: 'Cormorant Garamond','Noto Serif TC',Georgia,serif;
+  --font-body: -apple-system,BlinkMacSystemFont,'Inter','Noto Sans TC','PingFang TC',sans-serif;
 }
-
-*, *::before, *::after { box-sizing: border-box; }
-
-html, body {
-  margin: 0;
-  padding: 0;
-  min-height: 100%;
-  font-family: var(--font-body);
-  font-size: 15px;
-  line-height: 1.6;
+*,*::before,*::after { box-sizing: border-box; }
+html,body {
+  margin: 0; padding: 0; min-height: 100%;
+  font-family: var(--font-body); font-size: 15px; line-height: 1.6;
   color: var(--color-text-primary);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
 }
-
 body {
   background: #e8e3d6;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  padding: 24px 16px 48px;
-  min-height: 100vh;
+  display: flex; justify-content: center; align-items: flex-start;
+  padding: 24px 16px 48px; min-height: 100vh;
 }
-
-@media (max-width: 480px) {
-  body { padding: 0; background: var(--color-bg); }
-}
-
+@media (max-width:480px) { body { padding: 0; background: var(--color-bg); } }
 button {
-  font: inherit;
-  color: inherit;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  padding: 0;
+  font: inherit; color: inherit; border: none;
+  background: transparent; cursor: pointer; padding: 0;
   -webkit-tap-highlight-color: transparent;
 }
-
 .app {
-  max-width: 420px;
-  width: 100%;
-  background: var(--color-bg);
-  padding: 16px 16px 64px;
-  border-radius: 24px;
-  box-shadow: 0 8px 40px rgba(0,0,0,0.10);
+  max-width: 420px; width: 100%; background: var(--color-bg);
+  padding: 16px 16px 72px;
+  border-radius: 24px; box-shadow: 0 8px 40px rgba(0,0,0,0.10);
   position: relative;
 }
+@media (max-width:480px) { .app { border-radius:0; box-shadow:none; min-height:100dvh; } }
 
-@media (max-width: 480px) {
-  .app { border-radius: 0; box-shadow: none; min-height: 100dvh; }
-}
-
-.previewTag {
-  position: absolute;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 9px;
-  letter-spacing: 0.2em;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  pointer-events: none;
-}
-
-.header {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin: 28px 0 40px;
-}
-
-.brand {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-.brandRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
+/* ── Header / Brand ── */
+.header { display:flex; justify-content:center; align-items:center; margin:28px 0 32px; }
+.brand { display:flex; flex-direction:column; align-items:center; gap:4px; }
+.brandRow { display:flex; align-items:center; gap:12px; }
 .brandName {
-  font-family: var(--font-display);
-  font-size: 16px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--color-text-primary);
-  font-weight: 500;
+  font-family:var(--font-display); font-size:18px;
+  letter-spacing:0.20em; text-transform:uppercase;
+  color:var(--color-text-primary); font-weight:500;
+}
+.brandSub {
+  font-family:var(--font-display); font-style:italic;
+  font-size:10px; letter-spacing:0.14em; color:var(--color-text-muted);
 }
 
-.brandSub {
-  font-size: 9px;
-  letter-spacing: 0.18em;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
+/* ── Screens ── */
+.screen { display:none; }
+.screen.active { display:block; }
+
+/* ── View Switcher ── */
+.viewSwitcher { display:flex; justify-content:center; margin-bottom:24px; }
+.switcherGroup {
+  display:inline-flex; background:var(--color-surface-alt);
+  border-radius:9999px; padding:3px; gap:2px;
 }
+.switcherOption {
+  padding:6px 20px; font-size:12px; letter-spacing:0.08em;
+  color:var(--color-text-muted); border-radius:9999px;
+  text-transform:uppercase; text-align:center;
+  transition:all 200ms ease;
+}
+.switcherOption.active {
+  background:var(--color-surface); color:var(--color-text-primary);
+  box-shadow:0 1px 3px rgba(0,0,0,0.04);
+}
+
+/* ── Week Strip ── */
+.weekStrip { margin-bottom:24px; display:flex; flex-direction:column; gap:8px; }
+.weekHeader { display:flex; align-items:center; justify-content:space-between; padding:0 4px; }
+.monthLabel {
+  font-family:var(--font-display); font-size:16px;
+  letter-spacing:0.04em; color:var(--color-text-primary); font-weight:500;
+}
+.navButton {
+  width:32px; height:32px; display:flex; align-items:center; justify-content:center;
+  font-size:18px; color:var(--color-text-muted); border-radius:9999px; transition:color 200ms ease;
+}
+.navButton:hover { color:var(--color-text-primary); }
+.chips { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; }
+.chip {
+  display:flex; flex-direction:column; align-items:center; gap:6px;
+  padding:8px 0; border-radius:8px; transition:background 200ms ease;
+}
+.chip:hover { background:var(--color-surface-alt); }
+.chipDayLabel { font-size:10px; letter-spacing:0.08em; color:var(--color-text-muted); text-transform:uppercase; }
+.chipDateNum {
+  font-size:15px; color:var(--color-text-secondary);
+  width:32px; height:32px; display:flex; align-items:center; justify-content:center;
+  border-radius:9999px; transition:all 200ms ease;
+}
+.chip.today .chipDateNum { color:var(--color-text-primary); font-weight:500; }
+.chip.selected .chipDateNum { background:var(--color-text-primary); color:var(--color-bg); font-weight:500; }
+.chip.weekend .chipDayLabel { color:var(--color-clay); opacity:0.7; }
+
+/* ── Day Header ── */
+.dayHeader { display:flex; align-items:baseline; gap:8px; margin-bottom:16px; padding:0 4px; }
+.dayLabelMain { font-family:var(--font-display); font-size:18px; color:var(--color-text-primary); font-weight:500; }
+.dayMeta { font-size:11px; letter-spacing:0.08em; color:var(--color-text-muted); text-transform:uppercase; }
+
+/* ── Time Grid ── */
+.timeGridWrapper {
+  background:var(--color-surface); border:1px solid var(--color-border-soft);
+  border-radius:8px; overflow:hidden;
+}
+.courtHeader {
+  display:grid; grid-template-columns:44px repeat(4,1fr);
+  border-bottom:1px solid var(--color-border); background:var(--color-surface-alt);
+}
+.courtLabel {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  padding:8px 4px; border-left:1px solid var(--color-border-soft);
+}
+.surfaceTag { font-size:9px; letter-spacing:0.12em; color:var(--color-text-muted); font-weight:500; }
+.courtLabel.clay .surfaceTag { color:var(--color-clay); }
+.courtLetter { font-family:var(--font-display); font-size:18px; color:var(--color-text-primary); line-height:1.1; margin-top:2px; }
+.grid { display:grid; grid-template-columns:44px repeat(4,1fr); position:relative; }
+.slotRow {
+  grid-column:1 / -1; border-top:1px solid var(--grid-line-soft);
+  display:flex; align-items:flex-start; padding-top:2px; pointer-events:none; z-index:1;
+}
+.slotRow.fullHour { border-top-color:var(--grid-line); }
+.slotRow.firstRow { border-top:none; }
+.timeLabel { width:44px; padding-left:6px; font-size:9px; letter-spacing:0.04em; color:var(--color-text-muted); }
+.courtDividers {
+  grid-column:1 / -1; grid-row:1 / -1; pointer-events:none;
+  display:grid; grid-template-columns:44px repeat(4,1fr); z-index:0;
+}
+.courtDividers > div { border-left:1px solid var(--grid-line-soft); }
+.courtDividers > div:first-child { border-left:none; }
+.event {
+  position:relative; margin:1px; padding:4px 6px 4px 8px;
+  border-radius:4px; background:var(--event-hard-bg);
+  border-left:2px solid var(--event-hard-bar);
+  overflow:hidden; display:flex; flex-direction:column; z-index:2; min-width:0;
+}
+.event.clay { background:var(--event-clay-bg); border-left-color:var(--event-clay-bar); }
+.event.eventLock { background:var(--event-lock-bg); border-left-color:var(--event-lock-bar); }
+.event .time { font-size:9px; letter-spacing:0.04em; color:var(--color-text-muted); line-height:1.3; }
+.event .name { font-size:11px; color:var(--color-text-primary); line-height:1.3; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.event .meta { font-size:9px; color:var(--color-text-muted); margin-top:2px; line-height:1.2; }
+.event .modeDot { position:absolute; top:5px; right:5px; width:5px; height:5px; border-radius:50%; }
+.event.short .time,.event.short .meta { display:none; }
+.nowLine { position:absolute; left:44px; right:0; height:1px; background:var(--color-now); z-index:3; pointer-events:none; }
+.nowLine::before { content:''; position:absolute; left:-3px; top:-2px; width:5px; height:5px; border-radius:50%; background:var(--color-now); }
+
+/* ── Month View ── */
+.monthGrid { display:grid; grid-template-columns:repeat(7,1fr); gap:1px; }
+.monthDayHeader {
+  text-align:center; padding:6px 0 8px;
+  font-size:10px; letter-spacing:0.08em; color:var(--color-text-muted); text-transform:uppercase;
+}
+.monthCell {
+  display:flex; flex-direction:column; align-items:center;
+  padding:4px 2px 6px; border-radius:6px; gap:3px; min-height:48px;
+  transition:background 160ms ease;
+}
+.monthCell:not(.empty):hover { background:var(--color-surface-alt); }
+.monthCellNum {
+  font-size:13px; color:var(--color-text-secondary);
+  width:26px; height:26px;
+  display:flex; align-items:center; justify-content:center;
+  border-radius:50%; transition:all 180ms ease;
+}
+.monthCell.today .monthCellNum { background:var(--color-text-primary); color:var(--color-bg); font-weight:500; }
+.monthCell.selected:not(.today) .monthCellNum { background:var(--color-surface-alt); color:var(--color-text-primary); font-weight:500; box-shadow:inset 0 0 0 1px var(--color-border); }
+.monthCell.weekend .monthCellNum { color:var(--color-clay); }
+.monthCell.today.weekend .monthCellNum { color:var(--color-bg); }
+.monthCell.other-month .monthCellNum { opacity:0.3; }
+.monthDots { display:flex; gap:2px; flex-wrap:wrap; justify-content:center; max-width:28px; }
+.monthDot { width:4px; height:4px; border-radius:50%; }
+.dot-hard { background:var(--color-hard); opacity:0.7; }
+.dot-clay { background:var(--color-clay); opacity:0.7; }
+.dot-event { background:var(--dot-event); opacity:0.8; }
+.dot-coach { background:var(--dot-coach); opacity:0.8; }
+
+/* ── Screen Titles ── */
+.screenTitle {
+  font-family:var(--font-display); font-size:20px; font-weight:500;
+  letter-spacing:0.04em; color:var(--color-text-primary);
+  margin:4px 0 20px; padding:0 4px;
+}
+.screenSection {
+  font-size:10px; letter-spacing:0.10em; color:var(--color-text-muted);
+  text-transform:uppercase; margin:20px 0 10px; padding:0 4px;
+}
+
+/* ── Booking Cards ── */
+.bookingCard {
+  background:var(--color-surface); border:1px solid var(--color-border-soft);
+  border-radius:12px; padding:14px 16px; margin-bottom:10px;
+  display:flex; gap:14px; align-items:flex-start;
+}
+.bookingCardDate {
+  text-align:center; min-width:36px; flex-shrink:0;
+}
+.bookingCardDateNum {
+  font-family:var(--font-display); font-size:22px; font-weight:500;
+  line-height:1; color:var(--color-text-primary);
+}
+.bookingCardDateMon {
+  font-size:9px; letter-spacing:0.10em; color:var(--color-text-muted); text-transform:uppercase;
+}
+.bookingCardBody { flex:1; min-width:0; }
+.bookingCardTime {
+  font-size:14px; font-weight:500; color:var(--color-text-primary);
+  margin-bottom:3px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+}
+.bookingCardMeta { font-size:12px; color:var(--color-text-secondary); }
+.statusChip {
+  display:inline-flex; align-items:center;
+  padding:2px 8px; border-radius:99px;
+  font-size:10px; letter-spacing:0.06em; font-weight:500;
+}
+.statusChip.confirmed { background:rgba(74,109,74,0.10); color:var(--dot-event); }
+.statusChip.completed { background:var(--color-surface-alt); color:var(--color-text-muted); }
+.statusChip.cancelled { background:rgba(184,92,74,0.10); color:var(--color-clay); }
+
+/* ── Schedule Items ── */
+.scheduleItem {
+  display:flex; gap:14px; align-items:flex-start; padding:14px 0;
+  border-bottom:1px solid var(--color-border-soft);
+}
+.scheduleItem:last-child { border-bottom:none; }
+.scheduleItemBar {
+  width:3px; border-radius:2px; min-height:44px; flex-shrink:0; margin-top:3px;
+  background:var(--event-hard-bar);
+}
+.scheduleItemBar.clay { background:var(--event-clay-bar); }
+.scheduleItemBar.lock { background:var(--event-lock-bar); }
+.scheduleItemBody { flex:1; }
+.scheduleItemTime { font-size:12px; color:var(--color-text-muted); letter-spacing:0.04em; }
+.scheduleItemName { font-size:14px; color:var(--color-text-primary); margin:2px 0; }
+.scheduleItemMeta { font-size:12px; color:var(--color-text-secondary); }
+
+/* ── Member Cards ── */
+.memberCard {
+  display:flex; align-items:center; gap:12px;
+  padding:12px 0; border-bottom:1px solid var(--color-border-soft);
+}
+.memberCard:last-child { border-bottom:none; }
+.memberAvatar {
+  width:40px; height:40px; border-radius:50%; overflow:hidden;
+  flex-shrink:0; border:1px solid var(--color-border-soft);
+}
+.memberAvatar img { width:100%; height:100%; object-fit:cover; }
+.memberInfo { flex:1; min-width:0; }
+.memberName { font-size:14px; color:var(--color-text-primary); font-weight:500; }
+.memberMeta { font-size:11px; color:var(--color-text-muted); margin-top:2px; }
+.memberBadge {
+  font-size:10px; padding:2px 8px; border-radius:99px;
+  border:1px solid var(--color-border); color:var(--color-text-muted);
+  white-space:nowrap;
+}
+.memberBadge.coach { border-color:var(--dot-coach); color:var(--dot-coach); }
+.searchBar {
+  width:100%; padding:10px 14px; border-radius:10px;
+  background:var(--color-surface-alt); border:none;
+  font:inherit; font-size:14px; color:var(--color-text-primary);
+  outline:none; margin-bottom:16px;
+  letter-spacing:0.02em;
+}
+.searchBar::placeholder { color:var(--color-text-muted); }
 
 /* ── Bottom Nav ── */
 .bottomNav {
-  position: fixed;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 100%;
-  max-width: 420px;
-  height: 60px;
-  background: var(--color-surface);
-  border-top: 1px solid var(--color-border-soft);
-  display: flex;
-  align-items: center;
-  justify-content: space-around;
-  z-index: 100;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  position:fixed; bottom:0; left:50%; transform:translateX(-50%);
+  width:100%; max-width:420px; height:60px;
+  background:var(--color-surface); border-top:1px solid var(--color-border-soft);
+  display:flex; align-items:center; justify-content:space-around;
+  z-index:100; padding-bottom:env(safe-area-inset-bottom,0px);
 }
-@media (max-width: 480px) {
-  .bottomNav { border-radius: 0; }
-}
+@media (max-width:480px) { .bottomNav { border-radius:0; } }
 .navTab {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  flex: 1;
-  padding: 8px 0;
-  color: var(--color-text-muted);
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  transition: color 180ms ease;
+  display:flex; flex-direction:column; align-items:center; gap:2px;
+  flex:1; padding:8px 0; color:var(--color-text-muted);
+  font-size:10px; letter-spacing:0.05em; transition:color 180ms ease;
 }
-.navTab.active { color: var(--color-text-primary); }
-.navTab svg { opacity: 0.55; transition: opacity 180ms ease; }
-.navTab.active svg { opacity: 1; }
+.navTab.active { color:var(--color-text-primary); }
+.navTab svg { opacity:0.50; transition:opacity 180ms ease; }
+.navTab.active svg { opacity:1; }
 .navTabAvatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  overflow: hidden;
-  border: 1.5px solid var(--color-border);
-  transition: border-color 180ms ease;
+  width:26px; height:26px; border-radius:50%; overflow:hidden;
+  border:1.5px solid var(--color-border); transition:border-color 180ms ease;
 }
-.navTab.active .navTabAvatar { border-color: var(--color-text-primary); }
-.navTabAvatar img { width: 100%; height: 100%; object-fit: cover; }
+.navTab.active .navTabAvatar { border-color:var(--color-text-primary); }
+.navTabAvatar img { width:100%; height:100%; object-fit:cover; }
 
 /* ── Profile Sheet ── */
 .sheetBackdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(26,31,28,0.35);
-  z-index: 200;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 280ms ease;
+  position:fixed; inset:0; background:rgba(26,31,28,0.35);
+  z-index:200; opacity:0; pointer-events:none; transition:opacity 280ms ease;
 }
-.sheetBackdrop.open {
-  opacity: 1;
-  pointer-events: auto;
-}
+.sheetBackdrop.open { opacity:1; pointer-events:auto; }
 .profileSheet {
-  position: fixed;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%) translateY(100%);
-  width: 100%;
-  max-width: 420px;
-  background: var(--color-bg);
-  border-radius: 20px 20px 0 0;
-  z-index: 201;
-  transition: transform 300ms cubic-bezier(0.32,0.72,0,1);
-  padding: 0 0 calc(24px + env(safe-area-inset-bottom, 0px));
+  position:fixed; bottom:0; left:50%;
+  transform:translateX(-50%) translateY(100%);
+  width:100%; max-width:420px; background:var(--color-bg);
+  border-radius:20px 20px 0 0; z-index:201;
+  transition:transform 300ms cubic-bezier(0.32,0.72,0,1);
+  padding:0 0 calc(24px + env(safe-area-inset-bottom,0px));
+  max-height:90vh; overflow-y:auto;
 }
-.profileSheet.open {
-  transform: translateX(-50%) translateY(0);
-}
-.sheetHandle {
-  width: 36px;
-  height: 4px;
-  background: var(--color-border);
-  border-radius: 2px;
-  margin: 12px auto 24px;
-}
+.profileSheet.open { transform:translateX(-50%) translateY(0); }
+.sheetHandle { width:36px; height:4px; background:var(--color-border); border-radius:2px; margin:12px auto 20px; }
 .sheetUserRow {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 0 20px 20px;
-  border-bottom: 1px solid var(--color-border-soft);
+  display:flex; align-items:center; gap:14px;
+  padding:0 20px 18px; border-bottom:1px solid var(--color-border-soft);
 }
-.sheetAvatar {
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  overflow: hidden;
-  border: 1.5px solid var(--color-border);
-  flex-shrink: 0;
+.sheetAvatar { width:52px; height:52px; border-radius:50%; overflow:hidden; border:1.5px solid var(--color-border); flex-shrink:0; }
+.sheetAvatar img { width:100%; height:100%; object-fit:cover; }
+.sheetUserInfo { display:flex; flex-direction:column; gap:4px; }
+.sheetNameRow { display:flex; align-items:center; gap:8px; }
+.sheetUserName { font-family:var(--font-display); font-size:17px; font-weight:500; color:var(--color-text-primary); letter-spacing:0.04em; }
+.editNameBtn {
+  font-size:10px; letter-spacing:0.06em; color:var(--color-text-muted);
+  border:1px solid var(--color-border); border-radius:99px; padding:2px 8px;
 }
-.sheetAvatar img { width: 100%; height: 100%; object-fit: cover; }
-.sheetUserInfo { display: flex; flex-direction: column; gap: 3px; }
-.sheetUserName {
-  font-family: var(--font-display);
-  font-size: 17px;
-  font-weight: 500;
-  color: var(--color-text-primary);
-  letter-spacing: 0.04em;
-}
-.sheetMemberBadge {
-  font-size: 11px;
-  color: var(--color-text-secondary);
-  letter-spacing: 0.06em;
-}
-.sheetSection {
-  padding: 16px 20px 0;
-}
+.sheetMemberBadge { font-size:11px; color:var(--color-text-secondary); letter-spacing:0.04em; }
+.sheetSection { padding:12px 20px 0; }
 .sheetRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 13px 0;
-  border-bottom: 1px solid var(--color-border-soft);
-  font-size: 14px;
-  color: var(--color-text-primary);
+  display:flex; align-items:center; justify-content:space-between;
+  padding:12px 0; border-bottom:1px solid var(--color-border-soft);
+  font-size:14px;
 }
-.sheetRow:last-child { border-bottom: none; }
-.sheetRowLabel {
-  color: var(--color-text-secondary);
-  font-size: 13px;
-  letter-spacing: 0.04em;
-}
-.sheetRowValue {
-  font-size: 13px;
-  color: var(--color-text-primary);
-  text-align: right;
-}
+.sheetRow:last-child { border-bottom:none; }
+.sheetRowLabel { color:var(--color-text-secondary); font-size:13px; letter-spacing:0.04em; }
+.sheetRowValue { font-size:13px; color:var(--color-text-primary); text-align:right; }
+.sheetNavRow { cursor:pointer; transition:opacity 150ms ease; }
+.sheetNavRow:active { opacity:0.6; }
+.sheetRowChevron { font-size:18px; color:var(--color-text-muted); line-height:1; }
 
-.viewSwitcher {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 24px;
+/* ── Sub-Sheets ── */
+.subSheet {
+  position:fixed; bottom:0; left:50%;
+  transform:translateX(-50%) translateY(100%);
+  width:100%; max-width:420px; background:var(--color-bg);
+  border-radius:20px 20px 0 0; z-index:202;
+  transition:transform 300ms cubic-bezier(0.32,0.72,0,1);
+  padding:0 0 calc(24px + env(safe-area-inset-bottom,0px));
+  max-height:90vh; overflow-y:auto;
 }
-
-.switcherGroup {
-  display: inline-flex;
-  background: var(--color-surface-alt);
-  border-radius: 9999px;
-  padding: 3px;
-  gap: 2px;
+.subSheet.open { transform:translateX(-50%) translateY(0); }
+.subSheetHeader {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:14px 20px; border-bottom:1px solid var(--color-border-soft);
 }
-
-.switcherOption {
-  padding: 6px 16px;
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  color: var(--color-text-muted);
-  border-radius: 9999px;
-  text-transform: uppercase;
-  min-width: 56px;
-  text-align: center;
-  transition: all 200ms ease;
+.subSheetBack {
+  font-size:22px; line-height:1; color:var(--color-text-secondary); width:32px;
 }
+.subSheetTitle { font-family:var(--font-display); font-size:15px; letter-spacing:0.06em; color:var(--color-text-primary); }
 
-.switcherOption.active {
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+/* ── Settings ── */
+.settingsRow { padding:16px 20px; border-bottom:1px solid var(--color-border-soft); }
+.settingsRow:last-child { border-bottom:none; }
+.settingsLabel {
+  display:block; font-size:10px; letter-spacing:0.08em; color:var(--color-text-muted);
+  text-transform:uppercase; margin-bottom:8px;
 }
-
-.switcherOption.disabled { opacity: 0.5; cursor: not-allowed; }
-
-.weekStrip {
-  margin-bottom: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.settingsInput,.settingsSelect {
+  width:100%; font:inherit; font-size:14px; color:var(--color-text-primary);
+  background:transparent; border:none; border-bottom:1px solid var(--color-border);
+  padding:4px 0; outline:none; appearance:none;
+}
+.settingsSelect { cursor:pointer; }
+.saveBtn {
+  display:block; width:calc(100% - 40px); margin:16px 20px;
+  padding:14px; background:var(--color-text-primary); color:var(--color-bg);
+  border-radius:12px; font-size:14px; letter-spacing:0.10em;
+  text-align:center; cursor:pointer;
 }
 
-.weekHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 4px;
+/* ── Notifications ── */
+.notifItem {
+  display:flex; gap:12px; padding:14px 20px;
+  border-bottom:1px solid var(--color-border-soft);
+  align-items:flex-start;
 }
-
-.monthLabel {
-  font-family: var(--font-display);
-  font-size: 16px;
-  letter-spacing: 0.04em;
-  color: var(--color-text-primary);
-  font-weight: 500;
+.notifDot {
+  width:8px; height:8px; border-radius:50%;
+  background:var(--color-text-primary); flex-shrink:0; margin-top:5px;
+  transition:opacity 200ms;
 }
+.notifItem.read .notifDot { opacity:0; }
+.notifBody { flex:1; }
+.notifTitle { font-size:13px; font-weight:500; color:var(--color-text-primary); margin-bottom:2px; }
+.notifText { font-size:12px; color:var(--color-text-secondary); }
+.notifTime { font-size:10px; color:var(--color-text-muted); letter-spacing:0.04em; margin-top:3px; }
 
-.navButton {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  color: var(--color-text-muted);
-  border-radius: 9999px;
-  transition: color 200ms ease;
+/* ── About ── */
+.aboutContent { padding:20px 20px 0; }
+.aboutLogo { text-align:center; margin-bottom:24px; }
+.aboutBlock { margin-bottom:20px; }
+.aboutBlockTitle {
+  font-size:10px; letter-spacing:0.10em; color:var(--color-text-muted);
+  text-transform:uppercase; margin-bottom:8px;
 }
+.aboutBlockText { font-size:13px; color:var(--color-text-secondary); line-height:1.7; }
+.aboutDivider { height:1px; background:var(--color-border-soft); margin:20px 0; }
 
-.navButton:hover { color: var(--color-text-primary); }
-
-.chips {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 2px;
+/* ── Empty State ── */
+.emptyState {
+  text-align:center; padding:48px 20px;
+  color:var(--color-text-muted); font-size:13px; letter-spacing:0.04em;
 }
-
-.chip {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 0;
-  border-radius: 8px;
-  transition: background 200ms ease;
-}
-
-.chip:hover { background: var(--color-surface-alt); }
-
-.chipDayLabel {
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-}
-
-.chipDateNum {
-  font-size: 15px;
-  color: var(--color-text-secondary);
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 9999px;
-  transition: all 200ms ease;
-}
-
-.chip.today .chipDateNum {
-  color: var(--color-text-primary);
-  font-weight: 500;
-}
-
-.chip.selected .chipDateNum {
-  background: var(--color-text-primary);
-  color: var(--color-bg);
-  font-weight: 500;
-}
-
-.chip.weekend .chipDayLabel {
-  color: var(--color-clay);
-  opacity: 0.7;
-}
-
-.dayHeader {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 16px;
-  padding: 0 4px;
-}
-
-.dayLabelMain {
-  font-family: var(--font-display);
-  font-size: 18px;
-  color: var(--color-text-primary);
-  font-weight: 500;
-}
-
-.dayMeta {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-}
-
-.timeGridWrapper {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border-soft);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.courtHeader {
-  display: grid;
-  grid-template-columns: 44px repeat(4, 1fr);
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface-alt);
-}
-
-.courtLabel {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 4px;
-  border-left: 1px solid var(--color-border-soft);
-}
-
-.surfaceTag {
-  font-size: 9px;
-  letter-spacing: 0.12em;
-  color: var(--color-text-muted);
-  font-weight: 500;
-}
-
-.courtLabel.clay .surfaceTag { color: var(--color-clay); }
-
-.courtLetter {
-  font-family: var(--font-display);
-  font-size: 18px;
-  color: var(--color-text-primary);
-  line-height: 1.1;
-  margin-top: 2px;
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: 44px repeat(4, 1fr);
-  position: relative;
-}
-
-.slotRow {
-  grid-column: 1 / -1;
-  border-top: 1px solid var(--grid-line-soft);
-  display: flex;
-  align-items: flex-start;
-  padding-top: 2px;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.slotRow.fullHour { border-top-color: var(--grid-line); }
-.slotRow.firstRow { border-top: none; }
-
-.timeLabel {
-  width: 44px;
-  padding-left: 6px;
-  font-size: 9px;
-  letter-spacing: 0.04em;
-  color: var(--color-text-muted);
-}
-
-.courtDividers {
-  grid-column: 1 / -1;
-  grid-row: 1 / -1;
-  pointer-events: none;
-  display: grid;
-  grid-template-columns: 44px repeat(4, 1fr);
-  z-index: 0;
-}
-
-.courtDividers > div { border-left: 1px solid var(--grid-line-soft); }
-.courtDividers > div:first-child { border-left: none; }
-
-.event {
-  position: relative;
-  margin: 1px;
-  padding: 4px 6px 4px 8px;
-  border-radius: 4px;
-  background: var(--event-hard-bg);
-  border-left: 2px solid var(--event-hard-bar);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  z-index: 2;
-  min-width: 0;
-}
-
-.event.clay {
-  background: var(--event-clay-bg);
-  border-left-color: var(--event-clay-bar);
-}
-
-.event.eventLock {
-  background: var(--event-lock-bg);
-  border-left-color: var(--event-lock-bar);
-}
-
-.event .time {
-  font-size: 9px;
-  letter-spacing: 0.04em;
-  color: var(--color-text-muted);
-  line-height: 1.3;
-}
-
-.event .name {
-  font-size: 11px;
-  color: var(--color-text-primary);
-  line-height: 1.3;
-  margin-top: 1px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.event .meta {
-  font-size: 9px;
-  color: var(--color-text-muted);
-  margin-top: 2px;
-  line-height: 1.2;
-}
-
-.event .modeDot {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-}
-
-.event.short .time, .event.short .meta { display: none; }
-
-.nowLine {
-  position: absolute;
-  left: 44px;
-  right: 0;
-  height: 1px;
-  background: var(--color-now);
-  z-index: 3;
-  pointer-events: none;
-}
-
-.nowLine::before {
-  content: '';
-  position: absolute;
-  left: -3px;
-  top: -2px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--color-now);
-}
-
-.footer {
-  margin-top: 32px;
-  text-align: center;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  color: var(--color-text-muted);
-  line-height: 1.8;
-}
+.emptyStateIcon { font-size:32px; margin-bottom:12px; opacity:0.4; }
 </style>
 </head>
 <body>
 
 <div class="app">
-  <div class="previewTag">PHASE 3 · PREVIEW</div>
-
   <header class="header">
     <div class="brand">
       <div class="brandRow">
-        <svg width="22" height="22" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.3" aria-label="CHING XIN knot logo">
-          <circle cx="20" cy="14" r="7"/>
-          <circle cx="20" cy="26" r="7"/>
+        <svg width="40" height="40" viewBox="0 0 100 100" aria-label="CHING XIN logo mark">
+          <line x1="28" y1="28" x2="72" y2="72" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" fill="none"/>
+          <line x1="72" y1="28" x2="28" y2="72" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" fill="none"/>
+          <path d="M 50 7 Q 62 22 50 37 Q 38 22 50 7 Z" fill="currentColor"/>
+          <path d="M 50 63 Q 62 78 50 93 Q 38 78 50 63 Z" fill="currentColor"/>
+          <path d="M 7 50 Q 22 38 37 50 Q 22 62 7 50 Z" fill="currentColor"/>
+          <path d="M 63 50 Q 78 38 93 50 Q 78 62 63 50 Z" fill="currentColor"/>
         </svg>
         <span class="brandName">CHING XIN</span>
       </div>
-      <span class="brandSub">Tennis Society · 清心網球會</span>
+      <span class="brandSub">Tennis Society  ·  清心網球會</span>
     </div>
   </header>
 
-  <div class="viewSwitcher">
-    <div class="switcherGroup">
-      <button class="switcherOption disabled" disabled>Day</button>
-      <button class="switcherOption active">Week</button>
-      <button class="switcherOption disabled" disabled>Month</button>
+  <!-- ── Screen: 場地 ── -->
+  <div class="screen active" id="screen-court">
+    <div class="viewSwitcher">
+      <div class="switcherGroup">
+        <button class="switcherOption active" id="btnWeek" onclick="setView('week',this)">Week</button>
+        <button class="switcherOption" id="btnMonth" onclick="setView('month',this)">Month</button>
+      </div>
+    </div>
+
+    <!-- Week view -->
+    <div id="view-week">
+      <div class="weekStrip">
+        <div class="weekHeader">
+          <button class="navButton" onclick="changeWeek(-1)" aria-label="上一週">‹</button>
+          <span class="monthLabel" id="weekMonthLabel"></span>
+          <button class="navButton" onclick="changeWeek(1)" aria-label="下一週">›</button>
+        </div>
+        <div class="chips" id="chips"></div>
+      </div>
+      <div class="dayHeader">
+        <span class="dayLabelMain" id="dayLabel"></span>
+        <span class="dayMeta" id="dayMeta"></span>
+      </div>
+      <div class="timeGridWrapper">
+        <div class="courtHeader" id="courtHeader"></div>
+        <div class="grid" id="grid"></div>
+      </div>
+    </div>
+
+    <!-- Month view -->
+    <div id="view-month" style="display:none">
+      <div class="weekStrip">
+        <div class="weekHeader">
+          <button class="navButton" onclick="changeMonth(-1)">‹</button>
+          <span class="monthLabel" id="monthViewLabel"></span>
+          <button class="navButton" onclick="changeMonth(1)">›</button>
+        </div>
+      </div>
+      <div id="monthGrid"></div>
     </div>
   </div>
 
-  <div class="weekStrip">
-    <div class="weekHeader">
-      <button class="navButton" onclick="changeWeek(-1)" aria-label="上一週">‹</button>
-      <span class="monthLabel" id="monthLabel"></span>
-      <button class="navButton" onclick="changeWeek(1)" aria-label="下一週">›</button>
-    </div>
-    <div class="chips" id="chips"></div>
+  <!-- ── Screen: 預約 ── -->
+  <div class="screen" id="screen-book">
+    <div class="screenTitle">預約紀錄</div>
+    <div class="screenSection">即將到來</div>
+    <div id="bookUpcoming"></div>
+    <div class="screenSection">過往紀錄</div>
+    <div id="bookPast"></div>
   </div>
 
-  <div class="dayHeader">
-    <span class="dayLabelMain" id="dayLabel"></span>
-    <span class="dayMeta" id="dayMeta"></span>
+  <!-- ── Screen: 行程 ── -->
+  <div class="screen" id="screen-schedule">
+    <div class="screenTitle">我的行程</div>
+    <div id="scheduleList"></div>
   </div>
 
-  <div class="timeGridWrapper">
-    <div class="courtHeader" id="courtHeader"></div>
-    <div class="grid" id="grid"></div>
+  <!-- ── Screen: 會員 ── -->
+  <div class="screen" id="screen-members">
+    <div class="screenTitle">會員名單</div>
+    <input class="searchBar" id="memberSearch" type="text" placeholder="搜尋會員…" oninput="filterMembers(this.value)">
+    <div id="memberList"></div>
   </div>
 
-  <p class="footer">
-    Phase 3 Preview · Mock Data<br>
-    預約 / 收費功能將於後續階段開放
-  </p>
-
-  <!-- Bottom Nav -->
+  <!-- ── Bottom Nav ── -->
   <nav class="bottomNav">
-    <button class="navTab active" onclick="setTab(this,'court')">
+    <button class="navTab active" onclick="showTab('court',this)">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
         <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="12" y1="3" x2="12" y2="21"/>
       </svg>
-      球場
+      場地
     </button>
-    <button class="navTab" onclick="setTab(this,'book')">
+    <button class="navTab" onclick="showTab('book',this)">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
         <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
       </svg>
       預約
     </button>
-    <button class="navTab" onclick="setTab(this,'schedule')">
+    <button class="navTab" onclick="showTab('schedule',this)">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
         <circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/>
       </svg>
       行程
     </button>
+    <button class="navTab" onclick="showTab('members',this)">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+        <circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/>
+      </svg>
+      會員
+    </button>
     <button class="navTab" id="tabProfile" onclick="openProfile()">
       <div class="navTabAvatar">
-        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Crect width='28' height='28' fill='%23d4c9b5'/%3E%3Ccircle cx='14' cy='11' r='5' fill='%238a7f6e'/%3E%3Cellipse cx='14' cy='24' rx='8' ry='6' fill='%238a7f6e'/%3E%3C/svg%3E" alt="我的頭像">
+        <img id="navAvatarImg" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 26 26'%3E%3Crect width='26' height='26' fill='%23d4c9b5'/%3E%3Ccircle cx='13' cy='10' r='4.5' fill='%238a7f6e'/%3E%3Cellipse cx='13' cy='22' rx='7.5' ry='5.5' fill='%238a7f6e'/%3E%3C/svg%3E" alt="我的">
       </div>
+      我的
     </button>
   </nav>
 </div>
 
-<!-- Profile Sheet Backdrop -->
-<div class="sheetBackdrop" id="sheetBackdrop" onclick="closeProfile()"></div>
+<!-- Backdrop -->
+<div class="sheetBackdrop" id="sheetBackdrop" onclick="closeAllSheets()"></div>
 
-<!-- Profile Sheet -->
+<!-- ── Profile Sheet ── -->
 <div class="profileSheet" id="profileSheet">
   <div class="sheetHandle"></div>
   <div class="sheetUserRow">
     <div class="sheetAvatar">
-      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='52' height='52' viewBox='0 0 52 52'%3E%3Crect width='52' height='52' fill='%23d4c9b5'/%3E%3Ccircle cx='26' cy='20' r='9' fill='%238a7f6e'/%3E%3Cellipse cx='26' cy='44' rx='14' ry='10' fill='%238a7f6e'/%3E%3C/svg%3E" alt="頭像">
+      <img id="profileAvatarImg" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='52' height='52' viewBox='0 0 52 52'%3E%3Crect width='52' height='52' fill='%23d4c9b5'/%3E%3Ccircle cx='26' cy='20' r='9' fill='%238a7f6e'/%3E%3Cellipse cx='26' cy='44' rx='14' ry='10' fill='%238a7f6e'/%3E%3C/svg%3E" alt="頭像">
     </div>
     <div class="sheetUserInfo">
-      <span class="sheetUserName">Maverick 小狸</span>
-      <span class="sheetMemberBadge">Annual Member · Expire 2026/12/31</span>
+      <div class="sheetNameRow">
+        <span class="sheetUserName" id="profileDisplayName">Maverick 小狸</span>
+        <button class="editNameBtn" onclick="openSettings()">編輯</button>
+      </div>
+      <span class="sheetMemberBadge" id="profileBadge">Annual Member · Expire 2026/12/31</span>
     </div>
   </div>
   <div class="sheetSection">
     <div class="sheetRow">
+      <span class="sheetRowLabel">NTRP</span>
+      <span class="sheetRowValue" id="profileNTRP">3.5</span>
+    </div>
+    <div class="sheetRow">
+      <span class="sheetRowLabel">擅長位置</span>
+      <span class="sheetRowValue" id="profilePosition">底線型 / 後場</span>
+    </div>
+    <div class="sheetRow">
       <span class="sheetRowLabel">會員類型</span>
-      <span class="sheetRowValue">Annual Member</span>
+      <span class="sheetRowValue" id="profileMemberType">Annual Member</span>
     </div>
     <div class="sheetRow">
       <span class="sheetRowLabel">會費到期日</span>
-      <span class="sheetRowValue">2026 / 12 / 31</span>
-    </div>
-    <div class="sheetRow">
-      <span class="sheetRowLabel">球場積分</span>
-      <span class="sheetRowValue">2.5</span>
+      <span class="sheetRowValue" id="profileExpire">2026 / 12 / 31</span>
     </div>
     <div class="sheetRow">
       <span class="sheetRowLabel">本月出席</span>
-      <span class="sheetRowValue">1 次</span>
+      <span class="sheetRowValue" id="profileAttendance">1 次</span>
+    </div>
+  </div>
+  <div class="sheetSection">
+    <div class="sheetRow sheetNavRow" onclick="openNotifications()">
+      <span class="sheetRowLabel">通知中心</span>
+      <span class="sheetRowChevron">›</span>
+    </div>
+    <div class="sheetRow sheetNavRow" onclick="openAbout()">
+      <span class="sheetRowLabel">關於清心網球會</span>
+      <span class="sheetRowChevron">›</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Settings Sub-Sheet ── -->
+<div class="subSheet" id="settingsSheet">
+  <div class="sheetHandle"></div>
+  <div class="subSheetHeader">
+    <button class="subSheetBack" onclick="closeSettings()">‹</button>
+    <span class="subSheetTitle">會員設定</span>
+    <span style="width:32px"></span>
+  </div>
+  <div class="settingsRow">
+    <label class="settingsLabel" for="nameInput">顯示名稱</label>
+    <input class="settingsInput" id="nameInput" type="text" value="Maverick 小狸">
+  </div>
+  <div class="settingsRow">
+    <label class="settingsLabel" for="ntrpSelect">NTRP</label>
+    <select class="settingsSelect" id="ntrpSelect">
+      <option>2.5</option><option>3.0</option>
+      <option selected>3.5</option>
+      <option>4.0</option><option>4.5</option><option>5.0</option>
+    </select>
+  </div>
+  <div class="settingsRow">
+    <label class="settingsLabel" for="positionSelect">擅長位置</label>
+    <select class="settingsSelect" id="positionSelect">
+      <option selected>底線型 / 後場</option>
+      <option>網前型</option>
+      <option>全場</option>
+      <option>雙打後場</option>
+      <option>雙打網前</option>
+    </select>
+  </div>
+  <button class="saveBtn" onclick="saveSettings()">儲存設定</button>
+</div>
+
+<!-- ── Notifications Sub-Sheet ── -->
+<div class="subSheet" id="notificationsSheet">
+  <div class="sheetHandle"></div>
+  <div class="subSheetHeader">
+    <button class="subSheetBack" onclick="closeNotifications()">‹</button>
+    <span class="subSheetTitle">通知中心</span>
+    <span style="width:32px"></span>
+  </div>
+  <div id="notificationsList"></div>
+</div>
+
+<!-- ── About Sub-Sheet ── -->
+<div class="subSheet" id="aboutSheet">
+  <div class="sheetHandle"></div>
+  <div class="subSheetHeader">
+    <button class="subSheetBack" onclick="closeAbout()">‹</button>
+    <span class="subSheetTitle">關於清心網球會</span>
+    <span style="width:32px"></span>
+  </div>
+  <div class="aboutContent">
+    <div class="aboutLogo">
+      <svg width="48" height="48" viewBox="0 0 100 100" style="opacity:0.6">
+        <line x1="28" y1="28" x2="72" y2="72" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" fill="none"/>
+        <line x1="72" y1="28" x2="28" y2="72" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" fill="none"/>
+        <path d="M 50 7 Q 62 22 50 37 Q 38 22 50 7 Z" fill="currentColor"/>
+        <path d="M 50 63 Q 62 78 50 93 Q 38 78 50 63 Z" fill="currentColor"/>
+        <path d="M 7 50 Q 22 38 37 50 Q 22 62 7 50 Z" fill="currentColor"/>
+        <path d="M 63 50 Q 78 38 93 50 Q 78 62 63 50 Z" fill="currentColor"/>
+      </svg>
+    </div>
+    <div class="aboutBlock">
+      <div class="aboutBlockTitle">關於我們</div>
+      <div class="aboutBlockText">清心網球會是一個以慢活精神為核心的私人網球社群。我們重視品質、紀律與會員之間的深厚情誼。</div>
+    </div>
+    <div class="aboutDivider"></div>
+    <div class="aboutBlock">
+      <div class="aboutBlockTitle">場地</div>
+      <div class="aboutBlockText">
+        HARD A · HARD B — 硬地標準場<br>
+        CLAY A · CLAY B — 紅土場地<br>
+        平日開放時段：17:30 – 24:00<br>
+        週末 / 假日：05:30 – 24:00
+      </div>
+    </div>
+    <div class="aboutDivider"></div>
+    <div class="aboutBlock">
+      <div class="aboutBlockTitle">教練</div>
+      <div class="aboutBlockText">
+        Coach Lin — 主教練 · NTRP 5.0<br>
+        Coach 王 — 協助教練 · NTRP 4.5
+      </div>
+    </div>
+    <div class="aboutDivider"></div>
+    <div class="aboutBlock">
+      <div class="aboutBlockTitle">版本</div>
+      <div class="aboutBlockText">Prototype · Mock Data · v0.3</div>
     </div>
   </div>
 </div>
 
 <script>
-const COURTS = ['hard_a', 'hard_b', 'clay_a', 'clay_b'];
+/* ── Constants ── */
+const COURTS = ['hard_a','hard_b','clay_a','clay_b'];
 const COURT_LABELS = {
-  hard_a: { surface: 'HARD', letter: 'A' },
-  hard_b: { surface: 'HARD', letter: 'B' },
-  clay_a: { surface: 'CLAY', letter: 'A' },
-  clay_b: { surface: 'CLAY', letter: 'B' },
+  hard_a:{surface:'HARD',letter:'A'}, hard_b:{surface:'HARD',letter:'B'},
+  clay_a:{surface:'CLAY',letter:'A'}, clay_b:{surface:'CLAY',letter:'B'},
 };
-const COURT_SURFACE = { hard_a:'hard', hard_b:'hard', clay_a:'clay', clay_b:'clay' };
-const MODE_LABELS = {
-  normal:'一般', coaching:'教學', group_class:'團課',
-  pickleball:'匹克球', event_lock:'活動',
-};
+const COURT_SURFACE = {hard_a:'hard',hard_b:'hard',clay_a:'clay',clay_b:'clay'};
+const MODE_LABELS = {normal:'一般',coaching:'教學',group_class:'團課',pickleball:'匹克球',event_lock:'活動'};
 const DAYS_TC = ['日','一','二','三','四','五','六'];
 const MONTHS_TC = ['1 月','2 月','3 月','4 月','5 月','6 月','7 月','8 月','9 月','10 月','11 月','12 月'];
-
 const SLOT_HEIGHT = 32;
 const SLOT_MIN = 30;
+
+/* ── State ── */
 const today = new Date();
 let selectedDate = new Date(today);
+let currentView = 'week';
 
+/* ── Date Utilities ── */
 function pad(n){ return String(n).padStart(2,'0'); }
 function formatDate(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
-function addDays(d,n){ const r = new Date(d); r.setDate(r.getDate()+n); return r; }
-function startOfWeek(d){ const r = new Date(d); r.setHours(0,0,0,0); r.setDate(r.getDate()-r.getDay()); return r; }
-function isWeekend(d){ const dd = d.getDay(); return dd === 0 || dd === 6; }
-function isSameDay(a,b){ return formatDate(a) === formatDate(b); }
-function timeToMin(t){ const [h,m] = t.split(':').map(Number); return h*60+m; }
+function addDays(d,n){ const r=new Date(d); r.setDate(r.getDate()+n); return r; }
+function startOfWeek(d){ const r=new Date(d); r.setHours(0,0,0,0); r.setDate(r.getDate()-r.getDay()); return r; }
+function isWeekend(d){ const dd=d.getDay(); return dd===0||dd===6; }
+function isSameDay(a,b){ return formatDate(a)===formatDate(b); }
+function timeToMin(t){ const [h,m]=t.split(':').map(Number); return h*60+m; }
 function minToTime(m){ return pad(Math.floor(m/60))+':'+pad(m%60); }
-function getDaySlots(weekend){
-  const open = weekend ? '05:30' : '17:30';
-  const close = '24:00';
-  const out = [];
-  let cur = timeToMin(open);
-  const end = timeToMin(close);
-  while (cur < end) { out.push(minToTime(cur)); cur += SLOT_MIN; }
-  return out;
-}
-function getSlotPosition(start,end,open){
-  const o = timeToMin(open);
-  const s = timeToMin(start);
-  const e = timeToMin(end);
-  return {
-    startSlot: Math.max(0, Math.floor((s-o)/SLOT_MIN)),
-    spanSlots: Math.max(1, Math.floor((e-s)/SLOT_MIN)),
-  };
-}
-function formatDayLabel(d){
-  return MONTHS_TC[d.getMonth()] + d.getDate() + '日 週' + DAYS_TC[d.getDay()];
-}
-function formatMonthYear(d){
-  return d.getFullYear() + ' 年 ' + MONTHS_TC[d.getMonth()];
+function offsetDays(n){ return formatDate(addDays(today,n)); }
+function offsetToNext(dow){ const diff=(dow-today.getDay()+7)%7; return diff===0?7:diff; }
+function formatDayLabel(d){ return MONTHS_TC[d.getMonth()]+d.getDate()+'日 週'+DAYS_TC[d.getDay()]; }
+function formatMonthYear(d){ return d.getFullYear()+' 年 '+MONTHS_TC[d.getMonth()]; }
+function shortDateStr(dateStr){
+  const d=new Date(dateStr+'T00:00:00');
+  return (d.getMonth()+1)+'/'+d.getDate()+' ('+DAYS_TC[d.getDay()]+')';
 }
 
-function offsetDays(n){ return formatDate(addDays(today,n)); }
-function offsetToNext(dow){ const diff = (dow - today.getDay() + 7) % 7; return diff === 0 ? 7 : diff; }
+/* ── Mock Data ── */
 const TODAY_STR = offsetDays(0);
 const TOMORROW = offsetDays(1);
 const D2 = offsetDays(2);
+const D3 = offsetDays(3);
+const D5 = offsetDays(5);
+const D_2 = offsetDays(-2);
+const D_7 = offsetDays(-7);
 const NEXT_SAT = offsetDays(offsetToNext(6));
 const NEXT_SUN = offsetDays(offsetToNext(0));
 const todayIsWeekend = isWeekend(today);
 
+const MOCK_USER = {
+  name: 'Maverick 小狸',
+  memberType: 'Annual Member',
+  expireDate: '2026/12/31',
+  ntrp: '3.5',
+  position: '底線型 / 後場',
+  attendance: 1,
+};
+
 const MOCK_BOOKINGS = [
   ...(todayIsWeekend ? [
-    { id:'mb-w01', date:TODAY_STR, startTime:'07:00', endTime:'09:00', court:'clay_a', mode:'normal', primaryName:'早晨組', participantCount:4 },
-    { id:'mb-w02', date:TODAY_STR, startTime:'09:30', endTime:'11:30', court:'hard_a', mode:'coaching', primaryName:'Coach 王', participantCount:3 },
+    {id:'mb-w01',date:TODAY_STR,startTime:'07:00',endTime:'09:00',court:'clay_a',mode:'normal',primaryName:'早晨組',participantCount:4},
+    {id:'mb-w02',date:TODAY_STR,startTime:'09:30',endTime:'11:30',court:'hard_a',mode:'coaching',primaryName:'Coach 王',participantCount:3},
   ] : []),
-  { id:'mb-001', date:TODAY_STR, startTime:'18:00', endTime:'19:30', court:'hard_a', mode:'normal', primaryName:'林志強', participantCount:4 },
-  { id:'mb-002', date:TODAY_STR, startTime:'19:00', endTime:'20:30', court:'hard_b', mode:'coaching', primaryName:'Coach Lin', participantCount:2 },
-  { id:'mb-003', date:TODAY_STR, startTime:'20:00', endTime:'22:00', court:'clay_a', mode:'normal', primaryName:'王雅琴', participantCount:4 },
-  { id:'mb-004', date:TODAY_STR, startTime:'21:00', endTime:'23:00', court:'clay_b', mode:'group_class', primaryName:'Coach 吳 團課', participantCount:6 },
-  { id:'mb-005', date:TOMORROW, startTime:'18:30', endTime:'20:30', court:'hard_a', mode:'pickleball', primaryName:'匹克球聚會', participantCount:8 },
-  { id:'mb-006', date:TOMORROW, startTime:'19:30', endTime:'21:00', court:'clay_a', mode:'coaching', primaryName:'Coach Chen', participantCount:2 },
-  { id:'mb-007', date:D2, startTime:'18:00', endTime:'21:00', court:'hard_a', mode:'event_lock', primaryName:'會員之夜', participantCount:0 },
-  { id:'mb-008', date:D2, startTime:'18:00', endTime:'21:00', court:'hard_b', mode:'event_lock', primaryName:'會員之夜', participantCount:0 },
-  { id:'mb-009', date:NEXT_SAT, startTime:'07:00', endTime:'09:00', court:'clay_a', mode:'normal', primaryName:'張教練 私訓', participantCount:2 },
-  { id:'mb-010', date:NEXT_SAT, startTime:'08:30', endTime:'10:30', court:'hard_a', mode:'coaching', primaryName:'Coach 黃', participantCount:3 },
-  { id:'mb-011', date:NEXT_SAT, startTime:'19:00', endTime:'21:00', court:'hard_b', mode:'normal', primaryName:'陳俊宏', participantCount:4 },
-  { id:'mb-012', date:NEXT_SUN, startTime:'08:00', endTime:'10:00', court:'hard_a', mode:'normal', primaryName:'週日早場', participantCount:4 },
+  {id:'mb-001',date:TODAY_STR,startTime:'18:00',endTime:'19:30',court:'hard_a',mode:'normal',primaryName:'林志強',participantCount:4},
+  {id:'mb-002',date:TODAY_STR,startTime:'19:00',endTime:'20:30',court:'hard_b',mode:'coaching',primaryName:'Coach Lin',participantCount:2},
+  {id:'mb-003',date:TODAY_STR,startTime:'20:00',endTime:'22:00',court:'clay_a',mode:'normal',primaryName:'王雅琴',participantCount:4},
+  {id:'mb-004',date:TODAY_STR,startTime:'21:00',endTime:'23:00',court:'clay_b',mode:'group_class',primaryName:'Coach 吳 團課',participantCount:6},
+  {id:'mb-005',date:TOMORROW,startTime:'18:30',endTime:'20:30',court:'hard_a',mode:'pickleball',primaryName:'匹克球聚會',participantCount:8},
+  {id:'mb-006',date:TOMORROW,startTime:'19:30',endTime:'21:00',court:'clay_a',mode:'coaching',primaryName:'Coach Chen',participantCount:2},
+  {id:'mb-007',date:D2,startTime:'18:00',endTime:'21:00',court:'hard_a',mode:'event_lock',primaryName:'會員之夜',participantCount:0},
+  {id:'mb-008',date:D2,startTime:'18:00',endTime:'21:00',court:'hard_b',mode:'event_lock',primaryName:'會員之夜',participantCount:0},
+  {id:'mb-009',date:NEXT_SAT,startTime:'07:00',endTime:'09:00',court:'clay_a',mode:'normal',primaryName:'張教練 私訓',participantCount:2},
+  {id:'mb-010',date:NEXT_SAT,startTime:'08:30',endTime:'10:30',court:'hard_a',mode:'coaching',primaryName:'Coach 黃',participantCount:3},
+  {id:'mb-011',date:NEXT_SAT,startTime:'19:00',endTime:'21:00',court:'hard_b',mode:'normal',primaryName:'陳俊宏',participantCount:4},
+  {id:'mb-012',date:NEXT_SUN,startTime:'08:00',endTime:'10:00',court:'hard_a',mode:'normal',primaryName:'週日早場',participantCount:4},
 ];
 
-function renderCourtHeader(){
-  document.getElementById('courtHeader').innerHTML = '<div></div>' + COURTS.map(c => (
-    '<div class="courtLabel '+(COURT_SURFACE[c]==='clay'?'clay':'')+'">'+
-      '<span class="surfaceTag">'+COURT_LABELS[c].surface+'</span>'+
-      '<span class="courtLetter">'+COURT_LABELS[c].letter+'</span>'+
-    '</div>'
-  )).join('');
+const MOCK_MY_BOOKINGS = [
+  {id:'me-1',date:D3,startTime:'19:00',endTime:'21:00',court:'hard_a',mode:'normal',status:'confirmed',partners:['陳志明','林雅琳'],courtLabel:'Hard A'},
+  {id:'me-2',date:D5,startTime:'08:30',endTime:'10:30',court:'clay_a',mode:'coaching',status:'confirmed',partners:['Coach Lin'],courtLabel:'Clay A'},
+  {id:'me-3',date:D_2,startTime:'20:00',endTime:'22:00',court:'hard_b',mode:'normal',status:'completed',partners:['王大明'],courtLabel:'Hard B'},
+  {id:'me-4',date:D_7,startTime:'18:30',endTime:'20:00',court:'clay_b',mode:'normal',status:'completed',partners:['陳志明'],courtLabel:'Clay B'},
+];
+
+const MOCK_MEMBERS = [
+  {id:'c1',name:'Coach Lin',type:'coach',ntrp:'5.0',position:'全場',joined:'2020'},
+  {id:'c2',name:'Coach 王',type:'coach',ntrp:'4.5',position:'全場',joined:'2021'},
+  {id:'m1',name:'Maverick 小狸',type:'annual',ntrp:'3.5',position:'底線型 / 後場',joined:'2024'},
+  {id:'m2',name:'陳志明',type:'annual',ntrp:'4.0',position:'網前型',joined:'2023'},
+  {id:'m3',name:'林雅琳',type:'annual',ntrp:'3.0',position:'雙打後場',joined:'2024'},
+  {id:'m4',name:'王大明',type:'monthly',ntrp:'3.5',position:'底線型',joined:'2025'},
+  {id:'m5',name:'張芷晴',type:'annual',ntrp:'3.5',position:'全場',joined:'2022'},
+  {id:'m6',name:'李建宏',type:'monthly',ntrp:'4.0',position:'網前型',joined:'2025'},
+  {id:'m7',name:'吳美玲',type:'annual',ntrp:'3.0',position:'雙打後場',joined:'2023'},
+  {id:'m8',name:'黃俊傑',type:'annual',ntrp:'4.5',position:'底線型',joined:'2021'},
+];
+
+const MOCK_NOTIFICATIONS = [
+  {id:'n1',type:'booking',title:'預約確認',text:shortDateStr(D3)+' Hard A 19:00 已確認',time:'2 小時前',read:false},
+  {id:'n2',type:'event',title:'活動公告',text:shortDateStr(D2)+' 會員之夜已開放報名',time:'昨天',read:false},
+  {id:'n3',type:'system',title:'會費提醒',text:'您的年費將於 2026/12/31 到期，請提早續費',time:'3 天前',read:true},
+  {id:'n4',type:'booking',title:'預約完成',text:shortDateStr(D_2)+' Hard B 20:00 已完成',time:'2 天前',read:true},
+];
+
+/* ── Week / Grid Helpers ── */
+function getDaySlots(weekend){
+  const open=weekend?'05:30':'17:30';
+  const out=[]; let cur=timeToMin(open);
+  while(cur<timeToMin('24:00')){ out.push(minToTime(cur)); cur+=SLOT_MIN; }
+  return out;
+}
+function getSlotPosition(start,end,open){
+  const o=timeToMin(open),s=timeToMin(start),e=timeToMin(end);
+  return {startSlot:Math.max(0,Math.floor((s-o)/SLOT_MIN)),spanSlots:Math.max(1,Math.floor((e-s)/SLOT_MIN))};
 }
 
+/* ── Render: Court Header ── */
+function renderCourtHeader(){
+  document.getElementById('courtHeader').innerHTML='<div></div>'+COURTS.map(c=>
+    '<div class="courtLabel '+(COURT_SURFACE[c]==='clay'?'clay':'')+'">'+
+    '<span class="surfaceTag">'+COURT_LABELS[c].surface+'</span>'+
+    '<span class="courtLetter">'+COURT_LABELS[c].letter+'</span></div>'
+  ).join('');
+}
+
+/* ── Render: Week Strip ── */
 function renderWeekStrip(){
-  const ws = startOfWeek(selectedDate);
-  const dates = Array.from({length:7}, (_,i) => addDays(ws, i));
-  document.getElementById('monthLabel').textContent = formatMonthYear(dates[3]);
-  document.getElementById('chips').innerHTML = dates.map(d => {
-    const sel = isSameDay(d, selectedDate);
-    const tod = isSameDay(d, today);
-    const we = isWeekend(d);
-    const cls = ['chip', sel?'selected':'', tod?'today':'', we?'weekend':''].filter(Boolean).join(' ');
+  const ws=startOfWeek(selectedDate);
+  const dates=Array.from({length:7},(_,i)=>addDays(ws,i));
+  document.getElementById('weekMonthLabel').textContent=formatMonthYear(dates[3]);
+  document.getElementById('chips').innerHTML=dates.map(d=>{
+    const sel=isSameDay(d,selectedDate),tod=isSameDay(d,today),we=isWeekend(d);
+    const cls=['chip',sel?'selected':'',tod?'today':'',we?'weekend':''].filter(Boolean).join(' ');
     return '<button class="'+cls+'" onclick="selectDate(\''+formatDate(d)+'\')">'+
       '<span class="chipDayLabel">'+DAYS_TC[d.getDay()]+'</span>'+
-      '<span class="chipDateNum">'+d.getDate()+'</span>'+
-    '</button>';
+      '<span class="chipDateNum">'+d.getDate()+'</span></button>';
   }).join('');
 }
 
+/* ── Render: Day Header ── */
 function renderDayHeader(){
-  document.getElementById('dayLabel').textContent = formatDayLabel(selectedDate);
-  document.getElementById('dayMeta').textContent = '· ' + (isWeekend(selectedDate) ? '週末・寒暑假時段' : '平日時段');
+  document.getElementById('dayLabel').textContent=formatDayLabel(selectedDate);
+  document.getElementById('dayMeta').textContent='· '+(isWeekend(selectedDate)?'週末・寒暑假時段':'平日時段');
 }
 
+/* ── Render: Time Grid ── */
 function renderGrid(){
-  const we = isWeekend(selectedDate);
-  const open = we ? '05:30' : '17:30';
-  const slots = getDaySlots(we);
-  const grid = document.getElementById('grid');
-  grid.style.gridTemplateRows = 'repeat('+slots.length+', '+SLOT_HEIGHT+'px)';
-
-  let html = '<div class="courtDividers" style="grid-template-rows: repeat('+slots.length+', '+SLOT_HEIGHT+'px)">'+
-    '<div></div><div></div><div></div><div></div><div></div>'+
-  '</div>';
-
-  slots.forEach((slot, i) => {
-    const full = slot.endsWith(':00');
-    const showLabel = full || i === 0;
-    const cls = 'slotRow' + (full ? ' fullHour' : '') + (i === 0 ? ' firstRow' : '');
-    html += '<div class="'+cls+'" style="grid-row:'+(i+1)+'; grid-column:1/-1">'+
-      '<span class="timeLabel">'+(showLabel ? slot : '')+'</span>'+
-    '</div>';
+  const we=isWeekend(selectedDate);
+  const open=we?'05:30':'17:30';
+  const slots=getDaySlots(we);
+  const grid=document.getElementById('grid');
+  grid.style.gridTemplateRows='repeat('+slots.length+', '+SLOT_HEIGHT+'px)';
+  let html='<div class="courtDividers" style="grid-template-rows:repeat('+slots.length+','+SLOT_HEIGHT+'px)">'+
+    '<div></div><div></div><div></div><div></div><div></div></div>';
+  slots.forEach((slot,i)=>{
+    const full=slot.endsWith(':00'),showLabel=full||i===0;
+    const cls='slotRow'+(full?' fullHour':'')+(i===0?' firstRow':'');
+    html+='<div class="'+cls+'" style="grid-row:'+(i+1)+';grid-column:1/-1">'+
+      '<span class="timeLabel">'+(showLabel?slot:'')+'</span></div>';
   });
-
-  const ds = formatDate(selectedDate);
-  const bookings = MOCK_BOOKINGS.filter(b => b.date === ds);
-  bookings.forEach(b => {
-    const { startSlot, spanSlots } = getSlotPosition(b.startTime, b.endTime, open);
-    const courtIdx = COURTS.indexOf(b.court);
-    if (courtIdx < 0) return;
-    const surface = COURT_SURFACE[b.court];
-    const isLock = b.mode === 'event_lock';
-    const cls = 'event ' +
-      (isLock ? 'eventLock' : (surface === 'clay' ? 'clay' : '')) +
-      (spanSlots <= 1 ? ' short' : '');
-    const dotColor = (b.mode === 'coaching' || b.mode === 'group_class')
-      ? 'var(--dot-coach)'
-      : (isLock ? 'var(--dot-event)' : null);
-    const showMeta = spanSlots >= 3;
-    html += '<div class="'+cls+'" style="grid-column:'+(courtIdx+2)+'; grid-row:'+(startSlot+1)+'/span '+spanSlots+'">'+
-      (dotColor ? '<span class="modeDot" style="background:'+dotColor+'"></span>' : '')+
+  const ds=formatDate(selectedDate);
+  MOCK_BOOKINGS.filter(b=>b.date===ds).forEach(b=>{
+    const {startSlot,spanSlots}=getSlotPosition(b.startTime,b.endTime,open);
+    const courtIdx=COURTS.indexOf(b.court);
+    if(courtIdx<0) return;
+    const surface=COURT_SURFACE[b.court];
+    const isLock=b.mode==='event_lock';
+    const cls='event '+(isLock?'eventLock':(surface==='clay'?'clay':''))+(spanSlots<=1?' short':'');
+    const dotColor=(b.mode==='coaching'||b.mode==='group_class')?'var(--dot-coach)':(isLock?'var(--dot-event)':null);
+    html+='<div class="'+cls+'" style="grid-column:'+(courtIdx+2)+';grid-row:'+(startSlot+1)+'/span '+spanSlots+'">'+
+      (dotColor?'<span class="modeDot" style="background:'+dotColor+'"></span>':'')+
       '<span class="time">'+b.startTime+'</span>'+
       '<span class="name">'+b.primaryName+'</span>'+
-      (showMeta ? '<span class="meta">'+MODE_LABELS[b.mode]+(b.participantCount>0?(' · '+b.participantCount+'P'):'')+'</span>' : '')+
+      (spanSlots>=3?'<span class="meta">'+MODE_LABELS[b.mode]+(b.participantCount>0?(' · '+b.participantCount+'P'):'')+'</span>':'')+
     '</div>';
   });
-
-  if (isSameDay(selectedDate, today)) {
-    const nowMin = today.getHours()*60 + today.getMinutes();
-    const openMin = timeToMin(open);
-    const closeMin = timeToMin('24:00');
-    if (nowMin >= openMin && nowMin < closeMin) {
-      const offset = (nowMin - openMin) / SLOT_MIN;
-      html += '<div class="nowLine" style="top:'+(offset * SLOT_HEIGHT)+'px"></div>';
+  if(isSameDay(selectedDate,today)){
+    const nowMin=today.getHours()*60+today.getMinutes();
+    const openMin=timeToMin(open);
+    if(nowMin>=openMin&&nowMin<timeToMin('24:00')){
+      const offset=(nowMin-openMin)/SLOT_MIN;
+      html+='<div class="nowLine" style="top:'+(offset*SLOT_HEIGHT)+'px"></div>';
     }
   }
+  grid.innerHTML=html;
+}
 
-  grid.innerHTML = html;
+/* ── Render: Month Grid ── */
+function renderMonthView(){
+  const year=selectedDate.getFullYear(), month=selectedDate.getMonth();
+  document.getElementById('monthViewLabel').textContent=year+' 年 '+MONTHS_TC[month];
+  const firstDay=new Date(year,month,1);
+  const lastDay=new Date(year,month+1,0);
+  const startDow=firstDay.getDay();
+  let html='<div class="monthGrid">';
+  DAYS_TC.forEach(d=>{ html+='<div class="monthDayHeader">'+d+'</div>'; });
+  for(let i=0;i<startDow;i++) html+='<div class="monthCell empty"></div>';
+  for(let d=1;d<=lastDay.getDate();d++){
+    const day=new Date(year,month,d);
+    const ds=formatDate(day);
+    const isT=isSameDay(day,today),isSel=isSameDay(day,selectedDate),isWe=isWeekend(day);
+    let cls='monthCell';
+    if(isT) cls+=' today';
+    if(isSel) cls+=' selected';
+    if(isWe) cls+=' weekend';
+    const dayBookings=MOCK_BOOKINGS.filter(b=>b.date===ds);
+    html+='<button class="'+cls+'" onclick="selectDate(\''+ds+'\');setView(\'week\',document.getElementById(\'btnWeek\'))">'
+      +'<span class="monthCellNum">'+d+'</span>';
+    if(dayBookings.length>0){
+      html+='<div class="monthDots">';
+      dayBookings.slice(0,3).forEach(b=>{
+        const isLock=b.mode==='event_lock';
+        const isCoach=b.mode==='coaching'||b.mode==='group_class';
+        const dotCls=isLock?'dot-event':(isCoach?'dot-coach':(COURT_SURFACE[b.court]==='clay'?'dot-clay':'dot-hard'));
+        html+='<span class="monthDot '+dotCls+'"></span>';
+      });
+      html+='</div>';
+    }
+    html+='</button>';
+  }
+  html+='</div>';
+  document.getElementById('monthGrid').innerHTML=html;
+}
+
+/* ── Render: Booking Records ── */
+function renderBookings(){
+  const upcoming=MOCK_MY_BOOKINGS.filter(b=>b.status==='confirmed');
+  const past=MOCK_MY_BOOKINGS.filter(b=>b.status==='completed');
+  function cardHtml(b){
+    const d=new Date(b.date+'T00:00:00');
+    const surface=COURT_SURFACE[b.court];
+    return '<div class="bookingCard">'+
+      '<div class="bookingCardDate">'+
+        '<div class="bookingCardDateNum">'+d.getDate()+'</div>'+
+        '<div class="bookingCardDateMon">'+(d.getMonth()+1)+'月 '+DAYS_TC[d.getDay()]+'</div>'+
+      '</div>'+
+      '<div class="bookingCardBody">'+
+        '<div class="bookingCardTime">'+
+          b.startTime+' – '+b.endTime+' &nbsp;'+b.courtLabel+
+          '&nbsp;<span class="statusChip '+b.status+'">'+
+          (b.status==='confirmed'?'確認':'完成')+
+          '</span></div>'+
+        '<div class="bookingCardMeta">'+MODE_LABELS[b.mode]+' · '+b.partners.join('、')+'</div>'+
+      '</div>'+
+    '</div>';
+  }
+  document.getElementById('bookUpcoming').innerHTML=upcoming.length?upcoming.map(cardHtml).join(''):
+    '<div class="emptyState"><div class="emptyStateIcon">📅</div>暫無即將到來的預約</div>';
+  document.getElementById('bookPast').innerHTML=past.length?past.map(cardHtml).join(''):
+    '<div class="emptyState"><div class="emptyStateIcon">—</div>暫無歷史紀錄</div>';
+}
+
+/* ── Render: My Schedule ── */
+function renderSchedule(){
+  const upcoming=MOCK_MY_BOOKINGS.filter(b=>b.status==='confirmed')
+    .sort((a,b)=>a.date.localeCompare(b.date));
+  if(!upcoming.length){
+    document.getElementById('scheduleList').innerHTML=
+      '<div class="emptyState"><div class="emptyStateIcon">🎾</div>目前沒有排定的行程</div>';
+    return;
+  }
+  let html='';
+  upcoming.forEach(b=>{
+    const surface=COURT_SURFACE[b.court];
+    const barCls=surface==='clay'?'clay':(b.mode==='event_lock'?'lock':'');
+    html+='<div class="scheduleItem">'+
+      '<div class="scheduleItemBar '+barCls+'"></div>'+
+      '<div class="scheduleItemBody">'+
+        '<div class="scheduleItemTime">'+shortDateStr(b.date)+'  '+b.startTime+' – '+b.endTime+'</div>'+
+        '<div class="scheduleItemName">'+b.courtLabel+'  ·  '+MODE_LABELS[b.mode]+'</div>'+
+        '<div class="scheduleItemMeta">'+b.partners.join('、')+'</div>'+
+      '</div>'+
+    '</div>';
+  });
+  document.getElementById('scheduleList').innerHTML=html;
+}
+
+/* ── Render: Member List ── */
+function renderMembers(filter){
+  const f=(filter||'').toLowerCase();
+  const list=MOCK_MEMBERS.filter(m=>!f||m.name.toLowerCase().includes(f)||m.ntrp.includes(f)||m.position.toLowerCase().includes(f));
+  const typeLabel={annual:'年費會員',monthly:'月費會員',coach:'教練'};
+  document.getElementById('memberList').innerHTML=list.map(m=>{
+    const initials=m.name.charAt(0);
+    const isCoach=m.type==='coach';
+    return '<div class="memberCard">'+
+      '<div class="memberAvatar">'+
+        '<svg width="40" height="40" viewBox="0 0 40 40"><rect width="40" height="40" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="16" font-family="serif">'+initials+'</text></svg>'+
+      '</div>'+
+      '<div class="memberInfo">'+
+        '<div class="memberName">'+m.name+'</div>'+
+        '<div class="memberMeta">NTRP '+m.ntrp+'  ·  '+m.position+'</div>'+
+      '</div>'+
+      '<span class="memberBadge'+(isCoach?' coach':'')+'">'+typeLabel[m.type]+'</span>'+
+    '</div>';
+  }).join('')||'<div class="emptyState">找不到符合的會員</div>';
+}
+
+/* ── Render: Notifications ── */
+function renderNotifications(){
+  document.getElementById('notificationsList').innerHTML=MOCK_NOTIFICATIONS.map(n=>{
+    return '<div class="notifItem'+(n.read?' read':'')+'" onclick="markRead(\''+n.id+'\',this)">'+
+      '<div class="notifDot"></div>'+
+      '<div class="notifBody">'+
+        '<div class="notifTitle">'+n.title+'</div>'+
+        '<div class="notifText">'+n.text+'</div>'+
+        '<div class="notifTime">'+n.time+'</div>'+
+      '</div></div>';
+  }).join('');
+}
+function markRead(id, el){ el.classList.add('read'); }
+
+/* ── Navigation ── */
+function showTab(name, el){
+  document.querySelectorAll('.navTab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-'+name).classList.add('active');
+  closeAllSheets();
+}
+
+function setView(v, el){
+  currentView=v;
+  document.getElementById('view-week').style.display=v==='week'?'block':'none';
+  document.getElementById('view-month').style.display=v==='month'?'block':'none';
+  document.querySelectorAll('.switcherOption').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  if(v==='month') renderMonthView();
 }
 
 function selectDate(dateStr){
-  selectedDate = new Date(dateStr + 'T00:00:00');
+  selectedDate=new Date(dateStr+'T00:00:00');
   render();
 }
+function changeWeek(delta){ selectedDate=addDays(selectedDate,delta*7); render(); }
+function changeMonth(delta){
+  selectedDate=new Date(selectedDate.getFullYear(), selectedDate.getMonth()+delta, 1);
+  renderMonthView();
+}
+function filterMembers(v){ renderMembers(v); }
 
-function changeWeek(delta){
-  selectedDate = addDays(selectedDate, delta * 7);
-  render();
+/* ── Profile Sheet ── */
+function openProfile(){
+  document.getElementById('tabProfile').classList.add('active');
+  document.getElementById('sheetBackdrop').classList.add('open');
+  document.getElementById('profileSheet').classList.add('open');
+}
+function closeProfile(){
+  document.getElementById('profileSheet').classList.remove('open');
+  document.getElementById('tabProfile').classList.remove('active');
+  document.getElementById('sheetBackdrop').classList.remove('open');
+}
+function closeAllSheets(){
+  ['profileSheet','settingsSheet','notificationsSheet','aboutSheet'].forEach(id=>{
+    document.getElementById(id).classList.remove('open');
+  });
+  document.getElementById('sheetBackdrop').classList.remove('open');
+  document.getElementById('tabProfile').classList.remove('active');
 }
 
+/* ── Settings Sheet ── */
+function openSettings(){
+  document.getElementById('settingsSheet').classList.add('open');
+}
+function closeSettings(){
+  document.getElementById('settingsSheet').classList.remove('open');
+}
+function saveSettings(){
+  const name=document.getElementById('nameInput').value.trim()||MOCK_USER.name;
+  const ntrp=document.getElementById('ntrpSelect').value;
+  const position=document.getElementById('positionSelect').value;
+  MOCK_USER.name=name; MOCK_USER.ntrp=ntrp; MOCK_USER.position=position;
+  document.getElementById('profileDisplayName').textContent=name;
+  document.getElementById('profileNTRP').textContent=ntrp;
+  document.getElementById('profilePosition').textContent=position;
+  closeSettings();
+}
+
+/* ── Notifications Sheet ── */
+function openNotifications(){
+  renderNotifications();
+  document.getElementById('notificationsSheet').classList.add('open');
+}
+function closeNotifications(){
+  document.getElementById('notificationsSheet').classList.remove('open');
+}
+
+/* ── About Sheet ── */
+function openAbout(){
+  document.getElementById('aboutSheet').classList.add('open');
+}
+function closeAbout(){
+  document.getElementById('aboutSheet').classList.remove('open');
+}
+
+/* ── Main Render ── */
 function render(){
   renderCourtHeader();
   renderWeekStrip();
@@ -883,25 +1104,9 @@ function render(){
 }
 
 render();
-
-// ── Tab & Profile Sheet ──
-function setTab(el, name) {
-  document.querySelectorAll('.navTab').forEach(t => t.classList.remove('active'));
-  el.classList.add('active');
-}
-
-function openProfile() {
-  document.getElementById('tabProfile').classList.add('active');
-  document.getElementById('sheetBackdrop').classList.add('open');
-  document.getElementById('profileSheet').classList.add('open');
-}
-
-function closeProfile() {
-  document.getElementById('sheetBackdrop').classList.remove('open');
-  document.getElementById('profileSheet').classList.remove('open');
-  // restore active state to court tab (default) unless another tab was active
-  document.getElementById('tabProfile').classList.remove('active');
-}
+renderBookings();
+renderSchedule();
+renderMembers();
 </script>
 </body>
 </html>
