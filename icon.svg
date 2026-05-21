@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Dark luxury background -->
+  <rect width="512" height="512" fill="#0f1210"/>
+  <!-- Logo mark — centered 300×300 in 512×512 (offset 106,106 scale 3) -->
+  <g transform="translate(106,106) scale(3)">
+    <!-- X cross strokes -->
+    <line x1="28" y1="28" x2="72" y2="72" stroke="#e8e1d0" stroke-width="9.5" stroke-linecap="round"/>
+    <line x1="72" y1="28" x2="28" y2="72" stroke="#e8e1d0" stroke-width="9.5" stroke-linecap="round"/>
+    <!-- N petal -->
+    <path d="M 50 7 Q 62 22 50 37 Q 38 22 50 7 Z" fill="#e8e1d0"/>
+    <!-- S petal -->
+    <path d="M 50 63 Q 62 78 50 93 Q 38 78 50 63 Z" fill="#e8e1d0"/>
+    <!-- W petal -->
+    <path d="M 7 50 Q 22 38 37 50 Q 22 62 7 50 Z" fill="#e8e1d0"/>
+    <!-- E petal -->
+    <path d="M 63 50 Q 78 38 93 50 Q 78 62 63 50 Z" fill="#e8e1d0"/>
+  </g>
+</svg>
