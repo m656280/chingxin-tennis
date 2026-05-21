@@ -1,17 +1,25 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   <!--
-    CHING XIN Tennis Society — Brand Mark (no background)
-    Transparent version for favicon / general use
+    CHING XIN Tennis Society — Brand Mark
+    Dark luxury version: cream mark on #0f1210 background
+    For PWA manifest icon (any / standalone)
   -->
 
-  <!-- X cross arms -->
-  <line x1="30" y1="30" x2="70" y2="70"
-        stroke="currentColor" stroke-width="12" stroke-linecap="round"/>
-  <line x1="70" y1="30" x2="30" y2="70"
-        stroke="currentColor" stroke-width="12" stroke-linecap="round"/>
+  <!-- Dark background -->
+  <rect width="100" height="100" fill="#0f1210"/>
 
-  <!-- Top petal -->
-  <path fill="currentColor" fill-rule="evenodd"
+  <!-- X cross arms: thick rounded diagonals between petals -->
+  <line x1="30" y1="30" x2="70" y2="70"
+        stroke="#e8e1d0" stroke-width="12" stroke-linecap="round"/>
+  <line x1="70" y1="30" x2="30" y2="70"
+        stroke="#e8e1d0" stroke-width="12" stroke-linecap="round"/>
+
+  <!--
+    Top petal — solid fill with inner teardrop cutout (round top, pointed bottom)
+    Outer: tall oval centered ~(50,22)
+    Inner: flame shape, round at top, pointed end toward center (y≈36)
+  -->
+  <path fill="#e8e1d0" fill-rule="evenodd"
         d="M 50 4
            C 36 4, 35 13, 35 22
            C 35 33, 41 41, 50 41
@@ -23,8 +31,11 @@
            C 47 35, 43 29, 43 22
            C 43 16, 44 10, 50 10 Z"/>
 
-  <!-- Bottom petal -->
-  <path fill="currentColor" fill-rule="evenodd"
+  <!--
+    Bottom petal — mirror of top
+    Inner: round bottom, pointed top toward center (y≈64)
+  -->
+  <path fill="#e8e1d0" fill-rule="evenodd"
         d="M 50 96
            C 36 96, 35 87, 35 78
            C 35 67, 41 59, 50 59
@@ -36,8 +47,11 @@
            C 47 65, 43 71, 43 78
            C 43 84, 44 90, 50 90 Z"/>
 
-  <!-- Left petal -->
-  <path fill="currentColor" fill-rule="evenodd"
+  <!--
+    Left petal — wide horizontal oval
+    Inner: round left, pointed right toward center (x≈36)
+  -->
+  <path fill="#e8e1d0" fill-rule="evenodd"
         d="M 4 50
            C 4 36, 13 35, 22 35
            C 33 35, 41 41, 41 50
@@ -49,8 +63,11 @@
            C 33 54, 28 57, 22 57
            C 16 57, 10 56, 10 50 Z"/>
 
-  <!-- Right petal -->
-  <path fill="currentColor" fill-rule="evenodd"
+  <!--
+    Right petal — mirror of left
+    Inner: round right, pointed left toward center (x≈64)
+  -->
+  <path fill="#e8e1d0" fill-rule="evenodd"
         d="M 96 50
            C 96 36, 87 35, 78 35
            C 67 35, 59 41, 59 50

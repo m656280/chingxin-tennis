@@ -15,25 +15,69 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=Noto+Sans+TC:wght@400;500&display=swap" rel="stylesheet">
 <script>
-/* ── Generate dark-luxury apple-touch-icon via Canvas ── */
+/* ── Generate brand apple-touch-icon (180×180 PNG) via Canvas ── */
+/* Mark: X cross + 4 petals with inner teardrop cutouts (fill-rule evenodd) */
 (function(){
   try {
-    const c=document.createElement('canvas'); c.width=180; c.height=180;
-    const ctx=c.getContext('2d');
-    ctx.fillStyle='#0f1210'; ctx.fillRect(0,0,180,180);
-    const s=1.2,ox=30,oy=30;
-    ctx.save(); ctx.translate(ox,oy); ctx.scale(s,s);
-    ctx.strokeStyle='#e8e1d0'; ctx.fillStyle='#e8e1d0';
-    ctx.lineWidth=9.5; ctx.lineCap='round';
-    ctx.beginPath(); ctx.moveTo(28,28); ctx.lineTo(72,72); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(72,28); ctx.lineTo(28,72); ctx.stroke();
-    ['M 50 7 Q 62 22 50 37 Q 38 22 50 7 Z','M 50 63 Q 62 78 50 93 Q 38 78 50 63 Z',
-     'M 7 50 Q 22 38 37 50 Q 22 62 7 50 Z','M 63 50 Q 78 38 93 50 Q 78 62 63 50 Z']
-    .forEach(p=>{ ctx.fill(new Path2D(p)); });
+    var c=document.createElement('canvas'); c.width=180; c.height=180;
+    var ctx=c.getContext('2d');
+
+    /* Dark luxury background */
+    ctx.fillStyle='#0f1210';
+    ctx.fillRect(0,0,180,180);
+
+    /* Mark drawn in 100×100 internal space, scaled 1.44× centred in 180×180
+       (180/100 * 0.8 = 1.44 → 80% of canvas = 144px mark with 18px margin) */
+    var sc=1.44, mx=(180-100*sc)/2, my=(180-100*sc)/2;
+    ctx.save();
+    ctx.translate(mx,my);
+    ctx.scale(sc,sc);
+
+    ctx.strokeStyle='#e8e1d0';
+    ctx.fillStyle='#e8e1d0';
+    ctx.lineCap='round';
+
+    /* X cross arms */
+    ctx.lineWidth=12;
+    ctx.beginPath(); ctx.moveTo(30,30); ctx.lineTo(70,70); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(70,30); ctx.lineTo(30,70); ctx.stroke();
+
+    /* Top petal: outer oval + inner teardrop (round top, pointed bottom) */
+    var top=new Path2D(
+      'M 50 4 C 36 4,35 13,35 22 C 35 33,41 41,50 41 C 59 41,65 33,65 22 C 65 13,64 4,50 4 Z '+
+      'M 50 10 C 56 10,57 16,57 22 C 57 29,53 35,50 36 C 47 35,43 29,43 22 C 43 16,44 10,50 10 Z'
+    );
+    ctx.fill(top,'evenodd');
+
+    /* Bottom petal: mirror (round bottom, pointed top) */
+    var bot=new Path2D(
+      'M 50 96 C 36 96,35 87,35 78 C 35 67,41 59,50 59 C 59 59,65 67,65 78 C 65 87,64 96,50 96 Z '+
+      'M 50 90 C 56 90,57 84,57 78 C 57 71,53 65,50 64 C 47 65,43 71,43 78 C 43 84,44 90,50 90 Z'
+    );
+    ctx.fill(bot,'evenodd');
+
+    /* Left petal: wide horizontal (round left, pointed right) */
+    var lft=new Path2D(
+      'M 4 50 C 4 36,13 35,22 35 C 33 35,41 41,41 50 C 41 59,33 65,22 65 C 13 65,4 64,4 50 Z '+
+      'M 10 50 C 10 44,16 43,22 43 C 28 43,33 46,36 50 C 33 54,28 57,22 57 C 16 57,10 56,10 50 Z'
+    );
+    ctx.fill(lft,'evenodd');
+
+    /* Right petal: mirror of left */
+    var rgt=new Path2D(
+      'M 96 50 C 96 36,87 35,78 35 C 67 35,59 41,59 50 C 59 59,67 65,78 65 C 87 65,96 64,96 50 Z '+
+      'M 90 50 C 90 44,84 43,78 43 C 72 43,67 46,64 50 C 67 54,72 57,78 57 C 84 57,90 56,90 50 Z'
+    );
+    ctx.fill(rgt,'evenodd');
+
     ctx.restore();
-    const l=document.createElement('link'); l.rel='apple-touch-icon'; l.href=c.toDataURL('image/png');
+
+    /* Inject apple-touch-icon link into <head> */
+    var l=document.createElement('link');
+    l.rel='apple-touch-icon';
+    l.href=c.toDataURL('image/png');
     document.head.appendChild(l);
-  } catch(e){ console.warn('apple-touch-icon gen failed',e); }
+  } catch(e){ console.warn('apple-touch-icon gen failed:',e); }
 })();
 </script>
 <style>
