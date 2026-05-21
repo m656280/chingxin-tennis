@@ -3,425 +3,446 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
-<!-- PWA -->
-<link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#0f1210">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="清心">
-<!-- apple-touch-icon injected via Canvas in <script> below -->
-<title>清心網球協會</title>
+<meta name="theme-color" content="#faf9f5">
+<title>清心網球會</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=Noto+Sans+TC:wght@400;500&display=swap" rel="stylesheet">
-<script>
-/* ── Generate brand apple-touch-icon (180×180 PNG) via Canvas ── */
-/* Mark: X cross + 4 petals with inner teardrop cutouts (fill-rule evenodd) */
-(function(){
-  try {
-    var c=document.createElement('canvas'); c.width=180; c.height=180;
-    var ctx=c.getContext('2d');
-
-    /* Dark luxury background */
-    ctx.fillStyle='#0f1210';
-    ctx.fillRect(0,0,180,180);
-
-    /* Mark drawn in 100×100 internal space, scaled 1.44× centred in 180×180
-       (180/100 * 0.8 = 1.44 → 80% of canvas = 144px mark with 18px margin) */
-    var sc=1.44, mx=(180-100*sc)/2, my=(180-100*sc)/2;
-    ctx.save();
-    ctx.translate(mx,my);
-    ctx.scale(sc,sc);
-
-    ctx.strokeStyle='#e8e1d0';
-    ctx.fillStyle='#e8e1d0';
-    ctx.lineCap='round';
-
-    /* X cross arms */
-    ctx.lineWidth=12;
-    ctx.beginPath(); ctx.moveTo(30,30); ctx.lineTo(70,70); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(70,30); ctx.lineTo(30,70); ctx.stroke();
-
-    /* Top petal: outer oval + inner teardrop (round top, pointed bottom) */
-    var top=new Path2D(
-      'M 50 4 C 36 4,35 13,35 22 C 35 33,41 41,50 41 C 59 41,65 33,65 22 C 65 13,64 4,50 4 Z '+
-      'M 50 10 C 56 10,57 16,57 22 C 57 29,53 35,50 36 C 47 35,43 29,43 22 C 43 16,44 10,50 10 Z'
-    );
-    ctx.fill(top,'evenodd');
-
-    /* Bottom petal: mirror (round bottom, pointed top) */
-    var bot=new Path2D(
-      'M 50 96 C 36 96,35 87,35 78 C 35 67,41 59,50 59 C 59 59,65 67,65 78 C 65 87,64 96,50 96 Z '+
-      'M 50 90 C 56 90,57 84,57 78 C 57 71,53 65,50 64 C 47 65,43 71,43 78 C 43 84,44 90,50 90 Z'
-    );
-    ctx.fill(bot,'evenodd');
-
-    /* Left petal: wide horizontal (round left, pointed right) */
-    var lft=new Path2D(
-      'M 4 50 C 4 36,13 35,22 35 C 33 35,41 41,41 50 C 41 59,33 65,22 65 C 13 65,4 64,4 50 Z '+
-      'M 10 50 C 10 44,16 43,22 43 C 28 43,33 46,36 50 C 33 54,28 57,22 57 C 16 57,10 56,10 50 Z'
-    );
-    ctx.fill(lft,'evenodd');
-
-    /* Right petal: mirror of left */
-    var rgt=new Path2D(
-      'M 96 50 C 96 36,87 35,78 35 C 67 35,59 41,59 50 C 59 59,67 65,78 65 C 87 65,96 64,96 50 Z '+
-      'M 90 50 C 90 44,84 43,78 43 C 72 43,67 46,64 50 C 67 54,72 57,78 57 C 84 57,90 56,90 50 Z'
-    );
-    ctx.fill(rgt,'evenodd');
-
-    ctx.restore();
-
-    /* Inject apple-touch-icon link into <head> */
-    var l=document.createElement('link');
-    l.rel='apple-touch-icon';
-    l.href=c.toDataURL('image/png');
-    document.head.appendChild(l);
-  } catch(e){ console.warn('apple-touch-icon gen failed:',e); }
-})();
-</script>
 <style>
-:root{
-  --color-bg:#0f1210;
-  --color-surface:#171c18;
-  --color-surface-alt:#1e241f;
-  --color-surface-raised:#252d26;
-  --color-text-primary:#e8e1d0;
-  --color-text-secondary:#8a9387;
-  --color-text-muted:#4d5750;
-  --color-border:#262d27;
-  --color-border-soft:#1d231e;
-  --color-accent:#c9a96e;
-  --color-accent-dim:rgba(201,169,110,0.14);
-  --dot-coach:#c9a96e;
-  --dot-event:#6b8a6b;
-  --color-clay:#b85c4a;
-  --color-hard:#4a7096;
-  --color-danger:#8a3a2a;
-  --event-hard-bg:rgba(74,112,150,0.14);
-  --event-hard-bar:rgba(74,112,150,0.65);
-  --event-clay-bg:rgba(184,92,74,0.14);
-  --event-clay-bar:rgba(184,92,74,0.65);
-  --event-lock-bg:rgba(232,225,208,0.06);
-  --event-lock-bar:rgba(232,225,208,0.35);
-  --color-now:#6b8a6b;
-  --grid-line:#1d231e;
-  --grid-line-soft:#181e19;
-  --font-display:'Cormorant Garamond','Noto Serif TC',Georgia,serif;
-  --font-body:-apple-system,BlinkMacSystemFont,'Inter','Noto Sans TC','PingFang TC',sans-serif;
+:root {
+  --color-bg: #faf9f5;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f4f2eb;
+  --color-text-primary: #1a1f1c;
+  --color-text-secondary: #5d635a;
+  --color-text-muted: #9b9e95;
+  --color-border: #e6e3da;
+  --color-border-soft: #efece4;
+  --dot-coach: #c9a96e;
+  --dot-event: #4a6d4a;
+  --color-clay: #b85c4a;
+  --color-hard: #3d5a80;
+  --event-hard-bg: rgba(61,90,128,0.08);
+  --event-hard-bar: rgba(61,90,128,0.5);
+  --event-clay-bg: rgba(184,92,74,0.08);
+  --event-clay-bar: rgba(184,92,74,0.55);
+  --event-lock-bg: rgba(26,31,28,0.05);
+  --event-lock-bar: rgba(26,31,28,0.35);
+  --color-now: #6b8a6b;
+  --grid-line: #e9e7e0;
+  --grid-line-soft: #f1efe9;
+  --font-display: 'Cormorant Garamond','Noto Serif TC',Georgia,serif;
+  --font-body: -apple-system,BlinkMacSystemFont,'Inter','Noto Sans TC','PingFang TC',sans-serif;
 }
-*,*::before,*::after{box-sizing:border-box}
-html,body{margin:0;padding:0;min-height:100%;font-family:var(--font-body);font-size:15px;line-height:1.6;color:var(--color-text-primary);-webkit-font-smoothing:antialiased}
-body{background:#080b09;display:flex;justify-content:center;align-items:flex-start;padding:20px 16px 48px;min-height:100vh}
-@media(max-width:480px){body{padding:0;background:var(--color-bg)}}
-button{font:inherit;color:inherit;border:none;background:transparent;cursor:pointer;padding:0;-webkit-tap-highlight-color:transparent}
-input,select{font:inherit;color:inherit;background:transparent;border:none;outline:none}
-.app{max-width:420px;width:100%;background:var(--color-bg);padding:0 0 68px;border-radius:28px;box-shadow:0 20px 80px rgba(0,0,0,.6);position:relative;min-height:680px;overflow:hidden}
-@media(max-width:480px){.app{border-radius:0;box-shadow:none;min-height:100dvh;padding-bottom:calc(68px + env(safe-area-inset-bottom,0px))}}
+*,*::before,*::after { box-sizing: border-box; }
+html,body {
+  margin: 0; padding: 0; min-height: 100%;
+  font-family: var(--font-body); font-size: 15px; line-height: 1.6;
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+}
+body {
+  background: #e8e3d6;
+  display: flex; justify-content: center; align-items: flex-start;
+  padding: 24px 16px 48px; min-height: 100vh;
+}
+@media (max-width:480px) { body { padding: 0; background: var(--color-bg); } }
+button {
+  font: inherit; color: inherit; border: none;
+  background: transparent; cursor: pointer; padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.app {
+  max-width: 420px; width: 100%; background: var(--color-bg);
+  padding: 16px 16px 72px;
+  border-radius: 24px; box-shadow: 0 8px 40px rgba(0,0,0,0.10);
+  position: relative;
+}
+@media (max-width:480px) { .app { border-radius:0; box-shadow:none; min-height:100dvh; } }
 
-/* ── Loading Screen ── */
-.loadingScreen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100dvh;gap:32px;padding:40px}
-.loadingMark{opacity:.6;animation:pulse 2s ease-in-out infinite}
-@keyframes pulse{0%,100%{opacity:.4}50%{opacity:.8}}
-.loadingText{font-family:var(--font-display);font-size:11px;letter-spacing:.20em;color:var(--color-text-muted);text-transform:uppercase}
-
-/* ── Auth Screens ── */
-.authScreen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100dvh;padding:48px 32px;gap:0;text-align:center}
-.authMark{margin-bottom:32px;opacity:.85}
-.authTitle{font-family:var(--font-display);font-size:22px;letter-spacing:.18em;font-weight:500;color:var(--color-text-primary);margin-bottom:8px}
-.authSub{font-family:var(--font-display);font-style:italic;font-size:11px;letter-spacing:.12em;color:var(--color-text-muted);margin-bottom:48px}
-.lineBtn{display:flex;align-items:center;justify-content:center;gap:12px;width:100%;padding:16px;border-radius:14px;background:#06c755;color:#fff;font-size:14px;font-weight:500;letter-spacing:.06em;cursor:pointer;transition:opacity 200ms ease}
-.lineBtn:active{opacity:.7}
-.lineIco{width:20px;height:20px;fill:currentColor}
-.authNote{font-size:11px;color:var(--color-text-muted);margin-top:20px;letter-spacing:.04em;line-height:1.8}
-/* Pending / Blocked */
-.statusCard{background:var(--color-surface);border:1px solid var(--color-border-soft);border-radius:14px;padding:20px;width:100%;margin-bottom:24px;text-align:left}
-.statusRow{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--color-border-soft);font-size:12px}
-.statusRow:last-child{border-bottom:none}
-.statusKey{color:var(--color-text-muted);letter-spacing:.04em}
-.statusVal{color:var(--color-text-secondary)}
-.statusBadge{display:inline-flex;align-items:center;padding:2px 10px;border-radius:99px;font-size:10px;letter-spacing:.08em}
-.statusBadge.pending{background:var(--color-accent-dim);color:var(--color-accent)}
-.statusBadge.blocked{background:rgba(138,58,42,.2);color:#e07060}
-.authBack{font-size:12px;color:var(--color-text-muted);letter-spacing:.06em;margin-top:8px;cursor:pointer;text-decoration:underline}
-
-/* ── App Header ── */
-.header{display:flex;justify-content:center;align-items:center;padding:28px 0 24px}
-.brand{display:flex;flex-direction:column;align-items:center;gap:5px}
-.brandRow{display:flex;align-items:center;gap:13px}
-.brandName{font-family:var(--font-display);font-size:18px;letter-spacing:.20em;text-transform:uppercase;color:var(--color-text-primary);font-weight:500}
-.brandSub{font-family:var(--font-display);font-style:italic;font-size:10px;letter-spacing:.14em;color:var(--color-text-muted)}
+/* ── Header / Brand ── */
+.header { display:flex; justify-content:center; align-items:center; margin:28px 0 32px; }
+.brand { display:flex; flex-direction:column; align-items:center; gap:4px; }
+.brandRow { display:flex; align-items:center; gap:12px; }
+.brandName {
+  font-family:var(--font-display); font-size:18px;
+  letter-spacing:0.20em; text-transform:uppercase;
+  color:var(--color-text-primary); font-weight:500;
+}
+.brandSub {
+  font-family:var(--font-display); font-style:italic;
+  font-size:10px; letter-spacing:0.14em; color:var(--color-text-muted);
+}
 
 /* ── Screens ── */
-.screen{display:none;padding:0 16px}
-.screen.active{display:block}
-.screenTitle{font-family:var(--font-display);font-size:20px;font-weight:500;letter-spacing:.04em;color:var(--color-text-primary);margin:4px 0 20px;padding:0 4px}
-.screenSection{font-size:10px;letter-spacing:.10em;color:var(--color-text-muted);text-transform:uppercase;margin:20px 0 10px;padding:0 4px}
+.screen { display:none; }
+.screen.active { display:block; }
 
 /* ── View Switcher ── */
-.viewSwitcher{display:flex;justify-content:center;margin-bottom:24px}
-.switcherGroup{display:inline-flex;background:var(--color-surface);border-radius:9999px;padding:3px;gap:2px;border:1px solid var(--color-border-soft)}
-.switcherOption{padding:6px 22px;font-size:12px;letter-spacing:.08em;color:var(--color-text-muted);border-radius:9999px;text-transform:uppercase;transition:all 200ms ease}
-.switcherOption.active{background:var(--color-surface-alt);color:var(--color-text-primary)}
+.viewSwitcher { display:flex; justify-content:center; margin-bottom:24px; }
+.switcherGroup {
+  display:inline-flex; background:var(--color-surface-alt);
+  border-radius:9999px; padding:3px; gap:2px;
+}
+.switcherOption {
+  padding:6px 20px; font-size:12px; letter-spacing:0.08em;
+  color:var(--color-text-muted); border-radius:9999px;
+  text-transform:uppercase; text-align:center;
+  transition:all 200ms ease;
+}
+.switcherOption.active {
+  background:var(--color-surface); color:var(--color-text-primary);
+  box-shadow:0 1px 3px rgba(0,0,0,0.04);
+}
 
 /* ── Week Strip ── */
-.weekStrip{margin-bottom:24px;display:flex;flex-direction:column;gap:8px}
-.weekHeader{display:flex;align-items:center;justify-content:space-between;padding:0 4px}
-.monthLabel{font-family:var(--font-display);font-size:16px;letter-spacing:.04em;color:var(--color-text-primary);font-weight:500}
-.navButton{width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--color-text-muted);border-radius:9999px;transition:color 200ms ease}
-.navButton:hover{color:var(--color-text-primary)}
-.chips{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
-.chip{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 0;border-radius:8px;transition:background 200ms ease}
-.chip:hover{background:var(--color-surface-alt)}
-.chipDayLabel{font-size:10px;letter-spacing:.08em;color:var(--color-text-muted);text-transform:uppercase}
-.chipDateNum{font-size:15px;color:var(--color-text-secondary);width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:9999px;transition:all 200ms ease}
-.chip.today .chipDateNum{color:var(--color-text-primary);font-weight:500}
-.chip.selected .chipDateNum{background:var(--color-text-primary);color:var(--color-bg);font-weight:500}
-.chip.weekend .chipDayLabel{color:var(--color-clay);opacity:.8}
-.dayHeader{display:flex;align-items:baseline;gap:8px;margin-bottom:16px;padding:0 4px}
-.dayLabelMain{font-family:var(--font-display);font-size:18px;color:var(--color-text-primary);font-weight:500}
-.dayMeta{font-size:11px;letter-spacing:.08em;color:var(--color-text-muted);text-transform:uppercase}
+.weekStrip { margin-bottom:24px; display:flex; flex-direction:column; gap:8px; }
+.weekHeader { display:flex; align-items:center; justify-content:space-between; padding:0 4px; }
+.monthLabel {
+  font-family:var(--font-display); font-size:16px;
+  letter-spacing:0.04em; color:var(--color-text-primary); font-weight:500;
+}
+.navButton {
+  width:32px; height:32px; display:flex; align-items:center; justify-content:center;
+  font-size:18px; color:var(--color-text-muted); border-radius:9999px; transition:color 200ms ease;
+}
+.navButton:hover { color:var(--color-text-primary); }
+.chips { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; }
+.chip {
+  display:flex; flex-direction:column; align-items:center; gap:6px;
+  padding:8px 0; border-radius:8px; transition:background 200ms ease;
+}
+.chip:hover { background:var(--color-surface-alt); }
+.chipDayLabel { font-size:10px; letter-spacing:0.08em; color:var(--color-text-muted); text-transform:uppercase; }
+.chipDateNum {
+  font-size:15px; color:var(--color-text-secondary);
+  width:32px; height:32px; display:flex; align-items:center; justify-content:center;
+  border-radius:9999px; transition:all 200ms ease;
+}
+.chip.today .chipDateNum { color:var(--color-text-primary); font-weight:500; }
+.chip.selected .chipDateNum { background:var(--color-text-primary); color:var(--color-bg); font-weight:500; }
+.chip.weekend .chipDayLabel { color:var(--color-clay); opacity:0.7; }
+
+/* ── Day Header ── */
+.dayHeader { display:flex; align-items:baseline; gap:8px; margin-bottom:16px; padding:0 4px; }
+.dayLabelMain { font-family:var(--font-display); font-size:18px; color:var(--color-text-primary); font-weight:500; }
+.dayMeta { font-size:11px; letter-spacing:0.08em; color:var(--color-text-muted); text-transform:uppercase; }
 
 /* ── Time Grid ── */
-.timeGridWrapper{background:var(--color-surface);border:1px solid var(--color-border-soft);border-radius:10px;overflow:hidden}
-.courtHeader{display:grid;grid-template-columns:44px repeat(4,1fr);border-bottom:1px solid var(--color-border);background:var(--color-surface-alt)}
-.courtLabel{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:9px 4px;border-left:1px solid var(--color-border-soft)}
-.surfaceTag{font-size:9px;letter-spacing:.12em;color:var(--color-text-muted);font-weight:500}
-.courtLabel.clay .surfaceTag{color:var(--color-clay)}
-.courtLetter{font-family:var(--font-display);font-size:18px;color:var(--color-text-primary);line-height:1.1;margin-top:2px}
-.grid{display:grid;grid-template-columns:44px repeat(4,1fr);position:relative}
-.slotRow{grid-column:1/-1;border-top:1px solid var(--grid-line-soft);display:flex;align-items:flex-start;padding-top:2px;pointer-events:none;z-index:1}
-.slotRow.fullHour{border-top-color:var(--grid-line)}
-.slotRow.firstRow{border-top:none}
-.timeLabel{width:44px;padding-left:6px;font-size:9px;letter-spacing:.04em;color:var(--color-text-muted)}
-.courtDividers{grid-column:1/-1;grid-row:1/-1;pointer-events:none;display:grid;grid-template-columns:44px repeat(4,1fr);z-index:0}
-.courtDividers>div{border-left:1px solid var(--grid-line-soft)}
-.courtDividers>div:first-child{border-left:none}
-.event{position:relative;margin:1px;padding:4px 6px 4px 8px;border-radius:5px;background:var(--event-hard-bg);border-left:2px solid var(--event-hard-bar);overflow:hidden;display:flex;flex-direction:column;z-index:2;min-width:0;cursor:pointer;transition:opacity 150ms ease}
-.event:active{opacity:.7}
-.event.clay{background:var(--event-clay-bg);border-left-color:var(--event-clay-bar)}
-.event.eventLock{background:var(--event-lock-bg);border-left-color:var(--event-lock-bar)}
-.event .etime{font-size:9px;letter-spacing:.04em;color:var(--color-text-muted);line-height:1.3}
-.event .ename{font-size:11px;color:var(--color-text-primary);line-height:1.3;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.event .emeta{font-size:9px;color:var(--color-text-muted);margin-top:2px;line-height:1.2}
-.event .eAvatar{position:absolute;bottom:3px;right:3px;width:14px;height:14px;border-radius:50%;overflow:hidden;border:1px solid var(--color-border)}
-.event .eAvatar img{width:100%;height:100%;object-fit:cover}
-.event .modeDot{position:absolute;top:5px;right:5px;width:5px;height:5px;border-radius:50%}
-.event.short .etime,.event.short .emeta{display:none}
-.nowLine{position:absolute;left:44px;right:0;height:1px;background:var(--color-now);z-index:3;pointer-events:none}
-.nowLine::before{content:'';position:absolute;left:-3px;top:-2px;width:5px;height:5px;border-radius:50%;background:var(--color-now)}
+.timeGridWrapper {
+  background:var(--color-surface); border:1px solid var(--color-border-soft);
+  border-radius:8px; overflow:hidden;
+}
+.courtHeader {
+  display:grid; grid-template-columns:44px repeat(4,1fr);
+  border-bottom:1px solid var(--color-border); background:var(--color-surface-alt);
+}
+.courtLabel {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  padding:8px 4px; border-left:1px solid var(--color-border-soft);
+}
+.surfaceTag { font-size:9px; letter-spacing:0.12em; color:var(--color-text-muted); font-weight:500; }
+.courtLabel.clay .surfaceTag { color:var(--color-clay); }
+.courtLetter { font-family:var(--font-display); font-size:18px; color:var(--color-text-primary); line-height:1.1; margin-top:2px; }
+.grid { display:grid; grid-template-columns:44px repeat(4,1fr); position:relative; }
+.slotRow {
+  grid-column:1 / -1; border-top:1px solid var(--grid-line-soft);
+  display:flex; align-items:flex-start; padding-top:2px; pointer-events:none; z-index:1;
+}
+.slotRow.fullHour { border-top-color:var(--grid-line); }
+.slotRow.firstRow { border-top:none; }
+.timeLabel { width:44px; padding-left:6px; font-size:9px; letter-spacing:0.04em; color:var(--color-text-muted); }
+.courtDividers {
+  grid-column:1 / -1; grid-row:1 / -1; pointer-events:none;
+  display:grid; grid-template-columns:44px repeat(4,1fr); z-index:0;
+}
+.courtDividers > div { border-left:1px solid var(--grid-line-soft); }
+.courtDividers > div:first-child { border-left:none; }
+.event {
+  position:relative; margin:1px; padding:4px 6px 4px 8px;
+  border-radius:4px; background:var(--event-hard-bg);
+  border-left:2px solid var(--event-hard-bar);
+  overflow:hidden; display:flex; flex-direction:column; z-index:2; min-width:0;
+}
+.event.clay { background:var(--event-clay-bg); border-left-color:var(--event-clay-bar); }
+.event.eventLock { background:var(--event-lock-bg); border-left-color:var(--event-lock-bar); }
+.event .time { font-size:9px; letter-spacing:0.04em; color:var(--color-text-muted); line-height:1.3; }
+.event .name { font-size:11px; color:var(--color-text-primary); line-height:1.3; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.event .meta { font-size:9px; color:var(--color-text-muted); margin-top:2px; line-height:1.2; }
+.event .modeDot { position:absolute; top:5px; right:5px; width:5px; height:5px; border-radius:50%; }
+.event.short .time,.event.short .meta { display:none; }
+.nowLine { position:absolute; left:44px; right:0; height:1px; background:var(--color-now); z-index:3; pointer-events:none; }
+.nowLine::before { content:''; position:absolute; left:-3px; top:-2px; width:5px; height:5px; border-radius:50%; background:var(--color-now); }
 
-/* ── Month Grid ── */
-.monthGrid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px}
-.monthDayHdr{text-align:center;padding:6px 0 8px;font-size:10px;letter-spacing:.08em;color:var(--color-text-muted);text-transform:uppercase}
-.monthCell{display:flex;flex-direction:column;align-items:center;padding:4px 2px 6px;border-radius:6px;gap:3px;min-height:48px;transition:background 160ms ease}
-.monthCell:not(.empty):hover{background:var(--color-surface-alt)}
-.monthCellNum{font-size:13px;color:var(--color-text-secondary);width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:50%;transition:all 180ms ease}
-.monthCell.today .monthCellNum{background:var(--color-text-primary);color:var(--color-bg);font-weight:500}
-.monthCell.selected:not(.today) .monthCellNum{background:var(--color-surface-alt);color:var(--color-text-primary);font-weight:500;box-shadow:inset 0 0 0 1px var(--color-border)}
-.monthCell.weekend .monthCellNum{color:var(--color-clay)}
-.monthCell.today.weekend .monthCellNum{color:var(--color-bg)}
-.monthDots{display:flex;gap:2px;flex-wrap:wrap;justify-content:center;max-width:28px}
-.monthDot{width:4px;height:4px;border-radius:50%}
-.dot-hard{background:var(--color-hard);opacity:.8}
-.dot-clay{background:var(--color-clay);opacity:.8}
-.dot-event{background:var(--dot-event);opacity:.9}
-.dot-coach{background:var(--dot-coach);opacity:.9}
+/* ── Month View ── */
+.monthGrid { display:grid; grid-template-columns:repeat(7,1fr); gap:1px; }
+.monthDayHeader {
+  text-align:center; padding:6px 0 8px;
+  font-size:10px; letter-spacing:0.08em; color:var(--color-text-muted); text-transform:uppercase;
+}
+.monthCell {
+  display:flex; flex-direction:column; align-items:center;
+  padding:4px 2px 6px; border-radius:6px; gap:3px; min-height:48px;
+  transition:background 160ms ease;
+}
+.monthCell:not(.empty):hover { background:var(--color-surface-alt); }
+.monthCellNum {
+  font-size:13px; color:var(--color-text-secondary);
+  width:26px; height:26px;
+  display:flex; align-items:center; justify-content:center;
+  border-radius:50%; transition:all 180ms ease;
+}
+.monthCell.today .monthCellNum { background:var(--color-text-primary); color:var(--color-bg); font-weight:500; }
+.monthCell.selected:not(.today) .monthCellNum { background:var(--color-surface-alt); color:var(--color-text-primary); font-weight:500; box-shadow:inset 0 0 0 1px var(--color-border); }
+.monthCell.weekend .monthCellNum { color:var(--color-clay); }
+.monthCell.today.weekend .monthCellNum { color:var(--color-bg); }
+.monthCell.other-month .monthCellNum { opacity:0.3; }
+.monthDots { display:flex; gap:2px; flex-wrap:wrap; justify-content:center; max-width:28px; }
+.monthDot { width:4px; height:4px; border-radius:50%; }
+.dot-hard { background:var(--color-hard); opacity:0.7; }
+.dot-clay { background:var(--color-clay); opacity:0.7; }
+.dot-event { background:var(--dot-event); opacity:0.8; }
+.dot-coach { background:var(--dot-coach); opacity:0.8; }
+
+/* ── Screen Titles ── */
+.screenTitle {
+  font-family:var(--font-display); font-size:20px; font-weight:500;
+  letter-spacing:0.04em; color:var(--color-text-primary);
+  margin:4px 0 20px; padding:0 4px;
+}
+.screenSection {
+  font-size:10px; letter-spacing:0.10em; color:var(--color-text-muted);
+  text-transform:uppercase; margin:20px 0 10px; padding:0 4px;
+}
 
 /* ── Booking Cards ── */
-.bookingCard{background:var(--color-surface);border:1px solid var(--color-border-soft);border-radius:12px;padding:14px 16px;margin-bottom:10px;display:flex;gap:14px;align-items:flex-start}
-.bookingCardDate{text-align:center;min-width:36px;flex-shrink:0}
-.bookingCardDateNum{font-family:var(--font-display);font-size:22px;font-weight:500;line-height:1;color:var(--color-text-primary)}
-.bookingCardDateMon{font-size:9px;letter-spacing:.10em;color:var(--color-text-muted);text-transform:uppercase}
-.bookingCardBody{flex:1;min-width:0}
-.bookingCardTime{font-size:14px;font-weight:500;color:var(--color-text-primary);margin-bottom:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.bookingCardMeta{font-size:12px;color:var(--color-text-secondary)}
-.bookingCardActions{display:flex;gap:8px;margin-top:10px}
-.statusChip{display:inline-flex;align-items:center;padding:2px 8px;border-radius:99px;font-size:10px;letter-spacing:.06em;font-weight:500}
-.statusChip.confirmed{background:rgba(107,138,107,.18);color:#8ab88a}
-.statusChip.completed{background:var(--color-surface-alt);color:var(--color-text-muted)}
-.statusChip.cancelled{background:rgba(184,92,74,.18);color:#d48070}
-.cancelBtn{font-size:11px;padding:4px 12px;border-radius:99px;border:1px solid var(--color-border);color:var(--color-text-muted);letter-spacing:.06em;transition:all 150ms ease}
-.cancelBtn:hover{border-color:var(--color-clay);color:var(--color-clay)}
+.bookingCard {
+  background:var(--color-surface); border:1px solid var(--color-border-soft);
+  border-radius:12px; padding:14px 16px; margin-bottom:10px;
+  display:flex; gap:14px; align-items:flex-start;
+}
+.bookingCardDate {
+  text-align:center; min-width:36px; flex-shrink:0;
+}
+.bookingCardDateNum {
+  font-family:var(--font-display); font-size:22px; font-weight:500;
+  line-height:1; color:var(--color-text-primary);
+}
+.bookingCardDateMon {
+  font-size:9px; letter-spacing:0.10em; color:var(--color-text-muted); text-transform:uppercase;
+}
+.bookingCardBody { flex:1; min-width:0; }
+.bookingCardTime {
+  font-size:14px; font-weight:500; color:var(--color-text-primary);
+  margin-bottom:3px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+}
+.bookingCardMeta { font-size:12px; color:var(--color-text-secondary); }
+.statusChip {
+  display:inline-flex; align-items:center;
+  padding:2px 8px; border-radius:99px;
+  font-size:10px; letter-spacing:0.06em; font-weight:500;
+}
+.statusChip.confirmed { background:rgba(74,109,74,0.10); color:var(--dot-event); }
+.statusChip.completed { background:var(--color-surface-alt); color:var(--color-text-muted); }
+.statusChip.cancelled { background:rgba(184,92,74,0.10); color:var(--color-clay); }
 
-/* ── Add Booking Button ── */
-.addBookingBtn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:15px;border-radius:12px;background:var(--color-surface);border:1px solid var(--color-border);color:var(--color-text-secondary);font-size:13px;letter-spacing:.08em;margin-bottom:24px;cursor:pointer;transition:all 180ms ease}
-.addBookingBtn:hover{border-color:var(--color-accent-dim);color:var(--color-accent)}
-.addBookingBtn svg{flex-shrink:0}
+/* ── Schedule Items ── */
+.scheduleItem {
+  display:flex; gap:14px; align-items:flex-start; padding:14px 0;
+  border-bottom:1px solid var(--color-border-soft);
+}
+.scheduleItem:last-child { border-bottom:none; }
+.scheduleItemBar {
+  width:3px; border-radius:2px; min-height:44px; flex-shrink:0; margin-top:3px;
+  background:var(--event-hard-bar);
+}
+.scheduleItemBar.clay { background:var(--event-clay-bar); }
+.scheduleItemBar.lock { background:var(--event-lock-bar); }
+.scheduleItemBody { flex:1; }
+.scheduleItemTime { font-size:12px; color:var(--color-text-muted); letter-spacing:0.04em; }
+.scheduleItemName { font-size:14px; color:var(--color-text-primary); margin:2px 0; }
+.scheduleItemMeta { font-size:12px; color:var(--color-text-secondary); }
 
 /* ── Member Cards ── */
-.memberCard{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--color-border-soft);cursor:pointer;transition:opacity 150ms ease}
-.memberCard:last-child{border-bottom:none}
-.memberCard:active{opacity:.6}
-.memberAvatar{width:40px;height:40px;border-radius:50%;overflow:hidden;flex-shrink:0;border:1px solid var(--color-border-soft)}
-.memberAvatar img{width:100%;height:100%;object-fit:cover}
-.memberInfo{flex:1;min-width:0}
-.memberName{font-size:14px;color:var(--color-text-primary);font-weight:500}
-.memberMeta{font-size:11px;color:var(--color-text-muted);margin-top:2px}
-.memberBadge{font-size:10px;padding:2px 8px;border-radius:99px;border:1px solid var(--color-border);color:var(--color-text-muted);white-space:nowrap;letter-spacing:.04em}
-.memberBadge.coach{border-color:var(--color-accent);color:var(--color-accent)}
-.memberBadge.admin{border-color:#8ab88a;color:#8ab88a}
-.searchBar{width:100%;padding:11px 14px;border-radius:10px;background:var(--color-surface);border:1px solid var(--color-border-soft);font-size:14px;color:var(--color-text-primary);margin-bottom:16px;letter-spacing:.02em}
-.searchBar::placeholder{color:var(--color-text-muted)}
-
-/* ── Admin Panel ── */
-.pendingCard{background:var(--color-surface);border:1px solid var(--color-border-soft);border-radius:12px;padding:14px 16px;margin-bottom:10px}
-.pendingCardTop{display:flex;align-items:center;gap:12px;margin-bottom:12px}
-.pendingCardInfo{flex:1}
-.pendingCardName{font-size:14px;color:var(--color-text-primary);font-weight:500}
-.pendingCardMeta{font-size:11px;color:var(--color-text-muted);margin-top:2px}
-.pendingActions{display:flex;gap:8px}
-.approveBtn{flex:1;padding:9px;border-radius:9px;background:rgba(107,138,107,.2);color:#8ab88a;font-size:12px;letter-spacing:.06em;transition:all 150ms ease}
-.approveBtn:hover{background:rgba(107,138,107,.3)}
-.rejectBtn{flex:1;padding:9px;border-radius:9px;background:rgba(138,58,42,.2);color:#d07060;font-size:12px;letter-spacing:.06em;transition:all 150ms ease}
-.rejectBtn:hover{background:rgba(138,58,42,.3)}
+.memberCard {
+  display:flex; align-items:center; gap:12px;
+  padding:12px 0; border-bottom:1px solid var(--color-border-soft);
+}
+.memberCard:last-child { border-bottom:none; }
+.memberAvatar {
+  width:40px; height:40px; border-radius:50%; overflow:hidden;
+  flex-shrink:0; border:1px solid var(--color-border-soft);
+}
+.memberAvatar img { width:100%; height:100%; object-fit:cover; }
+.memberInfo { flex:1; min-width:0; }
+.memberName { font-size:14px; color:var(--color-text-primary); font-weight:500; }
+.memberMeta { font-size:11px; color:var(--color-text-muted); margin-top:2px; }
+.memberBadge {
+  font-size:10px; padding:2px 8px; border-radius:99px;
+  border:1px solid var(--color-border); color:var(--color-text-muted);
+  white-space:nowrap;
+}
+.memberBadge.coach { border-color:var(--dot-coach); color:var(--dot-coach); }
+.searchBar {
+  width:100%; padding:10px 14px; border-radius:10px;
+  background:var(--color-surface-alt); border:none;
+  font:inherit; font-size:14px; color:var(--color-text-primary);
+  outline:none; margin-bottom:16px;
+  letter-spacing:0.02em;
+}
+.searchBar::placeholder { color:var(--color-text-muted); }
 
 /* ── Bottom Nav ── */
-.bottomNav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:420px;height:60px;background:var(--color-surface);border-top:1px solid var(--color-border-soft);display:flex;align-items:center;justify-content:space-around;z-index:100;padding-bottom:env(safe-area-inset-bottom,0px)}
-@media(max-width:480px){.bottomNav{border-radius:0}}
-.navTab{display:flex;flex-direction:column;align-items:center;gap:2px;flex:1;padding:8px 0;color:var(--color-text-muted);font-size:10px;letter-spacing:.05em;transition:color 180ms ease}
-.navTab.active{color:var(--color-text-primary)}
-.navTab svg{opacity:.45;transition:opacity 180ms ease}
-.navTab.active svg{opacity:1}
-.navTabAvatar{width:26px;height:26px;border-radius:50%;overflow:hidden;border:1.5px solid var(--color-border);transition:border-color 180ms ease}
-.navTab.active .navTabAvatar{border-color:var(--color-text-primary)}
-.navTabAvatar img{width:100%;height:100%;object-fit:cover}
+.bottomNav {
+  position:fixed; bottom:0; left:50%; transform:translateX(-50%);
+  width:100%; max-width:420px; height:60px;
+  background:var(--color-surface); border-top:1px solid var(--color-border-soft);
+  display:flex; align-items:center; justify-content:space-around;
+  z-index:100; padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (max-width:480px) { .bottomNav { border-radius:0; } }
+.navTab {
+  display:flex; flex-direction:column; align-items:center; gap:2px;
+  flex:1; padding:8px 0; color:var(--color-text-muted);
+  font-size:10px; letter-spacing:0.05em; transition:color 180ms ease;
+}
+.navTab.active { color:var(--color-text-primary); }
+.navTab svg { opacity:0.50; transition:opacity 180ms ease; }
+.navTab.active svg { opacity:1; }
+.navTabAvatar {
+  width:26px; height:26px; border-radius:50%; overflow:hidden;
+  border:1.5px solid var(--color-border); transition:border-color 180ms ease;
+}
+.navTab.active .navTabAvatar { border-color:var(--color-text-primary); }
+.navTabAvatar img { width:100%; height:100%; object-fit:cover; }
 
-/* ── Sheets ── */
-.sheetBackdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;opacity:0;pointer-events:none;transition:opacity 280ms ease}
-.sheetBackdrop.open{opacity:1;pointer-events:auto}
-.profileSheet{position:fixed;bottom:0;left:50%;transform:translateX(-50%) translateY(100%);width:100%;max-width:420px;background:var(--color-surface);border-radius:20px 20px 0 0;z-index:201;transition:transform 300ms cubic-bezier(.32,.72,0,1);padding:0 0 calc(24px + env(safe-area-inset-bottom,0px));max-height:90vh;overflow-y:auto}
-.profileSheet.open{transform:translateX(-50%) translateY(0)}
-.sheetHandle{width:36px;height:4px;background:var(--color-border);border-radius:2px;margin:12px auto 20px}
-.sheetUserRow{display:flex;align-items:center;gap:14px;padding:0 20px 18px;border-bottom:1px solid var(--color-border-soft)}
-.sheetAvatar{width:52px;height:52px;border-radius:50%;overflow:hidden;border:1.5px solid var(--color-border);flex-shrink:0}
-.sheetAvatar img{width:100%;height:100%;object-fit:cover}
-.sheetNameRow{display:flex;align-items:center;gap:8px}
-.sheetUserName{font-family:var(--font-display);font-size:17px;font-weight:500;color:var(--color-text-primary);letter-spacing:.04em}
-.editNameBtn{font-size:10px;letter-spacing:.06em;color:var(--color-text-muted);border:1px solid var(--color-border);border-radius:99px;padding:2px 8px}
-.sheetMemberBadge{font-size:11px;color:var(--color-text-secondary);letter-spacing:.04em}
-.sheetSection{padding:12px 20px 0}
-.sheetRow{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--color-border-soft);font-size:14px}
-.sheetRow:last-child{border-bottom:none}
-.sheetRowLabel{color:var(--color-text-secondary);font-size:13px;letter-spacing:.04em}
-.sheetRowValue{font-size:13px;color:var(--color-text-primary);text-align:right}
-.sheetNavRow{cursor:pointer;transition:opacity 150ms ease}
-.sheetNavRow:active{opacity:.6}
-.sheetRowChevron{font-size:18px;color:var(--color-text-muted);line-height:1}
-.subSheet{position:fixed;bottom:0;left:50%;transform:translateX(-50%) translateY(100%);width:100%;max-width:420px;background:var(--color-surface);border-radius:20px 20px 0 0;z-index:202;transition:transform 300ms cubic-bezier(.32,.72,0,1);padding:0 0 calc(24px + env(safe-area-inset-bottom,0px));max-height:90vh;overflow-y:auto}
-.subSheet.open{transform:translateX(-50%) translateY(0)}
-.subSheetHeader{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--color-border-soft)}
-.subSheetBack{font-size:24px;line-height:1;color:var(--color-text-secondary);width:32px}
-.subSheetTitle{font-family:var(--font-display);font-size:15px;letter-spacing:.06em;color:var(--color-text-primary)}
+/* ── Profile Sheet ── */
+.sheetBackdrop {
+  position:fixed; inset:0; background:rgba(26,31,28,0.35);
+  z-index:200; opacity:0; pointer-events:none; transition:opacity 280ms ease;
+}
+.sheetBackdrop.open { opacity:1; pointer-events:auto; }
+.profileSheet {
+  position:fixed; bottom:0; left:50%;
+  transform:translateX(-50%) translateY(100%);
+  width:100%; max-width:420px; background:var(--color-bg);
+  border-radius:20px 20px 0 0; z-index:201;
+  transition:transform 300ms cubic-bezier(0.32,0.72,0,1);
+  padding:0 0 calc(24px + env(safe-area-inset-bottom,0px));
+  max-height:90vh; overflow-y:auto;
+}
+.profileSheet.open { transform:translateX(-50%) translateY(0); }
+.sheetHandle { width:36px; height:4px; background:var(--color-border); border-radius:2px; margin:12px auto 20px; }
+.sheetUserRow {
+  display:flex; align-items:center; gap:14px;
+  padding:0 20px 18px; border-bottom:1px solid var(--color-border-soft);
+}
+.sheetAvatar { width:52px; height:52px; border-radius:50%; overflow:hidden; border:1.5px solid var(--color-border); flex-shrink:0; }
+.sheetAvatar img { width:100%; height:100%; object-fit:cover; }
+.sheetUserInfo { display:flex; flex-direction:column; gap:4px; }
+.sheetNameRow { display:flex; align-items:center; gap:8px; }
+.sheetUserName { font-family:var(--font-display); font-size:17px; font-weight:500; color:var(--color-text-primary); letter-spacing:0.04em; }
+.editNameBtn {
+  font-size:10px; letter-spacing:0.06em; color:var(--color-text-muted);
+  border:1px solid var(--color-border); border-radius:99px; padding:2px 8px;
+}
+.sheetMemberBadge { font-size:11px; color:var(--color-text-secondary); letter-spacing:0.04em; }
+.sheetSection { padding:12px 20px 0; }
+.sheetRow {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:12px 0; border-bottom:1px solid var(--color-border-soft);
+  font-size:14px;
+}
+.sheetRow:last-child { border-bottom:none; }
+.sheetRowLabel { color:var(--color-text-secondary); font-size:13px; letter-spacing:0.04em; }
+.sheetRowValue { font-size:13px; color:var(--color-text-primary); text-align:right; }
+.sheetNavRow { cursor:pointer; transition:opacity 150ms ease; }
+.sheetNavRow:active { opacity:0.6; }
+.sheetRowChevron { font-size:18px; color:var(--color-text-muted); line-height:1; }
 
-/* ── Booking Form ── */
-.formSection{padding:16px 20px}
-.formLabel{display:block;font-size:10px;letter-spacing:.10em;color:var(--color-text-muted);text-transform:uppercase;margin-bottom:8px}
-.formSelect,.formInput{width:100%;padding:11px 14px;border-radius:10px;background:var(--color-surface-alt);border:1px solid var(--color-border-soft);font-size:14px;color:var(--color-text-primary);appearance:none;cursor:pointer;letter-spacing:.02em}
-.formGrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.primaryBtn{width:100%;padding:15px;background:var(--color-text-primary);color:var(--color-bg);border-radius:12px;font-size:14px;letter-spacing:.10em;font-weight:500;cursor:pointer;transition:opacity 180ms ease;margin-top:4px}
-.primaryBtn:active{opacity:.7}
-.primaryBtn:disabled{opacity:.4;cursor:not-allowed}
+/* ── Sub-Sheets ── */
+.subSheet {
+  position:fixed; bottom:0; left:50%;
+  transform:translateX(-50%) translateY(100%);
+  width:100%; max-width:420px; background:var(--color-bg);
+  border-radius:20px 20px 0 0; z-index:202;
+  transition:transform 300ms cubic-bezier(0.32,0.72,0,1);
+  padding:0 0 calc(24px + env(safe-area-inset-bottom,0px));
+  max-height:90vh; overflow-y:auto;
+}
+.subSheet.open { transform:translateX(-50%) translateY(0); }
+.subSheetHeader {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:14px 20px; border-bottom:1px solid var(--color-border-soft);
+}
+.subSheetBack {
+  font-size:22px; line-height:1; color:var(--color-text-secondary); width:32px;
+}
+.subSheetTitle { font-family:var(--font-display); font-size:15px; letter-spacing:0.06em; color:var(--color-text-primary); }
 
 /* ── Settings ── */
-.settingsRow{padding:16px 20px;border-bottom:1px solid var(--color-border-soft)}
-.settingsRow:last-child{border-bottom:none}
-.settingsLabel{display:block;font-size:10px;letter-spacing:.08em;color:var(--color-text-muted);text-transform:uppercase;margin-bottom:8px}
-.settingsInput,.settingsSelect{width:100%;font-size:14px;color:var(--color-text-primary);background:transparent;border:none;border-bottom:1px solid var(--color-border);padding:4px 0;appearance:none}
-.saveBtn{display:block;width:calc(100% - 40px);margin:16px 20px;padding:14px;background:var(--color-text-primary);color:var(--color-bg);border-radius:12px;font-size:14px;letter-spacing:.10em;text-align:center;cursor:pointer}
+.settingsRow { padding:16px 20px; border-bottom:1px solid var(--color-border-soft); }
+.settingsRow:last-child { border-bottom:none; }
+.settingsLabel {
+  display:block; font-size:10px; letter-spacing:0.08em; color:var(--color-text-muted);
+  text-transform:uppercase; margin-bottom:8px;
+}
+.settingsInput,.settingsSelect {
+  width:100%; font:inherit; font-size:14px; color:var(--color-text-primary);
+  background:transparent; border:none; border-bottom:1px solid var(--color-border);
+  padding:4px 0; outline:none; appearance:none;
+}
+.settingsSelect { cursor:pointer; }
+.saveBtn {
+  display:block; width:calc(100% - 40px); margin:16px 20px;
+  padding:14px; background:var(--color-text-primary); color:var(--color-bg);
+  border-radius:12px; font-size:14px; letter-spacing:0.10em;
+  text-align:center; cursor:pointer;
+}
 
 /* ── Notifications ── */
-.notifItem{display:flex;gap:12px;padding:14px 20px;border-bottom:1px solid var(--color-border-soft);align-items:flex-start}
-.notifDot{width:7px;height:7px;border-radius:50%;background:var(--color-accent);flex-shrink:0;margin-top:5px}
-.notifItem.read .notifDot{opacity:0}
-.notifTitle{font-size:13px;font-weight:500;color:var(--color-text-primary);margin-bottom:2px}
-.notifText{font-size:12px;color:var(--color-text-secondary)}
-.notifTime{font-size:10px;color:var(--color-text-muted);margin-top:3px;letter-spacing:.04em}
+.notifItem {
+  display:flex; gap:12px; padding:14px 20px;
+  border-bottom:1px solid var(--color-border-soft);
+  align-items:flex-start;
+}
+.notifDot {
+  width:8px; height:8px; border-radius:50%;
+  background:var(--color-text-primary); flex-shrink:0; margin-top:5px;
+  transition:opacity 200ms;
+}
+.notifItem.read .notifDot { opacity:0; }
+.notifBody { flex:1; }
+.notifTitle { font-size:13px; font-weight:500; color:var(--color-text-primary); margin-bottom:2px; }
+.notifText { font-size:12px; color:var(--color-text-secondary); }
+.notifTime { font-size:10px; color:var(--color-text-muted); letter-spacing:0.04em; margin-top:3px; }
 
 /* ── About ── */
-.aboutContent{padding:20px 20px 0}
-.aboutBlock{margin-bottom:20px}
-.aboutBlockTitle{font-size:10px;letter-spacing:.10em;color:var(--color-text-muted);text-transform:uppercase;margin-bottom:8px}
-.aboutBlockText{font-size:13px;color:var(--color-text-secondary);line-height:1.8}
-.aboutDivider{height:1px;background:var(--color-border-soft);margin:20px 0}
+.aboutContent { padding:20px 20px 0; }
+.aboutLogo { text-align:center; margin-bottom:24px; }
+.aboutBlock { margin-bottom:20px; }
+.aboutBlockTitle {
+  font-size:10px; letter-spacing:0.10em; color:var(--color-text-muted);
+  text-transform:uppercase; margin-bottom:8px;
+}
+.aboutBlockText { font-size:13px; color:var(--color-text-secondary); line-height:1.7; }
+.aboutDivider { height:1px; background:var(--color-border-soft); margin:20px 0; }
 
 /* ── Empty State ── */
-.emptyState{text-align:center;padding:48px 20px;color:var(--color-text-muted);font-size:13px;letter-spacing:.04em}
-.emptyStateIcon{font-size:28px;margin-bottom:12px;opacity:.35}
-
-/* ── Toast ── */
-.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--color-surface-raised);color:var(--color-text-primary);padding:10px 20px;border-radius:20px;font-size:13px;letter-spacing:.04em;z-index:300;opacity:0;transition:all 250ms ease;pointer-events:none;white-space:nowrap;border:1px solid var(--color-border-soft)}
-.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.emptyState {
+  text-align:center; padding:48px 20px;
+  color:var(--color-text-muted); font-size:13px; letter-spacing:0.04em;
+}
+.emptyStateIcon { font-size:32px; margin-bottom:12px; opacity:0.4; }
 </style>
 </head>
 <body>
-<!-- ── Loading ── -->
-<div id="screen-loading" class="app loadingScreen">
-  <svg class="loadingMark" width="48" height="48" viewBox="0 0 100 100">
-    <line x1="28" y1="28" x2="72" y2="72" stroke="#e8e1d0" stroke-width="9.5" stroke-linecap="round" fill="none"/>
-    <line x1="72" y1="28" x2="28" y2="72" stroke="#e8e1d0" stroke-width="9.5" stroke-linecap="round" fill="none"/>
-    <path d="M 50 7 Q 62 22 50 37 Q 38 22 50 7 Z" fill="#e8e1d0"/>
-    <path d="M 50 63 Q 62 78 50 93 Q 38 78 50 63 Z" fill="#e8e1d0"/>
-    <path d="M 7 50 Q 22 38 37 50 Q 22 62 7 50 Z" fill="#e8e1d0"/>
-    <path d="M 63 50 Q 78 38 93 50 Q 78 62 63 50 Z" fill="#e8e1d0"/>
-  </svg>
-  <span class="loadingText">清心網球協會</span>
-</div>
 
-<!-- ── Login ── -->
-<div id="screen-login" class="app authScreen" style="display:none">
-  <svg class="authMark" width="52" height="52" viewBox="0 0 100 100">
-    <line x1="28" y1="28" x2="72" y2="72" stroke="#e8e1d0" stroke-width="9.5" stroke-linecap="round" fill="none"/>
-    <line x1="72" y1="28" x2="28" y2="72" stroke="#e8e1d0" stroke-width="9.5" stroke-linecap="round" fill="none"/>
-    <path d="M 50 7 Q 62 22 50 37 Q 38 22 50 7 Z" fill="#e8e1d0"/>
-    <path d="M 50 63 Q 62 78 50 93 Q 38 78 50 63 Z" fill="#e8e1d0"/>
-    <path d="M 7 50 Q 22 38 37 50 Q 22 62 7 50 Z" fill="#e8e1d0"/>
-    <path d="M 63 50 Q 78 38 93 50 Q 78 62 63 50 Z" fill="#e8e1d0"/>
-  </svg>
-  <div class="authTitle">CHING XIN</div>
-  <div class="authSub">Tennis Society · 清心網球協會</div>
-  <button class="lineBtn" onclick="doLineLogin()">
-    <svg class="lineIco" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-      <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.63-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.105.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.63-.63.346 0 .628.285.628.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.281.629-.629.629M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314"/>
-    </svg>
-    以 LINE 登入
-  </button>
-  <p class="authNote">新會員需經管理員審核後開放功能<br>登入即表示同意服務條款與隱私政策</p>
-</div>
-
-<!-- ── Pending ── -->
-<div id="screen-pending" class="app authScreen" style="display:none">
-  <svg class="authMark" width="42" height="42" viewBox="0 0 100 100">
-    <line x1="28" y1="28" x2="72" y2="72" stroke="#e8e1d0" stroke-width="9.5" stroke-linecap="round" fill="none"/>
-    <line x1="72" y1="28" x2="28" y2="72" stroke="#e8e1d0" stroke-width="9.5" stroke-linecap="round" fill="none"/>
-    <path d="M 50 7 Q 62 22 50 37 Q 38 22 50 7 Z" fill="#e8e1d0"/>
-    <path d="M 50 63 Q 62 78 50 93 Q 38 78 50 63 Z" fill="#e8e1d0"/>
-    <path d="M 7 50 Q 22 38 37 50 Q 22 62 7 50 Z" fill="#e8e1d0"/>
-    <path d="M 63 50 Q 78 38 93 50 Q 78 62 63 50 Z" fill="#e8e1d0"/>
-  </svg>
-  <div class="authTitle" style="font-size:16px;margin-bottom:6px">會員審核中</div>
-  <div class="authSub" style="margin-bottom:28px">您的申請已收到，請等待管理員審核</div>
-  <div class="statusCard" style="width:100%">
-    <div class="statusRow"><span class="statusKey">顯示名稱</span><span class="statusVal" id="pendingName">—</span></div>
-    <div class="statusRow"><span class="statusKey">申請時間</span><span class="statusVal" id="pendingTime">—</span></div>
-    <div class="statusRow"><span class="statusKey">狀態</span><span class="statusVal"><span class="statusBadge pending">PENDING</span></span></div>
-  </div>
-  <button class="authBack" onclick="doLogout()">登出並切換帳號</button>
-</div>
-
-<!-- ── Blocked ── -->
-<div id="screen-blocked" class="app authScreen" style="display:none">
-  <div class="authTitle" style="font-size:16px;color:#d07060">帳號已被封鎖</div>
-  <div class="authSub">如有疑問請聯繫管理員</div>
-  <button class="authBack" onclick="doLogout()">登出</button>
-</div>
-
-<!-- ── Main App ── -->
-<div id="screen-app" class="app" style="display:none">
+<div class="app">
   <header class="header">
     <div class="brand">
       <div class="brandRow">
-        <svg width="40" height="40" viewBox="0 0 100 100">
+        <svg width="40" height="40" viewBox="0 0 100 100" aria-label="CHING XIN logo mark">
           <line x1="28" y1="28" x2="72" y2="72" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" fill="none"/>
           <line x1="72" y1="28" x2="28" y2="72" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" fill="none"/>
           <path d="M 50 7 Q 62 22 50 37 Q 38 22 50 7 Z" fill="currentColor"/>
@@ -431,24 +452,26 @@ input,select{font:inherit;color:inherit;background:transparent;border:none;outli
         </svg>
         <span class="brandName">CHING XIN</span>
       </div>
-      <span class="brandSub">Tennis Society  ·  清心網球協會</span>
+      <span class="brandSub">Tennis Society  ·  清心網球會</span>
     </div>
   </header>
 
-  <!-- Screen: 場地 -->
-  <div class="screen active" id="tab-court">
+  <!-- ── Screen: 場地 ── -->
+  <div class="screen active" id="screen-court">
     <div class="viewSwitcher">
       <div class="switcherGroup">
         <button class="switcherOption active" id="btnWeek" onclick="setView('week',this)">Week</button>
         <button class="switcherOption" id="btnMonth" onclick="setView('month',this)">Month</button>
       </div>
     </div>
+
+    <!-- Week view -->
     <div id="view-week">
       <div class="weekStrip">
         <div class="weekHeader">
-          <button class="navButton" onclick="changeWeek(-1)">‹</button>
+          <button class="navButton" onclick="changeWeek(-1)" aria-label="上一週">‹</button>
           <span class="monthLabel" id="weekMonthLabel"></span>
-          <button class="navButton" onclick="changeWeek(1)">›</button>
+          <button class="navButton" onclick="changeWeek(1)" aria-label="下一週">›</button>
         </div>
         <div class="chips" id="chips"></div>
       </div>
@@ -461,6 +484,8 @@ input,select{font:inherit;color:inherit;background:transparent;border:none;outli
         <div class="grid" id="grid"></div>
       </div>
     </div>
+
+    <!-- Month view -->
     <div id="view-month" style="display:none">
       <div class="weekStrip">
         <div class="weekHeader">
@@ -473,415 +498,325 @@ input,select{font:inherit;color:inherit;background:transparent;border:none;outli
     </div>
   </div>
 
-  <!-- Screen: 預約 -->
-  <div class="screen" id="tab-book">
+  <!-- ── Screen: 預約 ── -->
+  <div class="screen" id="screen-book">
     <div class="screenTitle">預約紀錄</div>
-    <button class="addBookingBtn" onclick="openBookingForm()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      新增預約
-    </button>
     <div class="screenSection">即將到來</div>
     <div id="bookUpcoming"></div>
     <div class="screenSection">過往紀錄</div>
     <div id="bookPast"></div>
   </div>
 
-  <!-- Screen: 管理 -->
-  <div class="screen" id="tab-manage">
-    <div class="screenTitle">管理</div>
-    <div id="manageContent"></div>
+  <!-- ── Screen: 行程 ── -->
+  <div class="screen" id="screen-schedule">
+    <div class="screenTitle">我的行程</div>
+    <div id="scheduleList"></div>
   </div>
 
-  <!-- Screen: 會員 -->
-  <div class="screen" id="tab-members">
+  <!-- ── Screen: 會員 ── -->
+  <div class="screen" id="screen-members">
     <div class="screenTitle">會員名單</div>
-    <input class="searchBar" type="text" placeholder="搜尋會員…" oninput="filterMembers(this.value)">
+    <input class="searchBar" id="memberSearch" type="text" placeholder="搜尋會員…" oninput="filterMembers(this.value)">
     <div id="memberList"></div>
   </div>
 
-  <!-- Bottom Nav -->
+  <!-- ── Bottom Nav ── -->
   <nav class="bottomNav">
     <button class="navTab active" onclick="showTab('court',this)">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+        <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="12" y1="3" x2="12" y2="21"/>
+      </svg>
       場地
     </button>
     <button class="navTab" onclick="showTab('book',this)">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+        <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+      </svg>
       預約
     </button>
-    <button class="navTab" onclick="showTab('manage',this)">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      管理
+    <button class="navTab" onclick="showTab('schedule',this)">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+        <circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/>
+      </svg>
+      行程
     </button>
     <button class="navTab" onclick="showTab('members',this)">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+        <circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/>
+      </svg>
       會員
     </button>
     <button class="navTab" id="tabProfile" onclick="openProfile()">
-      <div class="navTabAvatar"><img id="navAvatarImg" src="" alt="我的"></div>
+      <div class="navTabAvatar">
+        <img id="navAvatarImg" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 26 26'%3E%3Crect width='26' height='26' fill='%23d4c9b5'/%3E%3Ccircle cx='13' cy='10' r='4.5' fill='%238a7f6e'/%3E%3Cellipse cx='13' cy='22' rx='7.5' ry='5.5' fill='%238a7f6e'/%3E%3C/svg%3E" alt="我的">
+      </div>
       我的
     </button>
   </nav>
 </div>
 
-<!-- ── Backdrop ── -->
+<!-- Backdrop -->
 <div class="sheetBackdrop" id="sheetBackdrop" onclick="closeAllSheets()"></div>
 
 <!-- ── Profile Sheet ── -->
 <div class="profileSheet" id="profileSheet">
   <div class="sheetHandle"></div>
   <div class="sheetUserRow">
-    <div class="sheetAvatar"><img id="profileAvatarImg" src="" alt="頭像"></div>
-    <div>
+    <div class="sheetAvatar">
+      <img id="profileAvatarImg" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='52' height='52' viewBox='0 0 52 52'%3E%3Crect width='52' height='52' fill='%23d4c9b5'/%3E%3Ccircle cx='26' cy='20' r='9' fill='%238a7f6e'/%3E%3Cellipse cx='26' cy='44' rx='14' ry='10' fill='%238a7f6e'/%3E%3C/svg%3E" alt="頭像">
+    </div>
+    <div class="sheetUserInfo">
       <div class="sheetNameRow">
-        <span class="sheetUserName" id="profileDisplayName">—</span>
+        <span class="sheetUserName" id="profileDisplayName">Maverick 小狸</span>
         <button class="editNameBtn" onclick="openSettings()">編輯</button>
       </div>
-      <span class="sheetMemberBadge" id="profileBadge">—</span>
+      <span class="sheetMemberBadge" id="profileBadge">Annual Member · Expire 2026/12/31</span>
     </div>
   </div>
   <div class="sheetSection">
-    <div class="sheetRow"><span class="sheetRowLabel">NTRP</span><span class="sheetRowValue" id="profileNTRP">—</span></div>
-    <div class="sheetRow"><span class="sheetRowLabel">擅長位置</span><span class="sheetRowValue" id="profilePosition">—</span></div>
-    <div class="sheetRow"><span class="sheetRowLabel">會員類型</span><span class="sheetRowValue" id="profileRole">—</span></div>
-    <div class="sheetRow"><span class="sheetRowLabel">會費到期日</span><span class="sheetRowValue" id="profileExpire">—</span></div>
+    <div class="sheetRow">
+      <span class="sheetRowLabel">NTRP</span>
+      <span class="sheetRowValue" id="profileNTRP">3.5</span>
+    </div>
+    <div class="sheetRow">
+      <span class="sheetRowLabel">擅長位置</span>
+      <span class="sheetRowValue" id="profilePosition">底線型 / 後場</span>
+    </div>
+    <div class="sheetRow">
+      <span class="sheetRowLabel">會員類型</span>
+      <span class="sheetRowValue" id="profileMemberType">Annual Member</span>
+    </div>
+    <div class="sheetRow">
+      <span class="sheetRowLabel">會費到期日</span>
+      <span class="sheetRowValue" id="profileExpire">2026 / 12 / 31</span>
+    </div>
+    <div class="sheetRow">
+      <span class="sheetRowLabel">本月出席</span>
+      <span class="sheetRowValue" id="profileAttendance">1 次</span>
+    </div>
   </div>
   <div class="sheetSection">
-    <div class="sheetRow sheetNavRow" onclick="openNotifications()"><span class="sheetRowLabel">通知中心</span><span class="sheetRowChevron">›</span></div>
-    <div class="sheetRow sheetNavRow" onclick="openAbout()"><span class="sheetRowLabel">關於清心網球協會</span><span class="sheetRowChevron">›</span></div>
-    <div class="sheetRow sheetNavRow" onclick="doLogout()"><span class="sheetRowLabel" style="color:var(--color-clay)">登出</span><span class="sheetRowChevron">›</span></div>
+    <div class="sheetRow sheetNavRow" onclick="openNotifications()">
+      <span class="sheetRowLabel">通知中心</span>
+      <span class="sheetRowChevron">›</span>
+    </div>
+    <div class="sheetRow sheetNavRow" onclick="openAbout()">
+      <span class="sheetRowLabel">關於清心網球會</span>
+      <span class="sheetRowChevron">›</span>
+    </div>
   </div>
 </div>
 
-<!-- ── Settings Sheet ── -->
+<!-- ── Settings Sub-Sheet ── -->
 <div class="subSheet" id="settingsSheet">
   <div class="sheetHandle"></div>
-  <div class="subSheetHeader"><button class="subSheetBack" onclick="closeSettings()">‹</button><span class="subSheetTitle">會員設定</span><span style="width:32px"></span></div>
-  <div class="settingsRow"><label class="settingsLabel">顯示名稱</label><input class="settingsInput" id="nameInput" type="text" placeholder="輸入顯示名稱"></div>
-  <div class="settingsRow"><label class="settingsLabel">NTRP</label><select class="settingsSelect" id="ntrpSelect"><option value="">—</option><option>2.5</option><option>3.0</option><option>3.5</option><option>4.0</option><option>4.5</option><option>5.0</option></select></div>
-  <div class="settingsRow"><label class="settingsLabel">擅長位置</label><select class="settingsSelect" id="positionSelect"><option value="">—</option><option>底線型 / 後場</option><option>網前型</option><option>全場</option><option>雙打後場</option><option>雙打網前</option></select></div>
+  <div class="subSheetHeader">
+    <button class="subSheetBack" onclick="closeSettings()">‹</button>
+    <span class="subSheetTitle">會員設定</span>
+    <span style="width:32px"></span>
+  </div>
+  <div class="settingsRow">
+    <label class="settingsLabel" for="nameInput">顯示名稱</label>
+    <input class="settingsInput" id="nameInput" type="text" value="Maverick 小狸">
+  </div>
+  <div class="settingsRow">
+    <label class="settingsLabel" for="ntrpSelect">NTRP</label>
+    <select class="settingsSelect" id="ntrpSelect">
+      <option>2.5</option><option>3.0</option>
+      <option selected>3.5</option>
+      <option>4.0</option><option>4.5</option><option>5.0</option>
+    </select>
+  </div>
+  <div class="settingsRow">
+    <label class="settingsLabel" for="positionSelect">擅長位置</label>
+    <select class="settingsSelect" id="positionSelect">
+      <option selected>底線型 / 後場</option>
+      <option>網前型</option>
+      <option>全場</option>
+      <option>雙打後場</option>
+      <option>雙打網前</option>
+    </select>
+  </div>
   <button class="saveBtn" onclick="saveSettings()">儲存設定</button>
 </div>
 
-<!-- ── Booking Form Sheet ── -->
-<div class="subSheet" id="bookingFormSheet">
-  <div class="sheetHandle"></div>
-  <div class="subSheetHeader"><button class="subSheetBack" onclick="closeBookingForm()">‹</button><span class="subSheetTitle">新增預約</span><span style="width:32px"></span></div>
-  <div class="formSection">
-    <label class="formLabel">場地</label>
-    <select class="formSelect" id="formCourt" style="margin-bottom:16px">
-      <option value="hard_a">Hard A — 硬地</option>
-      <option value="hard_b">Hard B — 硬地</option>
-      <option value="clay_a">Clay A — 紅土</option>
-      <option value="clay_b">Clay B — 紅土</option>
-    </select>
-    <label class="formLabel">日期</label>
-    <input class="formInput" id="formDate" type="date" style="margin-bottom:16px">
-    <div class="formGrid">
-      <div>
-        <label class="formLabel">開始時間</label>
-        <select class="formSelect" id="formStart"></select>
-      </div>
-      <div>
-        <label class="formLabel">結束時間</label>
-        <select class="formSelect" id="formEnd"></select>
-      </div>
-    </div>
-    <div style="margin-top:16px">
-      <label class="formLabel">模式</label>
-      <select class="formSelect" id="formMode">
-        <option value="normal">一般</option>
-        <option value="pickleball">匹克球</option>
-        <option value="coaching">教學 (教練)</option>
-        <option value="group_class">團課 (教練)</option>
-      </select>
-    </div>
-    <button class="primaryBtn" style="margin-top:20px" onclick="submitBooking()" id="submitBookingBtn">確認預約</button>
-  </div>
-</div>
-
-<!-- ── Notifications Sheet ── -->
+<!-- ── Notifications Sub-Sheet ── -->
 <div class="subSheet" id="notificationsSheet">
   <div class="sheetHandle"></div>
-  <div class="subSheetHeader"><button class="subSheetBack" onclick="closeNotifications()">‹</button><span class="subSheetTitle">通知中心</span><span style="width:32px"></span></div>
+  <div class="subSheetHeader">
+    <button class="subSheetBack" onclick="closeNotifications()">‹</button>
+    <span class="subSheetTitle">通知中心</span>
+    <span style="width:32px"></span>
+  </div>
   <div id="notificationsList"></div>
 </div>
 
-<!-- ── About Sheet ── -->
+<!-- ── About Sub-Sheet ── -->
 <div class="subSheet" id="aboutSheet">
   <div class="sheetHandle"></div>
-  <div class="subSheetHeader"><button class="subSheetBack" onclick="closeAbout()">‹</button><span class="subSheetTitle">關於清心網球協會</span><span style="width:32px"></span></div>
+  <div class="subSheetHeader">
+    <button class="subSheetBack" onclick="closeAbout()">‹</button>
+    <span class="subSheetTitle">關於清心網球會</span>
+    <span style="width:32px"></span>
+  </div>
   <div class="aboutContent">
-    <div class="aboutBlock"><div class="aboutBlockTitle">使命</div><div class="aboutBlockText">清心網球協會以慢活精神為核心，致力於維繫私人網球社群的品質與溫度。</div></div>
+    <div class="aboutLogo">
+      <svg width="48" height="48" viewBox="0 0 100 100" style="opacity:0.6">
+        <line x1="28" y1="28" x2="72" y2="72" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" fill="none"/>
+        <line x1="72" y1="28" x2="28" y2="72" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" fill="none"/>
+        <path d="M 50 7 Q 62 22 50 37 Q 38 22 50 7 Z" fill="currentColor"/>
+        <path d="M 50 63 Q 62 78 50 93 Q 38 78 50 63 Z" fill="currentColor"/>
+        <path d="M 7 50 Q 22 38 37 50 Q 22 62 7 50 Z" fill="currentColor"/>
+        <path d="M 63 50 Q 78 38 93 50 Q 78 62 63 50 Z" fill="currentColor"/>
+      </svg>
+    </div>
+    <div class="aboutBlock">
+      <div class="aboutBlockTitle">關於我們</div>
+      <div class="aboutBlockText">清心網球會是一個以慢活精神為核心的私人網球社群。我們重視品質、紀律與會員之間的深厚情誼。</div>
+    </div>
     <div class="aboutDivider"></div>
-    <div class="aboutBlock"><div class="aboutBlockTitle">場地</div><div class="aboutBlockText">HARD A · HARD B — 室外硬地<br>CLAY A · CLAY B — 紅土場地<br>平日：17:30 – 24:00<br>假日：05:30 – 24:00</div></div>
+    <div class="aboutBlock">
+      <div class="aboutBlockTitle">場地</div>
+      <div class="aboutBlockText">
+        HARD A · HARD B — 硬地標準場<br>
+        CLAY A · CLAY B — 紅土場地<br>
+        平日開放時段：17:30 – 24:00<br>
+        週末 / 假日：05:30 – 24:00
+      </div>
+    </div>
     <div class="aboutDivider"></div>
-    <div class="aboutBlock"><div class="aboutBlockTitle">系統</div><div class="aboutBlockText">Firestore 即時同步 · LINE LIFF 登入<br>iOS Safari PWA 模式</div></div>
+    <div class="aboutBlock">
+      <div class="aboutBlockTitle">教練</div>
+      <div class="aboutBlockText">
+        Coach Lin — 主教練 · NTRP 5.0<br>
+        Coach 王 — 協助教練 · NTRP 4.5
+      </div>
+    </div>
+    <div class="aboutDivider"></div>
+    <div class="aboutBlock">
+      <div class="aboutBlockTitle">版本</div>
+      <div class="aboutBlockText">Prototype · Mock Data · v0.3</div>
+    </div>
   </div>
 </div>
 
-<!-- ── Toast ── -->
-<div class="toast" id="toast"></div>
-
-<!-- ── Scripts ── -->
-<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-/* ── Firebase Init ── */
-const FB_CONFIG={
-  apiKey:"AIzaSyBrqZAvkN57jGx5LNOMtquWzK3YQ1QLFQ",
-  authDomain:"court-board-c1e29.firebaseapp.com",
-  projectId:"court-board-c1e29",
-  storageBucket:"court-board-c1e29.firebasestorage.app",
-  messagingSenderId:"337148491014",
-  appId:"1:337148491014:web:33cab9162b64afad045a87"
-};
-const LIFF_ID='2009941241-ymtu2MdM';
-const fbApp=firebase.initializeApp(FB_CONFIG);
-const db=firebase.firestore();
-const TS=firebase.firestore.FieldValue.serverTimestamp;
-
 /* ── Constants ── */
-const COURTS=['hard_a','hard_b','clay_a','clay_b'];
-const COURT_LABELS={hard_a:{surface:'HARD',letter:'A'},hard_b:{surface:'HARD',letter:'B'},clay_a:{surface:'CLAY',letter:'A'},clay_b:{surface:'CLAY',letter:'B'}};
-const COURT_SURFACE={hard_a:'hard',hard_b:'hard',clay_a:'clay',clay_b:'clay'};
-const COURT_DISPLAY={hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'};
-const MODE_LABELS={normal:'一般',coaching:'教學',group_class:'團課',pickleball:'匹克球',event_lock:'活動'};
-const ROLE_LABELS={owner:'擁有者',admin:'管理員',annual_member:'年費會員',monthly_member:'月費會員',coach:'教練',pending:'待審核'};
-const DAYS_TC=['日','一','二','三','四','五','六'];
-const MONTHS_TC=['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
-const SLOT_H=32,SLOT_MIN=30;
+const COURTS = ['hard_a','hard_b','clay_a','clay_b'];
+const COURT_LABELS = {
+  hard_a:{surface:'HARD',letter:'A'}, hard_b:{surface:'HARD',letter:'B'},
+  clay_a:{surface:'CLAY',letter:'A'}, clay_b:{surface:'CLAY',letter:'B'},
+};
+const COURT_SURFACE = {hard_a:'hard',hard_b:'hard',clay_a:'clay',clay_b:'clay'};
+const MODE_LABELS = {normal:'一般',coaching:'教學',group_class:'團課',pickleball:'匹克球',event_lock:'活動'};
+const DAYS_TC = ['日','一','二','三','四','五','六'];
+const MONTHS_TC = ['1 月','2 月','3 月','4 月','5 月','6 月','7 月','8 月','9 月','10 月','11 月','12 月'];
+const SLOT_HEIGHT = 32;
+const SLOT_MIN = 30;
 
 /* ── State ── */
-let currentUser=null;
-let unsubUser=null;
-let unsubPending=null;
-let unsubMyBookings=null;
-let usersCache={};         // uid → user doc
-let courtBookings=[];      // bookings for selected date (Firestore or mock)
-let myBookings=[];         // my all bookings
-let pendingUsers=[];       // pending approval list (admin only)
-const today=new Date();
-let selectedDate=new Date(today);
-let currentView='week';
-let useFirestore=true;     // set false if Firestore unavailable
+const today = new Date();
+let selectedDate = new Date(today);
+let currentView = 'week';
 
-/* ── Date Helpers ── */
-function pad(n){return String(n).padStart(2,'0')}
-function formatDate(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
-function addDays(d,n){const r=new Date(d);r.setDate(r.getDate()+n);return r}
-function startOfWeek(d){const r=new Date(d);r.setHours(0,0,0,0);r.setDate(r.getDate()-r.getDay());return r}
-function isWeekend(d){const dd=d.getDay();return dd===0||dd===6}
-function isSameDay(a,b){return formatDate(a)===formatDate(b)}
-function timeToMin(t){const[h,m]=t.split(':').map(Number);return h*60+m}
-function minToTime(m){return pad(Math.floor(m/60))+':'+pad(m%60)}
-function offsetDays(n){return formatDate(addDays(today,n))}
-function formatDayLabel(d){return MONTHS_TC[d.getMonth()]+d.getDate()+'日 週'+DAYS_TC[d.getDay()]}
-function formatMonthYear(d){return d.getFullYear()+' 年 '+MONTHS_TC[d.getMonth()]}
-function shortDate(s){const d=new Date(s+'T00:00:00');return(d.getMonth()+1)+'/'+d.getDate()+' ('+DAYS_TC[d.getDay()]+')'}
-function formatExpiry(d){if(!d)return '—';if(d instanceof Date)return d.getFullYear()+'/'+(d.getMonth()+1)+'/'+d.getDate();return String(d)}
-
-/* ── Show Screen ── */
-function showScreen(name){
-  ['loading','login','pending','blocked','app'].forEach(n=>{
-    const el=document.getElementById('screen-'+n);
-    if(el) el.style.display=n===name?'flex':'none';
-    if(n==='app'&&name==='app') el.style.display='block';
-  });
+/* ── Date Utilities ── */
+function pad(n){ return String(n).padStart(2,'0'); }
+function formatDate(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+function addDays(d,n){ const r=new Date(d); r.setDate(r.getDate()+n); return r; }
+function startOfWeek(d){ const r=new Date(d); r.setHours(0,0,0,0); r.setDate(r.getDate()-r.getDay()); return r; }
+function isWeekend(d){ const dd=d.getDay(); return dd===0||dd===6; }
+function isSameDay(a,b){ return formatDate(a)===formatDate(b); }
+function timeToMin(t){ const [h,m]=t.split(':').map(Number); return h*60+m; }
+function minToTime(m){ return pad(Math.floor(m/60))+':'+pad(m%60); }
+function offsetDays(n){ return formatDate(addDays(today,n)); }
+function offsetToNext(dow){ const diff=(dow-today.getDay()+7)%7; return diff===0?7:diff; }
+function formatDayLabel(d){ return MONTHS_TC[d.getMonth()]+d.getDate()+'日 週'+DAYS_TC[d.getDay()]; }
+function formatMonthYear(d){ return d.getFullYear()+' 年 '+MONTHS_TC[d.getMonth()]; }
+function shortDateStr(dateStr){
+  const d=new Date(dateStr+'T00:00:00');
+  return (d.getMonth()+1)+'/'+d.getDate()+' ('+DAYS_TC[d.getDay()]+')';
 }
 
-/* ── Avatar Placeholder SVG ── */
-function avatarSVG(initials,size){
-  size=size||40;
-  const enc=encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'">'+
-    '<rect width="'+size+'" height="'+size+'" fill="#252d26"/>'+
-    '<text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" fill="#8a9387" font-size="'+(size*0.38)+'" font-family="serif">'+initials+'</text>'+
-    '</svg>'
-  );
-  return 'data:image/svg+xml,'+enc;
+/* ── Mock Data ── */
+const TODAY_STR = offsetDays(0);
+const TOMORROW = offsetDays(1);
+const D2 = offsetDays(2);
+const D3 = offsetDays(3);
+const D5 = offsetDays(5);
+const D_2 = offsetDays(-2);
+const D_7 = offsetDays(-7);
+const NEXT_SAT = offsetDays(offsetToNext(6));
+const NEXT_SUN = offsetDays(offsetToNext(0));
+const todayIsWeekend = isWeekend(today);
+
+const MOCK_USER = {
+  name: 'Maverick 小狸',
+  memberType: 'Annual Member',
+  expireDate: '2026/12/31',
+  ntrp: '3.5',
+  position: '底線型 / 後場',
+  attendance: 1,
+};
+
+const MOCK_BOOKINGS = [
+  ...(todayIsWeekend ? [
+    {id:'mb-w01',date:TODAY_STR,startTime:'07:00',endTime:'09:00',court:'clay_a',mode:'normal',primaryName:'早晨組',participantCount:4},
+    {id:'mb-w02',date:TODAY_STR,startTime:'09:30',endTime:'11:30',court:'hard_a',mode:'coaching',primaryName:'Coach 王',participantCount:3},
+  ] : []),
+  {id:'mb-001',date:TODAY_STR,startTime:'18:00',endTime:'19:30',court:'hard_a',mode:'normal',primaryName:'林志強',participantCount:4},
+  {id:'mb-002',date:TODAY_STR,startTime:'19:00',endTime:'20:30',court:'hard_b',mode:'coaching',primaryName:'Coach Lin',participantCount:2},
+  {id:'mb-003',date:TODAY_STR,startTime:'20:00',endTime:'22:00',court:'clay_a',mode:'normal',primaryName:'王雅琴',participantCount:4},
+  {id:'mb-004',date:TODAY_STR,startTime:'21:00',endTime:'23:00',court:'clay_b',mode:'group_class',primaryName:'Coach 吳 團課',participantCount:6},
+  {id:'mb-005',date:TOMORROW,startTime:'18:30',endTime:'20:30',court:'hard_a',mode:'pickleball',primaryName:'匹克球聚會',participantCount:8},
+  {id:'mb-006',date:TOMORROW,startTime:'19:30',endTime:'21:00',court:'clay_a',mode:'coaching',primaryName:'Coach Chen',participantCount:2},
+  {id:'mb-007',date:D2,startTime:'18:00',endTime:'21:00',court:'hard_a',mode:'event_lock',primaryName:'會員之夜',participantCount:0},
+  {id:'mb-008',date:D2,startTime:'18:00',endTime:'21:00',court:'hard_b',mode:'event_lock',primaryName:'會員之夜',participantCount:0},
+  {id:'mb-009',date:NEXT_SAT,startTime:'07:00',endTime:'09:00',court:'clay_a',mode:'normal',primaryName:'張教練 私訓',participantCount:2},
+  {id:'mb-010',date:NEXT_SAT,startTime:'08:30',endTime:'10:30',court:'hard_a',mode:'coaching',primaryName:'Coach 黃',participantCount:3},
+  {id:'mb-011',date:NEXT_SAT,startTime:'19:00',endTime:'21:00',court:'hard_b',mode:'normal',primaryName:'陳俊宏',participantCount:4},
+  {id:'mb-012',date:NEXT_SUN,startTime:'08:00',endTime:'10:00',court:'hard_a',mode:'normal',primaryName:'週日早場',participantCount:4},
+];
+
+const MOCK_MY_BOOKINGS = [
+  {id:'me-1',date:D3,startTime:'19:00',endTime:'21:00',court:'hard_a',mode:'normal',status:'confirmed',partners:['陳志明','林雅琳'],courtLabel:'Hard A'},
+  {id:'me-2',date:D5,startTime:'08:30',endTime:'10:30',court:'clay_a',mode:'coaching',status:'confirmed',partners:['Coach Lin'],courtLabel:'Clay A'},
+  {id:'me-3',date:D_2,startTime:'20:00',endTime:'22:00',court:'hard_b',mode:'normal',status:'completed',partners:['王大明'],courtLabel:'Hard B'},
+  {id:'me-4',date:D_7,startTime:'18:30',endTime:'20:00',court:'clay_b',mode:'normal',status:'completed',partners:['陳志明'],courtLabel:'Clay B'},
+];
+
+const MOCK_MEMBERS = [
+  {id:'c1',name:'Coach Lin',type:'coach',ntrp:'5.0',position:'全場',joined:'2020'},
+  {id:'c2',name:'Coach 王',type:'coach',ntrp:'4.5',position:'全場',joined:'2021'},
+  {id:'m1',name:'Maverick 小狸',type:'annual',ntrp:'3.5',position:'底線型 / 後場',joined:'2024'},
+  {id:'m2',name:'陳志明',type:'annual',ntrp:'4.0',position:'網前型',joined:'2023'},
+  {id:'m3',name:'林雅琳',type:'annual',ntrp:'3.0',position:'雙打後場',joined:'2024'},
+  {id:'m4',name:'王大明',type:'monthly',ntrp:'3.5',position:'底線型',joined:'2025'},
+  {id:'m5',name:'張芷晴',type:'annual',ntrp:'3.5',position:'全場',joined:'2022'},
+  {id:'m6',name:'李建宏',type:'monthly',ntrp:'4.0',position:'網前型',joined:'2025'},
+  {id:'m7',name:'吳美玲',type:'annual',ntrp:'3.0',position:'雙打後場',joined:'2023'},
+  {id:'m8',name:'黃俊傑',type:'annual',ntrp:'4.5',position:'底線型',joined:'2021'},
+];
+
+const MOCK_NOTIFICATIONS = [
+  {id:'n1',type:'booking',title:'預約確認',text:shortDateStr(D3)+' Hard A 19:00 已確認',time:'2 小時前',read:false},
+  {id:'n2',type:'event',title:'活動公告',text:shortDateStr(D2)+' 會員之夜已開放報名',time:'昨天',read:false},
+  {id:'n3',type:'system',title:'會費提醒',text:'您的年費將於 2026/12/31 到期，請提早續費',time:'3 天前',read:true},
+  {id:'n4',type:'booking',title:'預約完成',text:shortDateStr(D_2)+' Hard B 20:00 已完成',time:'2 天前',read:true},
+];
+
+/* ── Week / Grid Helpers ── */
+function getDaySlots(weekend){
+  const open=weekend?'05:30':'17:30';
+  const out=[]; let cur=timeToMin(open);
+  while(cur<timeToMin('24:00')){ out.push(minToTime(cur)); cur+=SLOT_MIN; }
+  return out;
+}
+function getSlotPosition(start,end,open){
+  const o=timeToMin(open),s=timeToMin(start),e=timeToMin(end);
+  return {startSlot:Math.max(0,Math.floor((s-o)/SLOT_MIN)),spanSlots:Math.max(1,Math.floor((e-s)/SLOT_MIN))};
 }
 
-/* ── Auth ── */
-async function boot(){
-  showScreen('loading');
-  try {
-    await liff.init({liffId:LIFF_ID});
-    if(!liff.isLoggedIn()){
-      showScreen('login');
-      return;
-    }
-    const profile=await liff.getProfile();
-    await ensureUser(profile);
-    unsubUser=db.collection('users').doc(profile.userId).onSnapshot(snap=>{
-      if(!snap.exists){
-        currentUser={userId:profile.userId,displayName:profile.displayName,lineAvatar:profile.pictureUrl||'',role:'pending',membershipStatus:'pending'};
-        showScreen('pending');
-        renderPendingInfo();
-        return;
-      }
-      currentUser={id:snap.id,...snap.data()};
-      route();
-    },err=>{
-      console.error('user snapshot error:',err);
-      // Still show app with limited function
-      route();
-    });
-  } catch(e){
-    console.error('boot error:',e);
-    showScreen('login');
-  }
-}
-
-async function ensureUser(profile){
-  const ref=db.collection('users').doc(profile.userId);
-  const snap=await ref.get().catch(()=>null);
-  if(!snap||!snap.exists){
-    await ref.set({
-      userId:profile.userId,
-      displayName:profile.displayName,
-      lineAvatar:profile.pictureUrl||'',
-      role:'pending',
-      clayAccess:false,
-      membershipStatus:'pending',
-      createdAt:TS(),
-      updatedAt:TS(),
-      lastLoginAt:TS()
-    }).catch(e=>console.error('ensureUser set error:',e));
-  } else {
-    await ref.set({lineAvatar:profile.pictureUrl||'',lastLoginAt:TS(),updatedAt:TS()},{merge:true})
-      .catch(e=>console.error('ensureUser update error:',e));
-  }
-}
-
-function doLineLogin(){liff.login()}
-function doLogout(){try{liff.logout()}finally{window.location.reload()}}
-
-function route(){
-  if(!currentUser){showScreen('login');return}
-  const r=currentUser.role||'pending';
-  if(r==='pending'){showScreen('pending');renderPendingInfo();return}
-  if(r==='blocked'){showScreen('blocked');return}
-  showScreen('app');
-  updateProfileUI();
-  loadAllUsers();
-  loadCourtBookings(formatDate(selectedDate));
-  subscribeMyBookings();
-  renderCourtHeader();
-  renderWeekStrip();
-  renderDayHeader();
-  if(isAdminLike()) subscribePending();
-}
-
-function isAdminLike(){
-  const r=currentUser&&currentUser.role;
-  return r==='owner'||r==='admin';
-}
-function isCoachLike(){
-  const r=currentUser&&currentUser.role;
-  return r==='coach'||r==='owner'||r==='admin';
-}
-
-/* ── Profile UI ── */
-function updateProfileUI(){
-  if(!currentUser)return;
-  const av=currentUser.lineAvatar||avatarSVG((currentUser.displayName||'?').charAt(0));
-  const el=document.getElementById('navAvatarImg');
-  if(el){el.src=av;el.onerror=()=>{el.src=avatarSVG((currentUser.displayName||'?').charAt(0));}}
-  const pa=document.getElementById('profileAvatarImg');
-  if(pa){pa.src=av;pa.onerror=()=>{pa.src=avatarSVG((currentUser.displayName||'?').charAt(0),52);}}
-  setEl('profileDisplayName',currentUser.displayName||'—');
-  const role=ROLE_LABELS[currentUser.role]||currentUser.role||'—';
-  let expiry='—';
-  if(currentUser.annualExpiresAt){expiry=formatExpiry(currentUser.annualExpiresAt.toDate?currentUser.annualExpiresAt.toDate():currentUser.annualExpiresAt)}
-  else if(currentUser.monthlyExpiresAt){expiry=formatExpiry(currentUser.monthlyExpiresAt.toDate?currentUser.monthlyExpiresAt.toDate():currentUser.monthlyExpiresAt)}
-  setEl('profileBadge',role+(expiry!=='—'?' · Expire '+expiry:''));
-  setEl('profileNTRP',currentUser.ntrp||'—');
-  setEl('profilePosition',currentUser.preferredPosition||'—');
-  setEl('profileRole',role);
-  setEl('profileExpire',expiry);
-}
-function setEl(id,val){const el=document.getElementById(id);if(el)el.textContent=val}
-
-/* ── Pending Screen ── */
-function renderPendingInfo(){
-  if(!currentUser)return;
-  setEl('pendingName',currentUser.displayName||'—');
-  let t='—';
-  if(currentUser.createdAt){const d=currentUser.createdAt.toDate?currentUser.createdAt.toDate():new Date(currentUser.createdAt);t=d.getFullYear()+'/'+(d.getMonth()+1)+'/'+d.getDate();}
-  setEl('pendingTime',t);
-}
-
-/* ── Load All Users ── */
-function loadAllUsers(){
-  db.collection('users').get().then(snap=>{
-    usersCache={};
-    snap.docs.forEach(d=>{usersCache[d.id]={id:d.id,...d.data()}});
-    renderMembers('');
-    if(document.getElementById('tab-court').classList.contains('active'))renderGrid();
-  }).catch(e=>console.error('loadAllUsers error:',e));
-}
-
-/* ── Court Bookings ── */
-function loadCourtBookings(dateStr){
-  db.collection('bookings')
-    .where('date','==',dateStr)
-    .where('status','==','confirmed')
-    .get()
-    .then(snap=>{
-      courtBookings=snap.docs.map(d=>({id:d.id,...d.data()}));
-      renderGrid();
-    })
-    .catch(e=>{
-      console.warn('bookings read error, using mock:',e);
-      courtBookings=getMockBookings(dateStr);
-      renderGrid();
-    });
-}
-
-/* ── My Bookings ── */
-function subscribeMyBookings(){
-  if(!currentUser)return;
-  if(unsubMyBookings){unsubMyBookings();unsubMyBookings=null;}
-  unsubMyBookings=db.collection('bookings')
-    .where('createdBy','==',currentUser.userId)
-    .orderBy('date','asc')
-    .onSnapshot(snap=>{
-      myBookings=snap.docs.map(d=>({id:d.id,...d.data()}));
-      renderMyBookings();
-    },e=>{
-      console.warn('myBookings subscribe error:',e);
-      myBookings=[];
-      renderMyBookings();
-    });
-}
-
-/* ── Pending Users (Admin) ── */
-function subscribePending(){
-  if(unsubPending){unsubPending();unsubPending=null;}
-  unsubPending=db.collection('users')
-    .where('role','==','pending')
-    .onSnapshot(snap=>{
-      pendingUsers=snap.docs.map(d=>({id:d.id,...d.data()}));
-      renderManage();
-    },e=>console.warn('pending subscribe error:',e));
-}
-
-/* ── Mock Bookings Fallback ── */
-function getMockBookings(dateStr){
-  const we=isWeekend(new Date(dateStr+'T00:00:00'));
-  const base=we?[
-    {id:'m1',date:dateStr,startTime:'07:00',endTime:'09:00',court:'clay_a',mode:'normal',primaryName:'早場',participantCount:4,createdBy:''},
-    {id:'m2',date:dateStr,startTime:'08:30',endTime:'10:30',court:'hard_a',mode:'coaching',primaryName:'Coach Lin',participantCount:3,createdBy:''},
-  ]:[
-    {id:'m3',date:dateStr,startTime:'18:00',endTime:'20:00',court:'hard_a',mode:'normal',primaryName:'—',participantCount:4,createdBy:''},
-    {id:'m4',date:dateStr,startTime:'19:00',endTime:'21:00',court:'clay_a',mode:'coaching',primaryName:'Coach Lin',participantCount:2,createdBy:''},
-  ];
-  return base;
-}
-
-/* ── Render Court Header ── */
+/* ── Render: Court Header ── */
 function renderCourtHeader(){
   document.getElementById('courtHeader').innerHTML='<div></div>'+COURTS.map(c=>
     '<div class="courtLabel '+(COURT_SURFACE[c]==='clay'?'clay':'')+'">'+
@@ -890,7 +825,7 @@ function renderCourtHeader(){
   ).join('');
 }
 
-/* ── Render Week Strip ── */
+/* ── Render: Week Strip ── */
 function renderWeekStrip(){
   const ws=startOfWeek(selectedDate);
   const dates=Array.from({length:7},(_,i)=>addDays(ws,i));
@@ -904,91 +839,98 @@ function renderWeekStrip(){
   }).join('');
 }
 
-/* ── Render Day Header ── */
+/* ── Render: Day Header ── */
 function renderDayHeader(){
   document.getElementById('dayLabel').textContent=formatDayLabel(selectedDate);
-  document.getElementById('dayMeta').textContent='· '+(isWeekend(selectedDate)?'週末時段':'平日時段');
+  document.getElementById('dayMeta').textContent='· '+(isWeekend(selectedDate)?'週末・寒暑假時段':'平日時段');
 }
 
-/* ── Render Grid ── */
+/* ── Render: Time Grid ── */
 function renderGrid(){
   const we=isWeekend(selectedDate);
   const open=we?'05:30':'17:30';
-  const slots=[];let cur=timeToMin(open);
-  while(cur<timeToMin('24:00')){slots.push(minToTime(cur));cur+=SLOT_MIN;}
+  const slots=getDaySlots(we);
   const grid=document.getElementById('grid');
-  if(!grid)return;
-  grid.style.gridTemplateRows='repeat('+slots.length+','+SLOT_H+'px)';
-  let html='<div class="courtDividers" style="grid-template-rows:repeat('+slots.length+','+SLOT_H+'px)">'+
+  grid.style.gridTemplateRows='repeat('+slots.length+', '+SLOT_HEIGHT+'px)';
+  let html='<div class="courtDividers" style="grid-template-rows:repeat('+slots.length+','+SLOT_HEIGHT+'px)">'+
     '<div></div><div></div><div></div><div></div><div></div></div>';
   slots.forEach((slot,i)=>{
-    const full=slot.endsWith(':00');
-    html+='<div class="slotRow'+(full?' fullHour':'')+(i===0?' firstRow':'')+'" style="grid-row:'+(i+1)+';grid-column:1/-1">'+
-      '<span class="timeLabel">'+(full||i===0?slot:'')+'</span></div>';
+    const full=slot.endsWith(':00'),showLabel=full||i===0;
+    const cls='slotRow'+(full?' fullHour':'')+(i===0?' firstRow':'');
+    html+='<div class="'+cls+'" style="grid-row:'+(i+1)+';grid-column:1/-1">'+
+      '<span class="timeLabel">'+(showLabel?slot:'')+'</span></div>';
   });
-  (courtBookings||[]).forEach(b=>{
-    const oMin=timeToMin(open),sMin=timeToMin(b.startTime),eMin=timeToMin(b.endTime);
-    const startSlot=Math.max(0,Math.floor((sMin-oMin)/SLOT_MIN));
-    const spanSlots=Math.max(1,Math.floor((eMin-sMin)/SLOT_MIN));
+  const ds=formatDate(selectedDate);
+  MOCK_BOOKINGS.filter(b=>b.date===ds).forEach(b=>{
+    const {startSlot,spanSlots}=getSlotPosition(b.startTime,b.endTime,open);
     const courtIdx=COURTS.indexOf(b.court);
-    if(courtIdx<0)return;
-    const isClay=COURT_SURFACE[b.court]==='clay';
+    if(courtIdx<0) return;
+    const surface=COURT_SURFACE[b.court];
     const isLock=b.mode==='event_lock';
-    const isCoach=b.mode==='coaching'||b.mode==='group_class';
-    const cls='event'+(isLock?' eventLock':(isClay?' clay':''))+(spanSlots<=1?' short':'');
-    const dotColor=isLock?'var(--dot-event)':(isCoach?'var(--dot-coach)':null);
-    // Look up avatar
-    const u=b.createdBy?usersCache[b.createdBy]:null;
-    const avatarHtml=u&&u.lineAvatar?'<div class="eAvatar"><img src="'+u.lineAvatar+'" alt=""></div>':'';
-    html+='<div class="'+cls+'" style="grid-column:'+(courtIdx+2)+';grid-row:'+(startSlot+1)+'/span '+spanSlots+'"'+
-      ' onclick="showBookingDetail(\''+b.id+'\')" title="'+b.primaryName+'">'+
+    const cls='event '+(isLock?'eventLock':(surface==='clay'?'clay':''))+(spanSlots<=1?' short':'');
+    const dotColor=(b.mode==='coaching'||b.mode==='group_class')?'var(--dot-coach)':(isLock?'var(--dot-event)':null);
+    html+='<div class="'+cls+'" style="grid-column:'+(courtIdx+2)+';grid-row:'+(startSlot+1)+'/span '+spanSlots+'">'+
       (dotColor?'<span class="modeDot" style="background:'+dotColor+'"></span>':'')+
-      '<span class="etime">'+b.startTime+'</span>'+
-      '<span class="ename">'+b.primaryName+'</span>'+
-      (spanSlots>=3?'<span class="emeta">'+MODE_LABELS[b.mode]+(b.participantCount>0?' · '+b.participantCount+'P':'')+'</span>':'')+
-      avatarHtml+
+      '<span class="time">'+b.startTime+'</span>'+
+      '<span class="name">'+b.primaryName+'</span>'+
+      (spanSlots>=3?'<span class="meta">'+MODE_LABELS[b.mode]+(b.participantCount>0?(' · '+b.participantCount+'P'):'')+'</span>':'')+
     '</div>';
   });
   if(isSameDay(selectedDate,today)){
-    const nowMin=today.getHours()*60+today.getMinutes(),openMin=timeToMin(open);
-    if(nowMin>=openMin&&nowMin<1440){
-      const off=(nowMin-openMin)/SLOT_MIN;
-      html+='<div class="nowLine" style="top:'+(off*SLOT_H)+'px"></div>';
+    const nowMin=today.getHours()*60+today.getMinutes();
+    const openMin=timeToMin(open);
+    if(nowMin>=openMin&&nowMin<timeToMin('24:00')){
+      const offset=(nowMin-openMin)/SLOT_MIN;
+      html+='<div class="nowLine" style="top:'+(offset*SLOT_HEIGHT)+'px"></div>';
     }
   }
   grid.innerHTML=html;
 }
 
-/* ── Month View ── */
+/* ── Render: Month Grid ── */
 function renderMonthView(){
-  const yr=selectedDate.getFullYear(),mo=selectedDate.getMonth();
-  document.getElementById('monthViewLabel').textContent=yr+' 年 '+MONTHS_TC[mo];
-  const first=new Date(yr,mo,1),last=new Date(yr,mo+1,0);
-  const sdow=first.getDay();
+  const year=selectedDate.getFullYear(), month=selectedDate.getMonth();
+  document.getElementById('monthViewLabel').textContent=year+' 年 '+MONTHS_TC[month];
+  const firstDay=new Date(year,month,1);
+  const lastDay=new Date(year,month+1,0);
+  const startDow=firstDay.getDay();
   let html='<div class="monthGrid">';
-  DAYS_TC.forEach(d=>{html+='<div class="monthDayHdr">'+d+'</div>';});
-  for(let i=0;i<sdow;i++)html+='<div class="monthCell empty"></div>';
-  for(let d=1;d<=last.getDate();d++){
-    const day=new Date(yr,mo,d);
+  DAYS_TC.forEach(d=>{ html+='<div class="monthDayHeader">'+d+'</div>'; });
+  for(let i=0;i<startDow;i++) html+='<div class="monthCell empty"></div>';
+  for(let d=1;d<=lastDay.getDate();d++){
+    const day=new Date(year,month,d);
     const ds=formatDate(day);
     const isT=isSameDay(day,today),isSel=isSameDay(day,selectedDate),isWe=isWeekend(day);
     let cls='monthCell';
-    if(isT)cls+=' today';if(isSel)cls+=' selected';if(isWe)cls+=' weekend';
-    html+='<button class="'+cls+'" onclick="selectDate(\''+ds+'\');setView(\'week\',document.getElementById(\'btnWeek\'))">'+
-      '<span class="monthCellNum">'+d+'</span></button>';
+    if(isT) cls+=' today';
+    if(isSel) cls+=' selected';
+    if(isWe) cls+=' weekend';
+    const dayBookings=MOCK_BOOKINGS.filter(b=>b.date===ds);
+    html+='<button class="'+cls+'" onclick="selectDate(\''+ds+'\');setView(\'week\',document.getElementById(\'btnWeek\'))">'
+      +'<span class="monthCellNum">'+d+'</span>';
+    if(dayBookings.length>0){
+      html+='<div class="monthDots">';
+      dayBookings.slice(0,3).forEach(b=>{
+        const isLock=b.mode==='event_lock';
+        const isCoach=b.mode==='coaching'||b.mode==='group_class';
+        const dotCls=isLock?'dot-event':(isCoach?'dot-coach':(COURT_SURFACE[b.court]==='clay'?'dot-clay':'dot-hard'));
+        html+='<span class="monthDot '+dotCls+'"></span>';
+      });
+      html+='</div>';
+    }
+    html+='</button>';
   }
   html+='</div>';
   document.getElementById('monthGrid').innerHTML=html;
 }
 
-/* ── Render My Bookings ── */
-function renderMyBookings(){
-  const now=formatDate(today);
-  const upcoming=(myBookings||[]).filter(b=>b.status==='confirmed'&&b.date>=now).sort((a,b)=>a.date.localeCompare(b.date));
-  const past=(myBookings||[]).filter(b=>b.status==='confirmed'&&b.date<now||b.status==='completed').sort((a,b)=>b.date.localeCompare(a.date));
-  function card(b){
+/* ── Render: Booking Records ── */
+function renderBookings(){
+  const upcoming=MOCK_MY_BOOKINGS.filter(b=>b.status==='confirmed');
+  const past=MOCK_MY_BOOKINGS.filter(b=>b.status==='completed');
+  function cardHtml(b){
     const d=new Date(b.date+'T00:00:00');
-    const isUpcoming=b.date>=now&&b.status==='confirmed';
+    const surface=COURT_SURFACE[b.court];
     return '<div class="bookingCard">'+
       '<div class="bookingCardDate">'+
         '<div class="bookingCardDateNum">'+d.getDate()+'</div>'+
@@ -996,256 +938,175 @@ function renderMyBookings(){
       '</div>'+
       '<div class="bookingCardBody">'+
         '<div class="bookingCardTime">'+
-          b.startTime+' – '+b.endTime+
-          ' &nbsp;'+COURT_DISPLAY[b.court]+
+          b.startTime+' – '+b.endTime+' &nbsp;'+b.courtLabel+
           '&nbsp;<span class="statusChip '+b.status+'">'+
-          (b.status==='confirmed'?'確認':(b.status==='cancelled'?'取消':'完成'))+'</span>'+
-        '</div>'+
-        '<div class="bookingCardMeta">'+(MODE_LABELS[b.mode]||b.mode)+'</div>'+
-        (isUpcoming?'<div class="bookingCardActions"><button class="cancelBtn" onclick="cancelBooking(\''+b.id+'\')">取消預約</button></div>':'')+
+          (b.status==='confirmed'?'確認':'完成')+
+          '</span></div>'+
+        '<div class="bookingCardMeta">'+MODE_LABELS[b.mode]+' · '+b.partners.join('、')+'</div>'+
       '</div>'+
     '</div>';
   }
-  const upEl=document.getElementById('bookUpcoming');
-  const paEl=document.getElementById('bookPast');
-  if(upEl)upEl.innerHTML=upcoming.length?upcoming.map(card).join(''):
-    '<div class="emptyState"><div class="emptyStateIcon">📅</div>目前沒有預約</div>';
-  if(paEl)paEl.innerHTML=past.length?past.map(card).join(''):
-    '<div class="emptyState"><div class="emptyStateIcon">—</div>暫無紀錄</div>';
+  document.getElementById('bookUpcoming').innerHTML=upcoming.length?upcoming.map(cardHtml).join(''):
+    '<div class="emptyState"><div class="emptyStateIcon">📅</div>暫無即將到來的預約</div>';
+  document.getElementById('bookPast').innerHTML=past.length?past.map(cardHtml).join(''):
+    '<div class="emptyState"><div class="emptyStateIcon">—</div>暫無歷史紀錄</div>';
 }
 
-/* ── Cancel Booking ── */
-function cancelBooking(id){
-  if(!confirm('確認取消此預約？'))return;
-  db.collection('bookings').doc(id).update({status:'cancelled',updatedAt:TS()})
-    .then(()=>{showToast('預約已取消');})
-    .catch(e=>{console.error('cancel error:',e);showToast('取消失敗，請稍後再試');});
+/* ── Render: My Schedule ── */
+function renderSchedule(){
+  const upcoming=MOCK_MY_BOOKINGS.filter(b=>b.status==='confirmed')
+    .sort((a,b)=>a.date.localeCompare(b.date));
+  if(!upcoming.length){
+    document.getElementById('scheduleList').innerHTML=
+      '<div class="emptyState"><div class="emptyStateIcon">🎾</div>目前沒有排定的行程</div>';
+    return;
+  }
+  let html='';
+  upcoming.forEach(b=>{
+    const surface=COURT_SURFACE[b.court];
+    const barCls=surface==='clay'?'clay':(b.mode==='event_lock'?'lock':'');
+    html+='<div class="scheduleItem">'+
+      '<div class="scheduleItemBar '+barCls+'"></div>'+
+      '<div class="scheduleItemBody">'+
+        '<div class="scheduleItemTime">'+shortDateStr(b.date)+'  '+b.startTime+' – '+b.endTime+'</div>'+
+        '<div class="scheduleItemName">'+b.courtLabel+'  ·  '+MODE_LABELS[b.mode]+'</div>'+
+        '<div class="scheduleItemMeta">'+b.partners.join('、')+'</div>'+
+      '</div>'+
+    '</div>';
+  });
+  document.getElementById('scheduleList').innerHTML=html;
 }
 
-/* ── Booking Detail ── */
-function showBookingDetail(id){
-  const b=(courtBookings||[]).find(x=>x.id===id);
-  if(!b)return;
-  const u=b.createdBy?usersCache[b.createdBy]:null;
-  const name=u?u.displayName:b.primaryName;
-  showToast(COURT_DISPLAY[b.court]+' · '+b.startTime+' – '+b.endTime+'  '+name);
-}
-
-/* ── Render Members ── */
+/* ── Render: Member List ── */
 function renderMembers(filter){
   const f=(filter||'').toLowerCase();
-  const users=Object.values(usersCache).filter(u=>u.role&&u.role!=='pending');
-  const list=users.filter(u=>!f||
-    (u.displayName||'').toLowerCase().includes(f)||
-    String(u.ntrp||'').includes(f)||
-    (u.preferredPosition||'').toLowerCase().includes(f)
-  ).sort((a,b)=>{
-    // Coaches first, then by name
-    if(a.role==='coach'&&b.role!=='coach')return -1;
-    if(b.role==='coach'&&a.role!=='coach')return 1;
-    return(a.displayName||'').localeCompare(b.displayName||'','zh');
-  });
-  const BADGE={coach:'教練',admin:'管理員',owner:'擁有者',annual_member:'年費',monthly_member:'月費'};
-  const el=document.getElementById('memberList');
-  if(!el)return;
-  el.innerHTML=list.map(m=>{
-    const initials=(m.displayName||'?').charAt(0);
-    const av=m.lineAvatar||avatarSVG(initials,40);
-    const isCoach=m.role==='coach';
-    const isAdmin=m.role==='admin'||m.role==='owner';
-    const badgeClass=isCoach?'coach':(isAdmin?'admin':'');
-    return '<div class="memberCard" onclick="showMemberDetail(\''+m.id+'\')">'+
-      '<div class="memberAvatar"><img src="'+av+'" onerror="this.src=\''+avatarSVG(initials,40)+'\'" alt="'+m.displayName+'"></div>'+
-      '<div class="memberInfo">'+
-        '<div class="memberName">'+m.displayName+'</div>'+
-        '<div class="memberMeta">'+(m.ntrp?'NTRP '+m.ntrp+' · ':'')+(m.preferredPosition||'—')+'</div>'+
+  const list=MOCK_MEMBERS.filter(m=>!f||m.name.toLowerCase().includes(f)||m.ntrp.includes(f)||m.position.toLowerCase().includes(f));
+  const typeLabel={annual:'年費會員',monthly:'月費會員',coach:'教練'};
+  document.getElementById('memberList').innerHTML=list.map(m=>{
+    const initials=m.name.charAt(0);
+    const isCoach=m.type==='coach';
+    return '<div class="memberCard">'+
+      '<div class="memberAvatar">'+
+        '<svg width="40" height="40" viewBox="0 0 40 40"><rect width="40" height="40" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="16" font-family="serif">'+initials+'</text></svg>'+
       '</div>'+
-      '<span class="memberBadge '+badgeClass+'">'+(BADGE[m.role]||m.role||'—')+'</span>'+
+      '<div class="memberInfo">'+
+        '<div class="memberName">'+m.name+'</div>'+
+        '<div class="memberMeta">NTRP '+m.ntrp+'  ·  '+m.position+'</div>'+
+      '</div>'+
+      '<span class="memberBadge'+(isCoach?' coach':'')+'">'+typeLabel[m.type]+'</span>'+
     '</div>';
   }).join('')||'<div class="emptyState">找不到符合的會員</div>';
 }
-function showMemberDetail(id){
-  const m=usersCache[id];if(!m)return;
-  showToast(m.displayName+' · NTRP '+(m.ntrp||'—'));
-}
 
-/* ── Render Manage ── */
-function renderManage(){
-  const el=document.getElementById('manageContent');if(!el)return;
-  if(!isAdminLike()){
-    el.innerHTML='<div class="emptyState"><div class="emptyStateIcon">🎾</div>管理功能需管理員權限</div>';
-    return;
-  }
-  if(pendingUsers.length===0){
-    el.innerHTML='<div class="screenSection">待審核會員</div><div class="emptyState"><div class="emptyStateIcon">✓</div>目前無待審核申請</div>';
-    return;
-  }
-  let html='<div class="screenSection">待審核會員 ('+pendingUsers.length+')</div>';
-  pendingUsers.forEach(u=>{
-    const initials=(u.displayName||'?').charAt(0);
-    const av=u.lineAvatar||avatarSVG(initials,40);
-    let t='—';
-    if(u.createdAt){const d=u.createdAt.toDate?u.createdAt.toDate():new Date(u.createdAt);t=(d.getMonth()+1)+'/'+d.getDate();}
-    html+='<div class="pendingCard">'+
-      '<div class="pendingCardTop">'+
-        '<div class="memberAvatar"><img src="'+av+'" onerror="this.src=\''+avatarSVG(initials,40)+'\'" alt=""></div>'+
-        '<div class="pendingCardInfo">'+
-          '<div class="pendingCardName">'+u.displayName+'</div>'+
-          '<div class="pendingCardMeta">申請日期：'+t+'</div>'+
-        '</div>'+
-      '</div>'+
-      '<div class="pendingActions">'+
-        '<button class="approveBtn" onclick="approveMember(\''+u.id+'\')">批准為年費會員</button>'+
-        '<button class="rejectBtn" onclick="rejectMember(\''+u.id+'\')">封鎖</button>'+
-      '</div>'+
-    '</div>';
-  });
-  el.innerHTML=html;
+/* ── Render: Notifications ── */
+function renderNotifications(){
+  document.getElementById('notificationsList').innerHTML=MOCK_NOTIFICATIONS.map(n=>{
+    return '<div class="notifItem'+(n.read?' read':'')+'" onclick="markRead(\''+n.id+'\',this)">'+
+      '<div class="notifDot"></div>'+
+      '<div class="notifBody">'+
+        '<div class="notifTitle">'+n.title+'</div>'+
+        '<div class="notifText">'+n.text+'</div>'+
+        '<div class="notifTime">'+n.time+'</div>'+
+      '</div></div>';
+  }).join('');
 }
-function approveMember(uid){
-  if(!confirm('批准此會員為年費會員？'))return;
-  db.collection('users').doc(uid).update({role:'annual_member',membershipStatus:'active',updatedAt:TS()})
-    .then(()=>showToast('已批准'))
-    .catch(e=>{console.error(e);showToast('操作失敗');});
-}
-function rejectMember(uid){
-  if(!confirm('確認封鎖此帳號？'))return;
-  db.collection('users').doc(uid).update({role:'blocked',updatedAt:TS()})
-    .then(()=>showToast('已封鎖'))
-    .catch(e=>{console.error(e);showToast('操作失敗');});
-}
-
-/* ── Booking Form ── */
-function openBookingForm(){
-  // Populate time options
-  const startSel=document.getElementById('formStart');
-  const endSel=document.getElementById('formEnd');
-  const times=[];let cur=timeToMin('06:00');
-  while(cur<timeToMin('24:00')){times.push(minToTime(cur));cur+=30;}
-  startSel.innerHTML=times.map(t=>'<option value="'+t+'">'+t+'</option>').join('');
-  endSel.innerHTML=times.map(t=>'<option value="'+t+'">'+t+'</option>').join('');
-  startSel.value='19:00';endSel.value='21:00';
-  // Default date: today
-  const di=document.getElementById('formDate');
-  di.value=formatDate(today);
-  di.min=formatDate(today);
-  document.getElementById('bookingFormSheet').classList.add('open');
-  document.getElementById('sheetBackdrop').classList.add('open');
-}
-function closeBookingForm(){
-  document.getElementById('bookingFormSheet').classList.remove('open');
-  document.getElementById('sheetBackdrop').classList.remove('open');
-}
-function submitBooking(){
-  if(!currentUser){showToast('請先登入');return;}
-  const court=document.getElementById('formCourt').value;
-  const date=document.getElementById('formDate').value;
-  const start=document.getElementById('formStart').value;
-  const end=document.getElementById('formEnd').value;
-  const mode=document.getElementById('formMode').value;
-  if(!date||!start||!end){showToast('請填寫完整資料');return;}
-  if(timeToMin(end)<=timeToMin(start)){showToast('結束時間需晚於開始時間');return;}
-  const btn=document.getElementById('submitBookingBtn');
-  btn.disabled=true;btn.textContent='送出中…';
-  db.collection('bookings').add({
-    date,startTime:start,endTime:end,court,mode,
-    primaryName:currentUser.displayName||'—',
-    participantCount:1,
-    createdBy:currentUser.userId,
-    status:'confirmed',
-    createdAt:TS(),updatedAt:TS()
-  }).then(()=>{
-    showToast('預約成功 · '+COURT_DISPLAY[court]+' '+start);
-    closeBookingForm();
-    if(date===formatDate(selectedDate))loadCourtBookings(date);
-  }).catch(e=>{
-    console.error('submit booking error:',e);
-    showToast('預約失敗：'+e.message);
-  }).finally(()=>{btn.disabled=false;btn.textContent='確認預約';});
-}
+function markRead(id, el){ el.classList.add('read'); }
 
 /* ── Navigation ── */
-function showTab(name,el){
-  document.querySelectorAll('#screen-app .navTab').forEach(t=>t.classList.remove('active'));
+function showTab(name, el){
+  document.querySelectorAll('.navTab').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
-  document.querySelectorAll('#screen-app .screen').forEach(s=>s.classList.remove('active'));
-  document.getElementById('tab-'+name).classList.add('active');
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-'+name).classList.add('active');
   closeAllSheets();
-  if(name==='manage')renderManage();
-  if(name==='members'&&Object.keys(usersCache).length===0)loadAllUsers();
 }
-function setView(v,el){
+
+function setView(v, el){
   currentView=v;
   document.getElementById('view-week').style.display=v==='week'?'block':'none';
   document.getElementById('view-month').style.display=v==='month'?'block':'none';
   document.querySelectorAll('.switcherOption').forEach(b=>b.classList.remove('active'));
   el.classList.add('active');
-  if(v==='month')renderMonthView();
+  if(v==='month') renderMonthView();
 }
+
 function selectDate(dateStr){
   selectedDate=new Date(dateStr+'T00:00:00');
-  renderWeekStrip();renderDayHeader();
-  loadCourtBookings(dateStr);
+  render();
 }
-function changeWeek(d){selectedDate=addDays(selectedDate,d*7);renderWeekStrip();renderDayHeader();loadCourtBookings(formatDate(selectedDate));}
-function changeMonth(d){selectedDate=new Date(selectedDate.getFullYear(),selectedDate.getMonth()+d,1);renderMonthView();}
-function filterMembers(v){renderMembers(v)}
+function changeWeek(delta){ selectedDate=addDays(selectedDate,delta*7); render(); }
+function changeMonth(delta){
+  selectedDate=new Date(selectedDate.getFullYear(), selectedDate.getMonth()+delta, 1);
+  renderMonthView();
+}
+function filterMembers(v){ renderMembers(v); }
 
-/* ── Sheets ── */
+/* ── Profile Sheet ── */
 function openProfile(){
   document.getElementById('tabProfile').classList.add('active');
   document.getElementById('sheetBackdrop').classList.add('open');
   document.getElementById('profileSheet').classList.add('open');
 }
+function closeProfile(){
+  document.getElementById('profileSheet').classList.remove('open');
+  document.getElementById('tabProfile').classList.remove('active');
+  document.getElementById('sheetBackdrop').classList.remove('open');
+}
 function closeAllSheets(){
-  ['profileSheet','settingsSheet','bookingFormSheet','notificationsSheet','aboutSheet'].forEach(id=>{
-    const el=document.getElementById(id);if(el)el.classList.remove('open');
+  ['profileSheet','settingsSheet','notificationsSheet','aboutSheet'].forEach(id=>{
+    document.getElementById(id).classList.remove('open');
   });
   document.getElementById('sheetBackdrop').classList.remove('open');
   document.getElementById('tabProfile').classList.remove('active');
 }
-function openSettings(){document.getElementById('settingsSheet').classList.add('open');
-  if(currentUser){
-    const ni=document.getElementById('nameInput');if(ni)ni.value=currentUser.displayName||'';
-    const ns=document.getElementById('ntrpSelect');if(ns)ns.value=String(currentUser.ntrp||'');
-    const ps=document.getElementById('positionSelect');if(ps)ps.value=currentUser.preferredPosition||'';
-  }
+
+/* ── Settings Sheet ── */
+function openSettings(){
+  document.getElementById('settingsSheet').classList.add('open');
 }
-function closeSettings(){document.getElementById('settingsSheet').classList.remove('open')}
+function closeSettings(){
+  document.getElementById('settingsSheet').classList.remove('open');
+}
 function saveSettings(){
-  if(!currentUser)return;
-  const name=document.getElementById('nameInput').value.trim();
+  const name=document.getElementById('nameInput').value.trim()||MOCK_USER.name;
   const ntrp=document.getElementById('ntrpSelect').value;
-  const pos=document.getElementById('positionSelect').value;
-  const upd={updatedAt:TS()};
-  if(name)upd.displayName=name;
-  if(ntrp)upd.ntrp=ntrp;
-  if(pos)upd.preferredPosition=pos;
-  db.collection('users').doc(currentUser.userId).update(upd)
-    .then(()=>{showToast('已儲存');closeSettings();})
-    .catch(e=>{console.error(e);showToast('儲存失敗');});
+  const position=document.getElementById('positionSelect').value;
+  MOCK_USER.name=name; MOCK_USER.ntrp=ntrp; MOCK_USER.position=position;
+  document.getElementById('profileDisplayName').textContent=name;
+  document.getElementById('profileNTRP').textContent=ntrp;
+  document.getElementById('profilePosition').textContent=position;
+  closeSettings();
 }
+
+/* ── Notifications Sheet ── */
 function openNotifications(){
+  renderNotifications();
   document.getElementById('notificationsSheet').classList.add('open');
-  document.getElementById('notificationsList').innerHTML=
-    '<div class="notifItem"><div class="notifDot"></div><div><div class="notifTitle">系統通知</div><div class="notifText">歡迎使用清心網球協會系統</div><div class="notifTime">即時</div></div></div>'+
-    '<div class="notifItem read"><div class="notifDot"></div><div><div class="notifTitle">提示</div><div class="notifText">通知功能將於後續版本完整開放</div><div class="notifTime">—</div></div></div>';
 }
-function closeNotifications(){document.getElementById('notificationsSheet').classList.remove('open')}
-function openAbout(){document.getElementById('aboutSheet').classList.add('open')}
-function closeAbout(){document.getElementById('aboutSheet').classList.remove('open')}
-
-/* ── Toast ── */
-let toastTimer=null;
-function showToast(msg){
-  const t=document.getElementById('toast');if(!t)return;
-  t.textContent=msg;t.classList.add('show');
-  if(toastTimer)clearTimeout(toastTimer);
-  toastTimer=setTimeout(()=>{t.classList.remove('show');},2800);
+function closeNotifications(){
+  document.getElementById('notificationsSheet').classList.remove('open');
 }
 
-/* ── Boot ── */
-boot();
+/* ── About Sheet ── */
+function openAbout(){
+  document.getElementById('aboutSheet').classList.add('open');
+}
+function closeAbout(){
+  document.getElementById('aboutSheet').classList.remove('open');
+}
+
+/* ── Main Render ── */
+function render(){
+  renderCourtHeader();
+  renderWeekStrip();
+  renderDayHeader();
+  renderGrid();
+}
+
+render();
+renderBookings();
+renderSchedule();
+renderMembers();
 </script>
 </body>
 </html>
