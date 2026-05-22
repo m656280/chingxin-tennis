@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#faf9f5">
-<title>清心網球會</title>
+<title>清心網球協會</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=Noto+Sans+TC:wght@400;500&display=swap" rel="stylesheet">
@@ -434,6 +434,90 @@ button {
   color:var(--color-text-muted); font-size:13px; letter-spacing:0.04em;
 }
 .emptyStateIcon { font-size:32px; margin-bottom:12px; opacity:0.4; }
+
+/* ── Add Booking Button ── */
+.addBookingBtn {
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  width:100%; padding:13px; border-radius:10px;
+  background:var(--color-surface-alt); border:1px solid var(--color-border);
+  font-size:13px; letter-spacing:0.08em; color:var(--color-text-secondary);
+  cursor:pointer; margin-bottom:20px; transition:all 180ms ease;
+}
+.addBookingBtn:hover { border-color:var(--color-text-primary); color:var(--color-text-primary); }
+
+/* ── Cancel Button ── */
+.cancelBtn {
+  font-size:11px; padding:4px 12px; border-radius:99px;
+  border:1px solid var(--color-border); color:var(--color-text-muted);
+  letter-spacing:0.06em; cursor:pointer; margin-top:8px;
+  transition:all 150ms ease;
+}
+.cancelBtn:hover { border-color:var(--color-clay); color:var(--color-clay); }
+.bookingCardActions { display:flex; gap:8px; margin-top:4px; }
+
+/* ── Event Avatar ── */
+.event .eAvatar {
+  position:absolute; bottom:3px; right:4px;
+  width:14px; height:14px; border-radius:50%; overflow:hidden;
+  border:1px solid rgba(255,255,255,0.4); flex-shrink:0;
+}
+.event .eAvatar img { width:100%; height:100%; object-fit:cover; }
+
+/* ── Booking Form Sheet ── */
+.formSection { padding:16px 20px; }
+.formRow { margin-bottom:16px; }
+.formLabel {
+  display:block; font-size:10px; letter-spacing:0.10em;
+  color:var(--color-text-muted); text-transform:uppercase; margin-bottom:8px;
+}
+.formSelect, .formInput {
+  width:100%; padding:10px 12px; border-radius:9px;
+  background:var(--color-surface-alt); border:1px solid var(--color-border-soft);
+  font:inherit; font-size:14px; color:var(--color-text-primary);
+  appearance:none; cursor:pointer;
+}
+.formGrid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.primaryBtn {
+  width:100%; padding:14px; border-radius:12px;
+  background:var(--color-text-primary); color:var(--color-bg);
+  font-size:14px; letter-spacing:0.10em; font-weight:500; cursor:pointer;
+  transition:opacity 180ms ease; margin-top:4px;
+}
+.primaryBtn:active { opacity:0.7; }
+.primaryBtn:disabled { opacity:0.4; cursor:not-allowed; }
+
+/* ── Pending Card (管理) ── */
+.pendingCard {
+  background:var(--color-surface); border:1px solid var(--color-border-soft);
+  border-radius:12px; padding:14px 16px; margin-bottom:10px;
+}
+.pendingCardTop { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+.pendingCardName { font-size:14px; color:var(--color-text-primary); font-weight:500; }
+.pendingCardMeta { font-size:11px; color:var(--color-text-muted); margin-top:2px; }
+.pendingActions { display:flex; gap:8px; }
+.approveBtn {
+  flex:1; padding:9px; border-radius:9px; font-size:12px; letter-spacing:0.06em;
+  background:rgba(74,109,74,0.12); color:var(--dot-event); cursor:pointer;
+  transition:background 150ms ease;
+}
+.approveBtn:hover { background:rgba(74,109,74,0.22); }
+.rejectBtn {
+  flex:1; padding:9px; border-radius:9px; font-size:12px; letter-spacing:0.06em;
+  background:rgba(184,92,74,0.10); color:var(--color-clay); cursor:pointer;
+  transition:background 150ms ease;
+}
+.rejectBtn:hover { background:rgba(184,92,74,0.20); }
+
+/* ── Toast ── */
+.toast {
+  position:fixed; bottom:76px; left:50%;
+  transform:translateX(-50%) translateY(10px);
+  background:var(--color-text-primary); color:var(--color-bg);
+  padding:9px 18px; border-radius:20px;
+  font-size:13px; letter-spacing:0.04em; z-index:400;
+  opacity:0; transition:all 220ms ease; pointer-events:none; white-space:nowrap;
+}
+.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
 </style>
 </head>
 <body>
@@ -452,7 +536,7 @@ button {
         </svg>
         <span class="brandName">CHING XIN</span>
       </div>
-      <span class="brandSub">Tennis Society  ·  清心網球會</span>
+      <span class="brandSub">Tennis Society  ·  清心網球協會</span>
     </div>
   </header>
 
@@ -501,16 +585,20 @@ button {
   <!-- ── Screen: 預約 ── -->
   <div class="screen" id="screen-book">
     <div class="screenTitle">預約紀錄</div>
+    <button class="addBookingBtn" onclick="openBookingForm()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      新增預約
+    </button>
     <div class="screenSection">即將到來</div>
     <div id="bookUpcoming"></div>
     <div class="screenSection">過往紀錄</div>
     <div id="bookPast"></div>
   </div>
 
-  <!-- ── Screen: 行程 ── -->
-  <div class="screen" id="screen-schedule">
-    <div class="screenTitle">我的行程</div>
-    <div id="scheduleList"></div>
+  <!-- ── Screen: 管理 ── -->
+  <div class="screen" id="screen-manage">
+    <div class="screenTitle">管理</div>
+    <div id="manageContent"></div>
   </div>
 
   <!-- ── Screen: 會員 ── -->
@@ -534,11 +622,11 @@ button {
       </svg>
       預約
     </button>
-    <button class="navTab" onclick="showTab('schedule',this)">
+    <button class="navTab" onclick="showTab('manage',this)">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
-        <circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/>
+        <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
       </svg>
-      行程
+      管理
     </button>
     <button class="navTab" onclick="showTab('members',this)">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
@@ -601,7 +689,7 @@ button {
       <span class="sheetRowChevron">›</span>
     </div>
     <div class="sheetRow sheetNavRow" onclick="openAbout()">
-      <span class="sheetRowLabel">關於清心網球會</span>
+      <span class="sheetRowLabel">關於清心網球協會</span>
       <span class="sheetRowChevron">›</span>
     </div>
   </div>
@@ -656,7 +744,7 @@ button {
   <div class="sheetHandle"></div>
   <div class="subSheetHeader">
     <button class="subSheetBack" onclick="closeAbout()">‹</button>
-    <span class="subSheetTitle">關於清心網球會</span>
+    <span class="subSheetTitle">關於清心網球協會</span>
     <span style="width:32px"></span>
   </div>
   <div class="aboutContent">
@@ -672,7 +760,7 @@ button {
     </div>
     <div class="aboutBlock">
       <div class="aboutBlockTitle">關於我們</div>
-      <div class="aboutBlockText">清心網球會是一個以慢活精神為核心的私人網球社群。我們重視品質、紀律與會員之間的深厚情誼。</div>
+      <div class="aboutBlockText">清心網球協會是一個以慢活精神為核心的私人網球社群。我們重視品質、紀律與會員之間的深厚情誼。</div>
     </div>
     <div class="aboutDivider"></div>
     <div class="aboutBlock">
@@ -700,7 +788,80 @@ button {
   </div>
 </div>
 
+<!-- ── Booking Form Sub-Sheet ── -->
+<div class="subSheet" id="bookingFormSheet">
+  <div class="sheetHandle"></div>
+  <div class="subSheetHeader">
+    <button class="subSheetBack" onclick="closeBookingForm()">‹</button>
+    <span class="subSheetTitle">新增預約</span>
+    <span style="width:32px"></span>
+  </div>
+  <div class="formSection">
+    <div class="formRow">
+      <label class="formLabel">場地</label>
+      <select class="formSelect" id="formCourt">
+        <option value="hard_a">Hard A — 硬地</option>
+        <option value="hard_b">Hard B — 硬地</option>
+        <option value="clay_a">Clay A — 紅土</option>
+        <option value="clay_b">Clay B — 紅土</option>
+      </select>
+    </div>
+    <div class="formRow">
+      <label class="formLabel">日期</label>
+      <input class="formInput" id="formDate" type="date">
+    </div>
+    <div class="formGrid" style="margin-bottom:16px">
+      <div>
+        <label class="formLabel">開始時間</label>
+        <select class="formSelect" id="formStart"></select>
+      </div>
+      <div>
+        <label class="formLabel">結束時間</label>
+        <select class="formSelect" id="formEnd"></select>
+      </div>
+    </div>
+    <div class="formRow">
+      <label class="formLabel">模式</label>
+      <select class="formSelect" id="formMode">
+        <option value="normal">一般</option>
+        <option value="pickleball">匹克球</option>
+        <option value="coaching">教學</option>
+        <option value="group_class">團課</option>
+      </select>
+    </div>
+    <div class="formRow" id="bookForRow">
+      <label class="formLabel">代預約會員（選填）</label>
+      <select class="formSelect" id="formBookFor"><option value="">— 自己 —</option></select>
+    </div>
+    <button class="primaryBtn" id="submitBookingBtn" onclick="submitBooking()">確認預約</button>
+  </div>
+</div>
+
+<!-- ── Toast ── -->
+<div class="toast" id="toast"></div>
+
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
+/* ── Firebase Init ── */
+const FB_CONFIG = {
+  apiKey:"AIzaSyBrqZAvkN57jGx5LNOMtquWzK3YQ1QLFQ",
+  authDomain:"court-board-c1e29.firebaseapp.com",
+  projectId:"court-board-c1e29",
+  storageBucket:"court-board-c1e29.firebasestorage.app",
+  messagingSenderId:"337148491014",
+  appId:"1:337148491014:web:33cab9162b64afad045a87"
+};
+const LIFF_ID = '2009941241-ymtu2MdM';
+var db;
+try {
+  firebase.initializeApp(FB_CONFIG);
+  db = firebase.firestore();
+} catch(e){ console.warn('Firebase init failed:', e); }
+const TS = () => db ? firebase.firestore.FieldValue.serverTimestamp() : new Date();
+const ROLE_LABELS = {owner:'擁有者',admin:'管理員',annual_member:'年費會員',monthly_member:'月費會員',coach:'教練',pending:'待審核'};
+
 /* ── Constants ── */
 const COURTS = ['hard_a','hard_b','clay_a','clay_b'];
 const COURT_LABELS = {
@@ -718,6 +879,13 @@ const SLOT_MIN = 30;
 const today = new Date();
 let selectedDate = new Date(today);
 let currentView = 'week';
+/* Firebase state — null = use mock data fallback */
+let currentUser = null;
+let usersCache = {};          // uid → user doc
+let courtBookingsFirestore = null;  // array when loaded, null = use mock
+let myBookingsFirestore = null;     // array when loaded, null = use mock
+let pendingUsersFirestore = [];
+let unsubMyBookings = null;
 
 /* ── Date Utilities ── */
 function pad(n){ return String(n).padStart(2,'0'); }
@@ -861,7 +1029,8 @@ function renderGrid(){
       '<span class="timeLabel">'+(showLabel?slot:'')+'</span></div>';
   });
   const ds=formatDate(selectedDate);
-  MOCK_BOOKINGS.filter(b=>b.date===ds).forEach(b=>{
+  const bookingsForDay=(courtBookingsFirestore!==null?courtBookingsFirestore:MOCK_BOOKINGS).filter(b=>b.date===ds);
+  bookingsForDay.forEach(b=>{
     const {startSlot,spanSlots}=getSlotPosition(b.startTime,b.endTime,open);
     const courtIdx=COURTS.indexOf(b.court);
     if(courtIdx<0) return;
@@ -869,11 +1038,16 @@ function renderGrid(){
     const isLock=b.mode==='event_lock';
     const cls='event '+(isLock?'eventLock':(surface==='clay'?'clay':''))+(spanSlots<=1?' short':'');
     const dotColor=(b.mode==='coaching'||b.mode==='group_class')?'var(--dot-coach)':(isLock?'var(--dot-event)':null);
-    html+='<div class="'+cls+'" style="grid-column:'+(courtIdx+2)+';grid-row:'+(startSlot+1)+'/span '+spanSlots+'">'+
+    const u=b.createdBy?usersCache[b.createdBy]:null;
+    const avatarHtml=u&&u.lineAvatar?'<div class="eAvatar"><img src="'+u.lineAvatar+'" alt=""></div>':'';
+    const displayName=u?u.displayName:(b.primaryName||'—');
+    html+='<div class="'+cls+'" style="grid-column:'+(courtIdx+2)+';grid-row:'+(startSlot+1)+'/span '+spanSlots+'"'+
+      ' onclick="showBookingDetail(\''+b.id+'\')" title="'+displayName+'">'+
       (dotColor?'<span class="modeDot" style="background:'+dotColor+'"></span>':'')+
       '<span class="time">'+b.startTime+'</span>'+
-      '<span class="name">'+b.primaryName+'</span>'+
+      '<span class="name">'+displayName+'</span>'+
       (spanSlots>=3?'<span class="meta">'+MODE_LABELS[b.mode]+(b.participantCount>0?(' · '+b.participantCount+'P'):'')+'</span>':'')+
+      avatarHtml+
     '</div>';
   });
   if(isSameDay(selectedDate,today)){
@@ -926,11 +1100,18 @@ function renderMonthView(){
 
 /* ── Render: Booking Records ── */
 function renderBookings(){
-  const upcoming=MOCK_MY_BOOKINGS.filter(b=>b.status==='confirmed');
-  const past=MOCK_MY_BOOKINGS.filter(b=>b.status==='completed');
-  function cardHtml(b){
+  const todayStr=formatDate(today);
+  const source=myBookingsFirestore!==null?myBookingsFirestore:MOCK_MY_BOOKINGS;
+  const upcoming=source.filter(b=>b.status==='confirmed'&&b.date>=todayStr)
+    .sort((a,b)=>a.date.localeCompare(b.date));
+  const past=source.filter(b=>b.status==='completed'||(b.status==='confirmed'&&b.date<todayStr)||b.status==='cancelled')
+    .sort((a,b)=>b.date.localeCompare(a.date)).slice(0,10);
+
+  function courtDisplay(court){ return {hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[court]||court; }
+  function cardHtml(b,isUpcoming){
     const d=new Date(b.date+'T00:00:00');
-    const surface=COURT_SURFACE[b.court];
+    const courtLabel=b.courtLabel||courtDisplay(b.court);
+    const partners=b.partners?b.partners.join('、'):'';
     return '<div class="bookingCard">'+
       '<div class="bookingCardDate">'+
         '<div class="bookingCardDateNum">'+d.getDate()+'</div>'+
@@ -938,64 +1119,100 @@ function renderBookings(){
       '</div>'+
       '<div class="bookingCardBody">'+
         '<div class="bookingCardTime">'+
-          b.startTime+' – '+b.endTime+' &nbsp;'+b.courtLabel+
+          b.startTime+' – '+b.endTime+' &nbsp;'+courtLabel+
           '&nbsp;<span class="statusChip '+b.status+'">'+
-          (b.status==='confirmed'?'確認':'完成')+
+          (b.status==='confirmed'?'確認':(b.status==='cancelled'?'取消':'完成'))+
           '</span></div>'+
-        '<div class="bookingCardMeta">'+MODE_LABELS[b.mode]+' · '+b.partners.join('、')+'</div>'+
+        '<div class="bookingCardMeta">'+MODE_LABELS[b.mode]+(partners?' · '+partners:'')+'</div>'+
+        (isUpcoming&&b.status==='confirmed'?
+          '<div class="bookingCardActions"><button class="cancelBtn" onclick="cancelBooking(\''+b.id+'\')">取消預約</button></div>':'')+
       '</div>'+
     '</div>';
   }
-  document.getElementById('bookUpcoming').innerHTML=upcoming.length?upcoming.map(cardHtml).join(''):
+  const upEl=document.getElementById('bookUpcoming');
+  const paEl=document.getElementById('bookPast');
+  if(upEl) upEl.innerHTML=upcoming.length?upcoming.map(b=>cardHtml(b,true)).join(''):
     '<div class="emptyState"><div class="emptyStateIcon">📅</div>暫無即將到來的預約</div>';
-  document.getElementById('bookPast').innerHTML=past.length?past.map(cardHtml).join(''):
+  if(paEl) paEl.innerHTML=past.length?past.map(b=>cardHtml(b,false)).join(''):
     '<div class="emptyState"><div class="emptyStateIcon">—</div>暫無歷史紀錄</div>';
 }
 
-/* ── Render: My Schedule ── */
-function renderSchedule(){
-  const upcoming=MOCK_MY_BOOKINGS.filter(b=>b.status==='confirmed')
+/* ── Render: 管理 ── */
+function renderManage(){
+  const el=document.getElementById('manageContent');
+  if(!el) return;
+  const source=myBookingsFirestore!==null?myBookingsFirestore:MOCK_MY_BOOKINGS;
+  const upcoming=source.filter(b=>b.status==='confirmed')
     .sort((a,b)=>a.date.localeCompare(b.date));
   if(!upcoming.length){
-    document.getElementById('scheduleList').innerHTML=
-      '<div class="emptyState"><div class="emptyStateIcon">🎾</div>目前沒有排定的行程</div>';
+    el.innerHTML='<div class="emptyState"><div class="emptyStateIcon">🎾</div>目前沒有排定的行程</div>';
     return;
   }
-  let html='';
+  let html='<div class="screenSection">即將到來</div>';
   upcoming.forEach(b=>{
     const surface=COURT_SURFACE[b.court];
     const barCls=surface==='clay'?'clay':(b.mode==='event_lock'?'lock':'');
+    const courtLabel=b.courtLabel||({hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[b.court]||b.court);
+    const partners=b.partners?b.partners.join('、'):'';
     html+='<div class="scheduleItem">'+
       '<div class="scheduleItemBar '+barCls+'"></div>'+
       '<div class="scheduleItemBody">'+
         '<div class="scheduleItemTime">'+shortDateStr(b.date)+'  '+b.startTime+' – '+b.endTime+'</div>'+
-        '<div class="scheduleItemName">'+b.courtLabel+'  ·  '+MODE_LABELS[b.mode]+'</div>'+
-        '<div class="scheduleItemMeta">'+b.partners.join('、')+'</div>'+
+        '<div class="scheduleItemName">'+courtLabel+'  ·  '+MODE_LABELS[b.mode]+'</div>'+
+        (partners?'<div class="scheduleItemMeta">'+partners+'</div>':'')+
       '</div>'+
     '</div>';
   });
-  document.getElementById('scheduleList').innerHTML=html;
+  el.innerHTML=html;
 }
 
 /* ── Render: Member List ── */
 function renderMembers(filter){
   const f=(filter||'').toLowerCase();
-  const list=MOCK_MEMBERS.filter(m=>!f||m.name.toLowerCase().includes(f)||m.ntrp.includes(f)||m.position.toLowerCase().includes(f));
-  const typeLabel={annual:'年費會員',monthly:'月費會員',coach:'教練'};
-  document.getElementById('memberList').innerHTML=list.map(m=>{
-    const initials=m.name.charAt(0);
-    const isCoach=m.type==='coach';
-    return '<div class="memberCard">'+
-      '<div class="memberAvatar">'+
-        '<svg width="40" height="40" viewBox="0 0 40 40"><rect width="40" height="40" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="16" font-family="serif">'+initials+'</text></svg>'+
-      '</div>'+
-      '<div class="memberInfo">'+
-        '<div class="memberName">'+m.name+'</div>'+
-        '<div class="memberMeta">NTRP '+m.ntrp+'  ·  '+m.position+'</div>'+
-      '</div>'+
-      '<span class="memberBadge'+(isCoach?' coach':'')+'">'+typeLabel[m.type]+'</span>'+
-    '</div>';
-  }).join('')||'<div class="emptyState">找不到符合的會員</div>';
+  const ROLE_BADGE={owner:'擁有者',admin:'管理員',annual_member:'年費',monthly_member:'月費',coach:'教練',annual:'年費',monthly:'月費'};
+  const el=document.getElementById('memberList');
+  if(!el) return;
+  let list;
+  if(Object.keys(usersCache).length>0){
+    /* Use Firestore usersCache */
+    list=Object.values(usersCache)
+      .filter(m=>m.role&&m.role!=='pending'&&m.role!=='blocked')
+      .filter(m=>!f||(m.displayName||'').toLowerCase().includes(f)||String(m.ntrp||'').includes(f)||(m.preferredPosition||'').toLowerCase().includes(f))
+      .sort((a,b)=>{
+        if(a.role==='coach'&&b.role!=='coach') return -1;
+        if(b.role==='coach'&&a.role!=='coach') return 1;
+        return (a.displayName||'').localeCompare(b.displayName||'','zh');
+      });
+    el.innerHTML=list.map(m=>{
+      const initials=(m.displayName||'?').charAt(0);
+      const isCoach=m.role==='coach';
+      const isAdmin=m.role==='admin'||m.role==='owner';
+      const avatarHtml=m.lineAvatar
+        ?'<img src="'+m.lineAvatar+'" onerror="this.style.display=\'none\'" alt="'+m.displayName+'">'
+        :'<svg width="40" height="40" viewBox="0 0 40 40"><rect width="40" height="40" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="16" font-family="serif">'+initials+'</text></svg>';
+      return '<div class="memberCard" onclick="showMemberDetail(\''+m.userId+'\')" style="cursor:pointer">'+
+        '<div class="memberAvatar">'+avatarHtml+'</div>'+
+        '<div class="memberInfo">'+
+          '<div class="memberName">'+m.displayName+'</div>'+
+          '<div class="memberMeta">'+(m.ntrp?'NTRP '+m.ntrp+' · ':'')+( m.preferredPosition||'—')+'</div>'+
+        '</div>'+
+        '<span class="memberBadge'+(isCoach?' coach':'')+'">'+((ROLE_BADGE[m.role])||m.role||'—')+'</span>'+
+      '</div>';
+    }).join('')||'<div class="emptyState">找不到符合的會員</div>';
+  } else {
+    /* Mock fallback */
+    list=MOCK_MEMBERS.filter(m=>!f||m.name.toLowerCase().includes(f)||m.ntrp.includes(f)||m.position.toLowerCase().includes(f));
+    const typeLabel={annual:'年費會員',monthly:'月費會員',coach:'教練'};
+    el.innerHTML=list.map(m=>{
+      const initials=m.name.charAt(0);
+      const isCoach=m.type==='coach';
+      return '<div class="memberCard">'+
+        '<div class="memberAvatar"><svg width="40" height="40" viewBox="0 0 40 40"><rect width="40" height="40" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="16" font-family="serif">'+initials+'</text></svg></div>'+
+        '<div class="memberInfo"><div class="memberName">'+m.name+'</div><div class="memberMeta">NTRP '+m.ntrp+'  ·  '+m.position+'</div></div>'+
+        '<span class="memberBadge'+(isCoach?' coach':'')+'">'+typeLabel[m.type]+'</span>'+
+      '</div>';
+    }).join('')||'<div class="emptyState">找不到符合的會員</div>';
+  }
 }
 
 /* ── Render: Notifications ── */
@@ -1019,6 +1236,8 @@ function showTab(name, el){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('screen-'+name).classList.add('active');
   closeAllSheets();
+  if(name==='manage') renderManage();
+  if(name==='members'&&Object.keys(usersCache).length===0) loadUsersCache();
 }
 
 function setView(v, el){
@@ -1053,8 +1272,8 @@ function closeProfile(){
   document.getElementById('sheetBackdrop').classList.remove('open');
 }
 function closeAllSheets(){
-  ['profileSheet','settingsSheet','notificationsSheet','aboutSheet'].forEach(id=>{
-    document.getElementById(id).classList.remove('open');
+  ['profileSheet','settingsSheet','notificationsSheet','aboutSheet','bookingFormSheet'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.classList.remove('open');
   });
   document.getElementById('sheetBackdrop').classList.remove('open');
   document.getElementById('tabProfile').classList.remove('active');
@@ -1095,17 +1314,169 @@ function closeAbout(){
   document.getElementById('aboutSheet').classList.remove('open');
 }
 
+/* ── Toast ── */
+var toastTimer=null;
+function showToast(msg){
+  var t=document.getElementById('toast'); if(!t) return;
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(function(){ t.classList.remove('show'); },2600);
+}
+
+/* ── Booking Detail (tap event on court grid) ── */
+function showBookingDetail(id){
+  var source=courtBookingsFirestore!==null?courtBookingsFirestore:MOCK_BOOKINGS;
+  var b=source.find(function(x){ return x.id===id; });
+  if(!b) return;
+  var u=b.createdBy?usersCache[b.createdBy]:null;
+  var name=u?u.displayName:b.primaryName;
+  showToast(({hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[b.court]||b.court)+' · '+b.startTime+'–'+b.endTime+'  '+name);
+}
+
+/* ── Member Detail (tap member card) ── */
+function showMemberDetail(uid){
+  var m=usersCache[uid]; if(!m) return;
+  showToast(m.displayName+(m.ntrp?' · NTRP '+m.ntrp:'')+(m.preferredPosition?' · '+m.preferredPosition:''));
+}
+
+/* ── Load Users Cache from Firestore ── */
+function loadUsersCache(){
+  if(!db) return;
+  db.collection('users').get()
+    .then(function(snap){
+      snap.docs.forEach(function(d){ usersCache[d.id]=Object.assign({userId:d.id},d.data()); });
+      renderMembers('');
+      renderGrid(); // refresh avatars
+    })
+    .catch(function(e){ console.warn('loadUsersCache error:',e); });
+}
+
+/* ── Load Court Bookings from Firestore ── */
+function loadCourtBookings(dateStr){
+  if(!db){ renderGrid(); return; }
+  db.collection('bookings')
+    .where('date','==',dateStr)
+    .where('status','==','confirmed')
+    .get()
+    .then(function(snap){
+      courtBookingsFirestore=snap.docs.map(function(d){ return Object.assign({id:d.id},d.data()); });
+      renderGrid();
+    })
+    .catch(function(e){
+      console.warn('loadCourtBookings error, using mock:',e);
+      courtBookingsFirestore=null;
+      renderGrid();
+    });
+}
+
+/* ── Load My Bookings from Firestore ── */
+function loadMyBookings(){
+  if(!db||!currentUser){ renderBookings(); renderManage(); return; }
+  db.collection('bookings')
+    .where('createdBy','==',currentUser.userId||currentUser.id||'')
+    .orderBy('date','asc')
+    .get()
+    .then(function(snap){
+      myBookingsFirestore=snap.docs.map(function(d){ return Object.assign({id:d.id},d.data()); });
+      renderBookings();
+      renderManage();
+    })
+    .catch(function(e){
+      console.warn('loadMyBookings error, using mock:',e);
+      myBookingsFirestore=null;
+      renderBookings();
+      renderManage();
+    });
+}
+
+/* ── Cancel Booking ── */
+function cancelBooking(id){
+  if(!confirm('確認取消此預約？')) return;
+  if(!db){ showToast('無法連線，請稍後再試'); return; }
+  db.collection('bookings').doc(id).update({status:'cancelled',updatedAt:TS()})
+    .then(function(){
+      showToast('預約已取消');
+      loadMyBookings();
+    })
+    .catch(function(e){ console.error('cancelBooking error:',e); showToast('取消失敗，請稍後再試'); });
+}
+
+/* ── Booking Form ── */
+function openBookingForm(){
+  var startSel=document.getElementById('formStart');
+  var endSel=document.getElementById('formEnd');
+  if(!startSel||!endSel) return;
+  var times=[]; var cur=timeToMin('06:00');
+  while(cur<timeToMin('24:00')){ times.push(minToTime(cur)); cur+=30; }
+  startSel.innerHTML=times.map(function(t){ return '<option value="'+t+'">'+t+'</option>'; }).join('');
+  endSel.innerHTML=times.map(function(t){ return '<option value="'+t+'">'+t+'</option>'; }).join('');
+  startSel.value='19:00'; endSel.value='21:00';
+  var di=document.getElementById('formDate');
+  if(di){ di.value=formatDate(today); di.min=formatDate(today); }
+  var bfSel=document.getElementById('formBookFor');
+  if(bfSel){
+    var opts='<option value="">— 自己 —</option>';
+    Object.values(usersCache).forEach(function(m){
+      if(m.role&&m.role!=='pending'&&m.role!=='blocked')
+        opts+='<option value="'+m.userId+'">'+m.displayName+'</option>';
+    });
+    bfSel.innerHTML=opts;
+  }
+  document.getElementById('bookingFormSheet').classList.add('open');
+  document.getElementById('sheetBackdrop').classList.add('open');
+}
+function closeBookingForm(){
+  document.getElementById('bookingFormSheet').classList.remove('open');
+  document.getElementById('sheetBackdrop').classList.remove('open');
+}
+function submitBooking(){
+  if(!db){ showToast('無法連線，請稍後再試'); return; }
+  var court=document.getElementById('formCourt').value;
+  var date=document.getElementById('formDate').value;
+  var start=document.getElementById('formStart').value;
+  var end=document.getElementById('formEnd').value;
+  var mode=document.getElementById('formMode').value;
+  var bookFor=document.getElementById('formBookFor').value;
+  if(!date||!start||!end){ showToast('請填寫完整資料'); return; }
+  if(timeToMin(end)<=timeToMin(start)){ showToast('結束時間需晚於開始時間'); return; }
+  var displayName=currentUser?currentUser.displayName:(MOCK_USER.name||'—');
+  var creatorId=currentUser?(currentUser.userId||currentUser.id||''):'';
+  if(bookFor&&usersCache[bookFor]){ displayName=usersCache[bookFor].displayName; }
+  var courtDisplay={hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'};
+  var btn=document.getElementById('submitBookingBtn');
+  if(btn){ btn.disabled=true; btn.textContent='送出中…'; }
+  db.collection('bookings').add({
+    date:date, startTime:start, endTime:end,
+    court:court, mode:mode,
+    primaryName:displayName,
+    participantCount:1,
+    createdBy:creatorId,
+    status:'confirmed',
+    createdAt:TS(), updatedAt:TS()
+  }).then(function(){
+    showToast('預約成功 · '+(courtDisplay[court]||court)+' '+start);
+    closeBookingForm();
+    if(date===formatDate(selectedDate)) loadCourtBookings(date);
+    loadMyBookings();
+  }).catch(function(e){
+    console.error('submitBooking error:',e);
+    showToast('預約失敗：'+e.message);
+  }).finally(function(){
+    if(btn){ btn.disabled=false; btn.textContent='確認預約'; }
+  });
+}
+
 /* ── Main Render ── */
 function render(){
   renderCourtHeader();
   renderWeekStrip();
   renderDayHeader();
-  renderGrid();
+  loadCourtBookings(formatDate(selectedDate));
 }
 
 render();
 renderBookings();
-renderSchedule();
+renderManage();
 renderMembers();
 </script>
 </body>
