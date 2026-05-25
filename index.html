@@ -58,11 +58,14 @@ button {
   border-radius: 24px; box-shadow: 0 8px 40px rgba(0,0,0,0.10);
   position: relative;
 }
-@media (max-width:480px) { .app { border-radius:0; box-shadow:none; min-height:100dvh; } }
+@media (max-width:480px) {
+  .app { border-radius:0; box-shadow:none; min-height:100dvh; }
+  .app.court-active { min-height:auto; }
+}
 
 /* ── Header / Brand ── */
-.header { display:flex; justify-content:center; align-items:center; margin:28px 0 32px; }
-.brand { display:flex; flex-direction:column; align-items:center; gap:4px; }
+.header { display:flex; justify-content:flex-start; align-items:center; margin:28px 0 32px; }
+.brand { display:flex; flex-direction:column; align-items:flex-start; gap:4px; }
 .brandRow { display:flex; align-items:center; gap:12px; }
 .brandName {
   font-family:var(--font-display); font-size:18px;
@@ -71,12 +74,23 @@ button {
 }
 .brandSub {
   font-family:var(--font-display); font-style:italic;
-  font-size:10px; letter-spacing:0.14em; color:var(--color-text-muted);
+  font-size:9.5px; letter-spacing:0.26em; color:var(--color-text-muted);
+  line-height:1.5; white-space:nowrap;
 }
 
 /* ── Screens ── */
 .screen { display:none; }
 .screen.active { display:block; }
+
+/* ── Court Page Inline Header ── */
+.courtPageHeader { display:flex; align-items:center; justify-content:space-between; margin:4px 0 20px; }
+.courtBrandInline { display:flex; align-items:center; gap:10px; }
+.courtBrandText { display:flex; flex-direction:column; gap:1px; }
+.courtBrandName { font-family:var(--font-display); font-size:22px; letter-spacing:0.18em; text-transform:uppercase; color:var(--color-text-primary); font-weight:500; line-height:1.1; }
+.courtBrandSub { font-family:var(--font-display); font-style:italic; font-size:8.5px; letter-spacing:0.20em; color:var(--color-text-muted); line-height:1.5; white-space:nowrap; }
+.courtSwitcherWrap .switcherGroup { padding:2px; }
+.courtSwitcherWrap .switcherOption { padding:5px 13px; font-size:11px; letter-spacing:0.07em; }
+.header.court-header-hidden { display:none; }
 
 /* ── View Switcher ── */
 .viewSwitcher { display:flex; justify-content:center; margin-bottom:24px; }
@@ -99,8 +113,8 @@ button {
 .weekStrip { margin-bottom:24px; display:flex; flex-direction:column; gap:8px; }
 .weekHeader { display:flex; align-items:center; justify-content:space-between; padding:0 4px; }
 .monthLabel {
-  font-family:var(--font-display); font-size:16px;
-  letter-spacing:0.04em; color:var(--color-text-primary); font-weight:500;
+  font-family:var(--font-body); font-size:16px;
+  letter-spacing:0.01em; color:var(--color-text-primary); font-weight:500;
 }
 .navButton {
   width:32px; height:32px; display:flex; align-items:center; justify-content:center;
@@ -125,17 +139,19 @@ button {
 
 /* ── Day Header ── */
 .dayHeader { display:flex; align-items:baseline; gap:8px; margin-bottom:16px; padding:0 4px; }
-.dayLabelMain { font-family:var(--font-display); font-size:18px; color:var(--color-text-primary); font-weight:500; }
+.dayLabelMain { font-family:var(--font-body); font-size:18px; color:var(--color-text-primary); font-weight:500; letter-spacing:0; }
 .dayMeta { font-size:11px; letter-spacing:0.08em; color:var(--color-text-muted); text-transform:uppercase; }
 
 /* ── Time Grid ── */
 .timeGridWrapper {
   background:var(--color-surface); border:1px solid var(--color-border-soft);
   border-radius:8px; overflow:hidden;
+  overflow-y:auto; max-height:calc(100dvh - 275px);
 }
 .courtHeader {
   display:grid; grid-template-columns:44px repeat(4,1fr);
   border-bottom:1px solid var(--color-border); background:var(--color-surface-alt);
+  position:sticky; top:0; z-index:10;
 }
 .courtLabel {
   display:flex; flex-direction:column; align-items:center; justify-content:center;
@@ -151,7 +167,7 @@ button {
 }
 .slotRow.fullHour { border-top-color:var(--grid-line); }
 .slotRow.firstRow { border-top:none; }
-.timeLabel { width:44px; padding-left:6px; font-size:9px; letter-spacing:0.04em; color:var(--color-text-muted); }
+.timeLabel { width:44px; padding-left:6px; font-size:12px; letter-spacing:0.02em; color:var(--color-text-muted); line-height:1.5; }
 .courtDividers {
   grid-column:1 / -1; grid-row:1 / -1; pointer-events:none;
   display:grid; grid-template-columns:44px repeat(4,1fr); z-index:0;
@@ -225,8 +241,8 @@ button {
   text-align:center; min-width:36px; flex-shrink:0;
 }
 .bookingCardDateNum {
-  font-family:var(--font-display); font-size:22px; font-weight:500;
-  line-height:1; color:var(--color-text-primary);
+  font-family:var(--font-body); font-size:22px; font-weight:500;
+  line-height:1; color:var(--color-text-primary); letter-spacing:0;
 }
 .bookingCardDateMon {
   font-size:9px; letter-spacing:0.10em; color:var(--color-text-muted); text-transform:uppercase;
@@ -508,6 +524,217 @@ button {
 }
 .rejectBtn:hover { background:rgba(184,92,74,0.20); }
 
+/* ── Finance Screen Header ── */
+.finScreenHeader {
+  display:flex; align-items:center; justify-content:space-between;
+  margin:4px 0 20px; padding:0 2px;
+}
+.finScreenTitle {
+  font-family:var(--font-display); font-size:20px; font-weight:500;
+  letter-spacing:0.04em; color:var(--color-text-primary);
+}
+.finHeaderActions { display:flex; gap:8px; align-items:center; }
+.finActionBtn {
+  padding:6px 14px; border-radius:99px; font-size:12px; letter-spacing:0.06em;
+  border:1px solid var(--color-border); color:var(--color-text-secondary);
+  cursor:pointer; background:transparent; transition:all 160ms ease;
+  font-family:var(--font-body);
+}
+.finActionBtn:hover { border-color:var(--color-text-primary); color:var(--color-text-primary); }
+.finActionBtnPrimary {
+  background:var(--color-text-primary); color:var(--color-bg);
+  border-color:var(--color-text-primary);
+}
+.finActionBtnPrimary:hover { opacity:0.82; }
+
+/* ── Finance Screen ── */
+.financeBalanceCard {
+  background:var(--color-text-primary); color:var(--color-bg);
+  border-radius:14px; padding:18px 20px; margin-bottom:20px;
+  display:flex; justify-content:space-between; align-items:flex-end;
+}
+.financeBalanceLabel {
+  font-size:10px; letter-spacing:0.10em; text-transform:uppercase; opacity:0.55; margin-bottom:6px;
+}
+.financeBalanceAmt {
+  font-family:var(--font-body); font-size:32px; font-weight:600; letter-spacing:0; line-height:1;
+}
+.financeStats {
+  display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:24px;
+}
+.financeStatCard {
+  background:var(--color-surface); border:1px solid var(--color-border-soft);
+  border-radius:12px; padding:13px 15px;
+}
+.financeStatLabel {
+  font-size:10px; letter-spacing:0.07em; color:var(--color-text-muted);
+  text-transform:uppercase; margin-bottom:5px;
+}
+.financeStatAmt {
+  font-family:var(--font-body); font-size:18px; font-weight:600; letter-spacing:0;
+  color:var(--color-text-primary);
+}
+.financeStatAmt.out { color:var(--color-clay); }
+.financeRecord {
+  display:flex; align-items:center; gap:10px;
+  padding:13px 0; border-bottom:1px solid var(--color-border-soft);
+}
+.financeRecord:last-child { border-bottom:none; }
+.financeRecordLeft { flex:1; min-width:0; }
+.financeRecordName {
+  font-size:15px; color:var(--color-text-primary); font-weight:500;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.financeRecordMeta { font-size:12.5px; color:var(--color-text-muted); margin-top:3px; line-height:1.5; }
+.financeRecordAmt {
+  font-family:var(--font-body); font-size:17px; font-weight:500; letter-spacing:0;
+  color:var(--color-text-primary); flex-shrink:0;
+}
+.financeRecordAmt.out { color:var(--color-clay); }
+.finTypeBadge {
+  font-size:11px; letter-spacing:0.04em; padding:3px 10px;
+  border-radius:99px; flex-shrink:0; white-space:nowrap;
+}
+.fin-annual { background:rgba(74,109,74,0.12); color:#4a6d4a; }
+.fin-monthly { background:rgba(61,90,128,0.10); color:#3d5a80; }
+.fin-donate  { background:rgba(201,169,110,0.18); color:#8a6c30; }
+.fin-expense { background:rgba(184,92,74,0.10); color:var(--color-clay); }
+.financeStatCard { cursor:pointer; transition:opacity 150ms ease; }
+.financeStatCard:active { opacity:0.6; }
+.finYearSwitcher {
+  display:flex; justify-content:center; margin-bottom:18px;
+}
+.finYearGroup {
+  display:inline-flex; background:var(--color-surface-alt);
+  border-radius:9999px; padding:3px; gap:2px;
+}
+.finYearBtn {
+  padding:6px 18px; font-size:12px; letter-spacing:0.08em;
+  color:var(--color-text-muted); border-radius:9999px;
+  text-transform:none; cursor:pointer; background:transparent;
+  border:none; font-family:var(--font-body);
+  transition:all 180ms ease;
+}
+.finYearBtn.active {
+  background:var(--color-surface); color:var(--color-text-primary);
+  box-shadow:0 1px 3px rgba(0,0,0,0.06);
+}
+.finSearchBar {
+  display:block; width:100%; padding:10px 14px; margin-bottom:16px;
+  border-radius:10px; border:1px solid var(--color-border-soft);
+  background:var(--color-surface-alt); font:inherit; font-size:14px;
+  color:var(--color-text-primary); outline:none;
+  -webkit-appearance:none; appearance:none;
+}
+.finSearchBar::placeholder { color:var(--color-text-muted); }
+.finSearchBar:focus { border-color:var(--color-border); }
+.finDeleteBtn {
+  flex-shrink:0; padding:5px 10px; border-radius:99px;
+  font-size:11px; letter-spacing:0.04em;
+  color:var(--color-text-muted); border:1px solid var(--color-border-soft);
+  cursor:pointer; transition:all 150ms ease; background:transparent;
+}
+.finDeleteBtn:hover { border-color:var(--color-clay); color:var(--color-clay); }
+.finCategoryRecord {
+  display:flex; align-items:center; gap:10px;
+  padding:12px 20px; border-bottom:1px solid var(--color-border-soft);
+}
+.finCategoryRecord:last-child { border-bottom:none; }
+.finCategorySummary {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:10px 20px 14px; border-bottom:1px solid var(--color-border-soft);
+  margin-bottom:2px;
+}
+
+/* ── Finance Stage 3C ── */
+.finRecordLeft { cursor:pointer; }
+.finRecordLeft:active { opacity:0.65; }
+.finDeleteIcon {
+  flex-shrink:0; width:28px; height:28px; border-radius:8px;
+  display:flex; align-items:center; justify-content:center;
+  color:var(--color-text-muted); border:none; background:transparent;
+  cursor:pointer; transition:all 150ms ease; margin-top:2px;
+}
+.finDeleteIcon:hover { background:rgba(184,92,74,0.10); color:var(--color-clay); }
+
+/* ── Finance Stage 3B: header left-align on finance tab ── */
+.header.fin-header-left { justify-content:flex-start; }
+.header.fin-header-left .brand { align-items:flex-start; }
+
+/* ── Finance Stage 3A overrides ── */
+
+/* nav inactive icon less dim */
+.navTab svg { opacity:0.70 !important; }
+
+/* year picker button (replaces segmented) */
+.finYearPicker {
+  display:inline-flex; align-items:center; gap:5px;
+  padding:5px 12px; border-radius:99px;
+  border:1px solid var(--color-border); background:var(--color-surface-alt);
+  font-size:13px; letter-spacing:0.04em; color:var(--color-text-primary);
+  cursor:pointer; font-family:var(--font-body);
+  transition:border-color 150ms ease;
+}
+.finYearPicker:hover { border-color:var(--color-text-primary); }
+.finYearPickerCaret { font-size:10px; opacity:0.55; }
+
+/* year dropdown popup */
+.finYearDropdown {
+  position:fixed; z-index:300;
+  background:var(--color-surface); border:1px solid var(--color-border-soft);
+  border-radius:12px; padding:6px;
+  box-shadow:0 8px 24px rgba(0,0,0,0.10);
+  min-width:110px;
+}
+.finYearDropItem {
+  display:block; width:100%; text-align:left;
+  padding:9px 14px; border-radius:8px; font-size:14px;
+  letter-spacing:0.04em; color:var(--color-text-primary);
+  cursor:pointer; background:transparent; border:none;
+  font-family:var(--font-body); transition:background 120ms ease;
+}
+.finYearDropItem:hover { background:var(--color-surface-alt); }
+.finYearDropItem.active { font-weight:500; }
+
+/* search bar — slimmer */
+.finSearchBar {
+  padding:7px 12px !important;
+  font-size:13px !important;
+  margin-bottom:14px !important;
+}
+
+/* balance card — only balance, centered */
+.financeBalanceCard {
+  flex-direction:column; align-items:flex-start !important;
+  justify-content:flex-start !important;
+}
+
+/* stat card hover border + arrow */
+.financeStatCard {
+  position:relative; transition:border-color 160ms ease, opacity 150ms ease !important;
+  border:1px solid var(--color-border-soft) !important;
+}
+.financeStatCard:hover { border-color:var(--color-border) !important; }
+.finStatArrow {
+  position:absolute; top:10px; right:11px;
+  font-size:11px; color:var(--color-text-muted); opacity:0.45;
+}
+
+/* record row — club typography */
+.finRecordNote {
+  font-size:13.5px; color:var(--color-text-secondary);
+  margin-top:2px; line-height:1.4;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.finRecordDateMeta {
+  font-size:11.5px; color:var(--color-text-muted); opacity:0.75;
+  margin-top:2px; letter-spacing:0.02em;
+}
+.finRecordRight {
+  display:flex; flex-direction:column; align-items:flex-end;
+  gap:4px; flex-shrink:0;
+}
+
 /* ── Toast ── */
 .toast {
   position:fixed; bottom:76px; left:50%;
@@ -522,8 +749,8 @@ button {
 </head>
 <body>
 
-<div class="app">
-  <header class="header">
+<div class="app court-active">
+  <header class="header court-header-hidden">
     <div class="brand">
       <div class="brandRow">
         <svg width="40" height="40" viewBox="0 0 100 100" aria-label="CHING XIN logo mark">
@@ -542,10 +769,26 @@ button {
 
   <!-- ── Screen: 場地 ── -->
   <div class="screen active" id="screen-court">
-    <div class="viewSwitcher">
-      <div class="switcherGroup">
-        <button class="switcherOption active" id="btnWeek" onclick="setView('week',this)">Week</button>
-        <button class="switcherOption" id="btnMonth" onclick="setView('month',this)">Month</button>
+    <div class="courtPageHeader">
+      <div class="courtBrandInline">
+        <svg width="36" height="36" viewBox="0 0 100 100" aria-hidden="true">
+          <line x1="28" y1="28" x2="72" y2="72" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" fill="none"/>
+          <line x1="72" y1="28" x2="28" y2="72" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" fill="none"/>
+          <path d="M 50 7 Q 62 22 50 37 Q 38 22 50 7 Z" fill="currentColor"/>
+          <path d="M 50 63 Q 62 78 50 93 Q 38 78 50 63 Z" fill="currentColor"/>
+          <path d="M 7 50 Q 22 38 37 50 Q 22 62 7 50 Z" fill="currentColor"/>
+          <path d="M 63 50 Q 78 38 93 50 Q 78 62 63 50 Z" fill="currentColor"/>
+        </svg>
+        <div class="courtBrandText">
+          <span class="courtBrandName">CHING XIN</span>
+          <span class="courtBrandSub">Tennis Society · 清心網球協會</span>
+        </div>
+      </div>
+      <div class="courtSwitcherWrap">
+        <div class="switcherGroup">
+          <button class="switcherOption active" id="btnWeek" onclick="setView('week',this)">Week</button>
+          <button class="switcherOption" id="btnMonth" onclick="setView('month',this)">Month</button>
+        </div>
       </div>
     </div>
 
@@ -601,12 +844,24 @@ button {
     <div id="manageContent"></div>
   </div>
 
-  <!-- ── Screen: 會員 ── -->
-  <div class="screen" id="screen-members">
-    <div class="screenTitle">會員名單</div>
-    <input class="searchBar" id="memberSearch" type="text" placeholder="搜尋會員…" oninput="filterMembers(this.value)">
-    <div id="memberList"></div>
+  <!-- ── Screen: 財務 ── -->
+  <div class="screen" id="screen-finance">
+    <div class="finScreenHeader">
+      <span class="finScreenTitle">財務</span>
+      <div class="finHeaderActions">
+        <button class="finActionBtn" id="finExportBtn" onclick="exportFinanceCSV()">匯出</button>
+        <button class="finActionBtn finActionBtnPrimary" id="finAddBtn" onclick="openFinanceForm()">＋ 新增</button>
+      </div>
+    </div>
+    <input class="finSearchBar" id="finSearchInput" type="search"
+      placeholder="搜尋會員 / 備註"
+      oninput="filterFinance(this.value)"
+      autocomplete="off" autocorrect="off" spellcheck="false">
+    <div id="financeContent"></div>
   </div>
+
+  <!-- ── Finance Year Dropdown ── -->
+  <div class="finYearDropdown" id="finYearDropdown" style="display:none"></div>
 
   <!-- ── Bottom Nav ── -->
   <nav class="bottomNav">
@@ -628,11 +883,11 @@ button {
       </svg>
       管理
     </button>
-    <button class="navTab" onclick="showTab('members',this)">
+    <button class="navTab" onclick="showTab('finance',this)">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
-        <circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/>
+        <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/>
       </svg>
-      會員
+      財務
     </button>
     <button class="navTab" id="tabProfile" onclick="openProfile()">
       <div class="navTabAvatar">
@@ -837,6 +1092,57 @@ button {
   </div>
 </div>
 
+<!-- ── Finance Form Sheet ── -->
+<div class="subSheet" id="financeFormSheet">
+  <div class="sheetHandle"></div>
+  <div class="subSheetHeader">
+    <button class="subSheetBack" onclick="closeFinanceForm()">‹</button>
+    <span class="subSheetTitle" id="financeFormTitle">新增財務紀錄</span>
+    <span style="width:32px"></span>
+  </div>
+  <div class="formSection">
+    <div class="formRow">
+      <label class="formLabel">類型</label>
+      <select class="formSelect" id="finFormType">
+        <option value="annual">年費</option>
+        <option value="monthly">月費</option>
+        <option value="donate">抖內</option>
+        <option value="expense">支出</option>
+      </select>
+    </div>
+    <div class="formRow">
+      <label class="formLabel">會員</label>
+      <select class="formSelect" id="finFormMember">
+        <option value="">— 選擇會員 / 備註用 —</option>
+      </select>
+    </div>
+    <div class="formRow">
+      <label class="formLabel">繳費日期</label>
+      <input class="formInput" id="finFormDate" type="date">
+    </div>
+    <div class="formRow">
+      <label class="formLabel">金額（元）</label>
+      <input class="formInput" id="finFormAmount" type="number" inputmode="numeric" placeholder="0">
+    </div>
+    <div class="formRow">
+      <label class="formLabel">備註（選填）</label>
+      <input class="formInput" id="finFormNote" type="text" placeholder="">
+    </div>
+    <button class="primaryBtn" onclick="submitFinanceRecord()">儲存紀錄</button>
+  </div>
+</div>
+
+<!-- ── Finance Category Sheet ── -->
+<div class="subSheet" id="finCategorySheet">
+  <div class="sheetHandle"></div>
+  <div class="subSheetHeader">
+    <button class="subSheetBack" onclick="closeFinCategory()">‹</button>
+    <span class="subSheetTitle" id="finCategoryTitle"></span>
+    <span style="width:32px"></span>
+  </div>
+  <div id="finCategoryContent"></div>
+</div>
+
 <!-- ── Toast ── -->
 <div class="toast" id="toast"></div>
 
@@ -886,6 +1192,12 @@ let courtBookingsFirestore = null;  // array when loaded, null = use mock
 let myBookingsFirestore = null;     // array when loaded, null = use mock
 let pendingUsersFirestore = [];
 let unsubMyBookings = null;
+let _manageTab = 'pending';   // 'pending' | 'schedule' | 'notices'
+let financeRecords = [];      // local array; Firestore layer can be added later
+let _finSearchQuery = '';     // finance search filter state
+let _finYear = 2026;    // active year ledger (fixed range 2026–2036)
+let _finEditId = null; // null = add mode; string = edit mode
+var _nowTickInterval = null; // court: live nowLine ticker
 
 /* ── Date Utilities ── */
 function pad(n){ return String(n).padStart(2,'0'); }
@@ -965,12 +1277,55 @@ const MOCK_MEMBERS = [
   {id:'m8',name:'黃俊傑',type:'annual',ntrp:'4.5',position:'底線型',joined:'2021'},
 ];
 
+const MOCK_FINANCE_RECORDS = [
+  // ── 2025 歷史 ──
+  {id:'f0a',year:2025,type:'annual', member:'Maverick 小狸', date:'2025-01-10', amount:5500, note:'2025 年費',  createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
+  {id:'f0b',year:2025,type:'annual', member:'陳志明',        date:'2025-01-18', amount:5500, note:'2025 年費',  createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
+  {id:'f0c',year:2025,type:'expense',member:'',               date:'2025-06-20', amount:1200, note:'球場維護',   createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
+  // ── 2026 ──
+  {id:'f1', year:2026,type:'annual', member:'Maverick 小狸', date:'2026-01-15', amount:6000, note:'2026 年費',  createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
+  {id:'f2', year:2026,type:'annual', member:'陳志明',        date:'2026-01-20', amount:6000, note:'2026 年費',  createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
+  {id:'f3', year:2026,type:'monthly',member:'王大明',         date:'2026-04-01', amount:1200, note:'4 月月費',   createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
+  {id:'f4', year:2026,type:'annual', member:'林雅琳',         date:'2026-02-03', amount:6000, note:'2026 年費',  createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
+  {id:'f5', year:2026,type:'donate', member:'黃俊傑',         date:'2026-03-10', amount:2000, note:'球場修繕支持',createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
+  {id:'f6', year:2026,type:'expense',member:'',               date:'2026-03-15', amount:3500, note:'球網更換',   createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
+  {id:'f7', year:2026,type:'monthly',member:'李建宏',         date:'2026-05-01', amount:1200, note:'5 月月費',   createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
+  {id:'f8', year:2026,type:'expense',member:'',               date:'2026-05-10', amount:800,  note:'清潔用品',   createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
+];
+
 const MOCK_NOTIFICATIONS = [
   {id:'n1',type:'booking',title:'預約確認',text:shortDateStr(D3)+' Hard A 19:00 已確認',time:'2 小時前',read:false},
   {id:'n2',type:'event',title:'活動公告',text:shortDateStr(D2)+' 會員之夜已開放報名',time:'昨天',read:false},
   {id:'n3',type:'system',title:'會費提醒',text:'您的年費將於 2026/12/31 到期，請提早續費',time:'3 天前',read:true},
   {id:'n4',type:'booking',title:'預約完成',text:shortDateStr(D_2)+' Hard B 20:00 已完成',time:'2 天前',read:true},
 ];
+
+/* ── Court: Scroll to current time ── */
+function scrollToNow(){
+  if(!isSameDay(selectedDate,today)) return;
+  var wrapper=document.querySelector('.timeGridWrapper');
+  var nl=wrapper?wrapper.querySelector('.nowLine'):null;
+  if(!wrapper||!nl) return;
+  var top=nl.offsetTop;
+  wrapper.scrollTop=Math.max(0,top-100);
+}
+
+/* ── Court: Live nowLine ticker (every minute) ── */
+function startNowLineTicker(){
+  if(_nowTickInterval) clearInterval(_nowTickInterval);
+  _nowTickInterval=setInterval(function(){
+    if(currentView!=='week'||!isSameDay(selectedDate,today)) return;
+    var we=isWeekend(selectedDate);
+    var openMin=timeToMin(we?'05:30':'17:30');
+    var now=new Date();
+    var nowMin=now.getHours()*60+now.getMinutes();
+    var nl=document.querySelector('.timeGridWrapper .nowLine');
+    if(nl&&nowMin>=openMin&&nowMin<timeToMin('24:00')){
+      var offset=(nowMin-openMin)/SLOT_MIN;
+      nl.style.top=(offset*SLOT_HEIGHT)+'px';
+    }
+  },60000);
+}
 
 /* ── Week / Grid Helpers ── */
 function getDaySlots(weekend){
@@ -1059,6 +1414,8 @@ function renderGrid(){
     }
   }
   grid.innerHTML=html;
+  // scroll to current time on initial paint (small delay for DOM layout)
+  setTimeout(scrollToNow,60);
 }
 
 /* ── Render: Month Grid ── */
@@ -1137,19 +1494,75 @@ function renderBookings(){
     '<div class="emptyState"><div class="emptyStateIcon">—</div>暫無歷史紀錄</div>';
 }
 
-/* ── Render: 管理 ── */
+/* ── Render: 管理 (三分頁) ── */
 function renderManage(){
   const el=document.getElementById('manageContent');
   if(!el) return;
+
+  // ── Tab bar ──
+  const TABS=[{key:'pending',label:'待審核'},{key:'schedule',label:'我的行程'},{key:'notices',label:'公告'}];
+  let html='<div style="display:flex;border-bottom:1px solid var(--color-border-soft);margin-bottom:16px">';
+  TABS.forEach(function(t){
+    const active=_manageTab===t.key;
+    html+='<button onclick="_manageTab=\''+t.key+'\';renderManage()" style="flex:1;padding:10px 0;font-size:13px;letter-spacing:0.04em;background:none;border:none;border-bottom:2px solid '+(active?'var(--color-text-primary)':'transparent')+';color:'+(active?'var(--color-text-primary)':'var(--color-text-muted)')+';cursor:pointer;transition:color 150ms">'+t.label+'</button>';
+  });
+  html+='</div>';
+  el.innerHTML=html;
+
+  // ── Tab content ──
+  if(_manageTab==='pending')  _renderPendingTab(el);
+  else if(_manageTab==='schedule') _renderScheduleTab(el);
+  else _renderNoticesTab(el);
+}
+
+/* ── 待審核 tab ── */
+function _renderPendingTab(el){
+  // prefer pendingUsersFirestore; fall back to usersCache with role==='pending'
+  const pending=pendingUsersFirestore.length>0
+    ? pendingUsersFirestore
+    : Object.values(usersCache).filter(function(m){return m.role==='pending';});
+
+  if(!pending.length){
+    el.innerHTML+='<div class="emptyState"><div class="emptyStateIcon">✓</div>目前沒有待審核申請</div>';
+    return;
+  }
+  let html='';
+  pending.forEach(function(m){
+    const initials=(m.displayName||'?').charAt(0);
+    const avatarHtml=m.lineAvatar
+      ?'<img src="'+m.lineAvatar+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'" alt="">'
+      :'<svg width="40" height="40" viewBox="0 0 40 40"><rect width="40" height="40" rx="20" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="16" font-family="serif">'+initials+'</text></svg>';
+    const dateStr=m.createdAt
+      ?(m.createdAt.toDate?m.createdAt.toDate().toLocaleDateString('zh-TW'):String(m.createdAt))
+      :'—';
+    html+='<div class="pendingCard">'+
+      '<div class="pendingCardTop">'+
+        '<div class="memberAvatar">'+avatarHtml+'</div>'+
+        '<div>'+
+          '<div class="pendingCardName">'+(m.displayName||'未知')+'</div>'+
+          '<div class="pendingCardMeta">申請日期：'+dateStr+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="pendingActions">'+
+        '<button class="approveBtn" onclick="approveMember(\''+m.userId+'\')">批准入會</button>'+
+        '<button class="rejectBtn"  onclick="rejectMember(\''+m.userId+'\')">拒絕申請</button>'+
+      '</div>'+
+    '</div>';
+  });
+  el.innerHTML+=html;
+}
+
+/* ── 我的行程 tab (原 renderManage 內容) ── */
+function _renderScheduleTab(el){
   const source=myBookingsFirestore!==null?myBookingsFirestore:MOCK_MY_BOOKINGS;
-  const upcoming=source.filter(b=>b.status==='confirmed')
-    .sort((a,b)=>a.date.localeCompare(b.date));
+  const upcoming=source.filter(function(b){return b.status==='confirmed';})
+    .sort(function(a,b){return a.date.localeCompare(b.date);});
   if(!upcoming.length){
-    el.innerHTML='<div class="emptyState"><div class="emptyStateIcon">🎾</div>目前沒有排定的行程</div>';
+    el.innerHTML+='<div class="emptyState"><div class="emptyStateIcon">🎾</div>目前沒有排定的行程</div>';
     return;
   }
   let html='<div class="screenSection">即將到來</div>';
-  upcoming.forEach(b=>{
+  upcoming.forEach(function(b){
     const surface=COURT_SURFACE[b.court];
     const barCls=surface==='clay'?'clay':(b.mode==='event_lock'?'lock':'');
     const courtLabel=b.courtLabel||({hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[b.court]||b.court);
@@ -1163,7 +1576,443 @@ function renderManage(){
       '</div>'+
     '</div>';
   });
-  el.innerHTML=html;
+  el.innerHTML+=html;
+}
+
+/* ── 公告 tab ── */
+function _renderNoticesTab(el){
+  el.innerHTML+=MOCK_NOTIFICATIONS.map(function(n){
+    return '<div class="notifItem'+(n.read?' read':'')+'" onclick="markRead(\''+n.id+'\',this)">'+
+      '<div class="notifDot"></div>'+
+      '<div class="notifBody">'+
+        '<div class="notifTitle">'+n.title+'</div>'+
+        '<div class="notifText">'+n.text+'</div>'+
+        '<div class="notifTime">'+n.time+'</div>'+
+      '</div></div>';
+  }).join('')||'<div class="emptyState">目前沒有公告</div>';
+}
+
+/* ── Approve Member ── */
+function approveMember(userId){
+  if(!db){showToast('無法連線，請稍後再試');return;}
+  db.collection('users').doc(userId).update({role:'annual_member',updatedAt:TS()})
+    .then(function(){
+      showToast('已批准入會');
+      pendingUsersFirestore=pendingUsersFirestore.filter(function(m){return m.userId!==userId;});
+      if(usersCache[userId]) usersCache[userId].role='annual_member';
+      renderManage();
+    })
+    .catch(function(e){
+      console.error('approveMember error:',e);
+      showToast('操作失敗，請稍後再試');
+    });
+}
+
+/* ── Reject Member ── */
+function rejectMember(userId){
+  if(!confirm('確認拒絕此申請？')) return;
+  if(!db){showToast('無法連線，請稍後再試');return;}
+  db.collection('users').doc(userId).update({role:'blocked',updatedAt:TS()})
+    .then(function(){
+      showToast('已拒絕申請');
+      pendingUsersFirestore=pendingUsersFirestore.filter(function(m){return m.userId!==userId;});
+      if(usersCache[userId]) usersCache[userId].role='blocked';
+      renderManage();
+    })
+    .catch(function(e){
+      console.error('rejectMember error:',e);
+      showToast('操作失敗，請稍後再試');
+    });
+}
+
+/* ── Finance: Render ── */
+const FIN_TYPE_LABEL = {annual:'年費',monthly:'月費',donate:'抖內',expense:'支出'};
+const FIN_TYPE_CLASS = {annual:'fin-annual',monthly:'fin-monthly',donate:'fin-donate',expense:'fin-expense'};
+
+/* ── Global Permission Helper ── */
+function isAdminLike(){
+  var role = currentUser ? currentUser.role : null;
+  return role === 'owner' || role === 'admin';
+}
+
+/* ── Finance: Permission helper ── */
+function _isFinanceAdmin(){
+  return isAdminLike();
+}
+
+function renderFinance(){
+  const el = document.getElementById('financeContent');
+  if(!el) return;
+  const allRecords = financeRecords.length > 0 ? financeRecords : MOCK_FINANCE_RECORDS;
+  const isAdmin = _isFinanceAdmin();
+
+  // ── Admin buttons: add always visible, export admin-only ──
+  const exportBtn = document.getElementById('finExportBtn');
+  if(exportBtn) exportBtn.style.display = isAdmin ? '' : 'none';
+
+  // ── Year picker (dropdown button) ──
+  const yearPickerHtml = '<div style="margin-bottom:18px">'
+    + '<button class="finYearPicker" onclick="toggleFinYearDropdown(event)">'
+    + _finYear
+    + ' <span class="finYearPickerCaret">▼</span>'
+    + '</button>'
+    + '</div>';
+
+  // ── Filter by active year ──
+  const source = allRecords.filter(function(r){
+    return (r.year || parseInt(r.date.slice(0,4),10)) === _finYear;
+  });
+
+  // ── Stats ──
+  const sum = function(type){ return source.filter(function(r){return r.type===type;}).reduce(function(a,r){return a+r.amount;},0); };
+  const annual  = sum('annual');
+  const monthly = sum('monthly');
+  const donate  = sum('donate');
+  const expense = sum('expense');
+  const income  = annual + monthly + donate;
+  const balance = income - expense;
+  const fmt = function(n){ return 'NT$ '+(n).toLocaleString(); };
+
+  let html = yearPickerHtml;
+
+  // Balance card — only balance, clean
+  html += '<div class="financeBalanceCard">';
+  html += '<div class="financeBalanceLabel">結餘</div>';
+  html += '<div class="financeBalanceAmt">'+fmt(balance)+'</div>';
+  html += '</div>';
+
+  // Stats grid (每格可點擊)
+  html += '<div class="financeStats">';
+  html += _statCard('年費','annual',annual,false);
+  html += _statCard('月費','monthly',monthly,false);
+  html += _statCard('抖內','donate',donate,false);
+  html += _statCard('支出','expense',expense,true);
+  html += '</div>';
+
+  // Detail list — apply search filter
+  const q = _finSearchQuery.toLowerCase().trim();
+  const filtered = q
+    ? source.filter(function(r){
+        return (r.member       || '').toLowerCase().includes(q)
+            || (r.note         || '').toLowerCase().includes(q)
+            || (r.createdByName|| '').toLowerCase().includes(q);
+      })
+    : source;
+
+  html += '<div class="screenSection">明細'+(q ? '（'+filtered.length+' 筆）' : '')+'</div>';
+  const sorted = filtered.slice().sort(function(a,b){ return b.date.localeCompare(a.date); });
+  if(!sorted.length){
+    html += '<div class="emptyState"><div class="emptyStateIcon">¥</div>尚無紀錄</div>';
+  } else {
+    html += '<div style="padding:0 2px">';
+    sorted.forEach(function(r){
+      const isOut = r.type==='expense';
+      // dateMeta: date · 登記 · 修改
+      const editedPart = r.updatedByName ? ' · 修改：'+r.updatedByName : '';
+      const dateMeta = r.date
+        + (r.createdByName ? ' · 登記：'+r.createdByName : '')
+        + editedPart;
+      const delIcon = isAdmin
+        ? '<button class="finDeleteIcon" onclick="event.stopPropagation();deleteFinanceRecord(\''+r.id+'\')" title="刪除">'
+          + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>'
+          + '</button>'
+        : '';
+      html += '<div class="financeRecord" style="align-items:flex-start">'
+        + '<div class="finRecordLeft financeRecordLeft" onclick="editFinanceRecord(\''+r.id+'\')">'
+          + '<div class="financeRecordName">'+(r.member||'—')+'</div>'
+          + (r.note ? '<div class="finRecordNote">'+r.note+'</div>' : '')
+          + '<div class="finRecordDateMeta">'+dateMeta+'</div>'
+        + '</div>'
+        + '<div class="finRecordRight">'
+          + '<div class="financeRecordAmt'+(isOut?' out':'')+'">'+fmt(r.amount)+'</div>'
+          + '<span class="finTypeBadge '+FIN_TYPE_CLASS[r.type]+'">'+FIN_TYPE_LABEL[r.type]+'</span>'
+          + delIcon
+        + '</div>'
+      + '</div>';
+    });
+    // 底部留白，避免最後一筆被固定 nav 遮住
+    html += '<div style="height:72px"></div>';
+    html += '</div>';
+  }
+
+  el.innerHTML = html;
+}
+
+/* ── Finance: Year Dropdown ── */
+function toggleFinYearDropdown(evt){
+  evt && evt.stopPropagation();
+  const dd = document.getElementById('finYearDropdown');
+  if(!dd) return;
+  if(dd.style.display !== 'none' && dd.style.display !== ''){
+    closeFinYearDropdown(); return;
+  }
+  // fixed year range 2026–2036
+  const years = [2026,2027,2028,2029,2030,2031,2032,2033,2034,2035,2036];
+  dd.innerHTML = years.map(function(y){
+    return '<button class="finYearDropItem'+(y===_finYear?' active':'')+'" onclick="switchFinYear('+y+')">'
+      + y + (y===_finYear ? ' ✓' : '') + '</button>';
+  }).join('');
+  // position near the picker button
+  const btn = evt && evt.currentTarget;
+  if(btn){
+    const r = btn.getBoundingClientRect();
+    dd.style.top  = (r.bottom + 6)+'px';
+    dd.style.left = r.left+'px';
+  } else {
+    dd.style.top = '120px'; dd.style.left = '20px';
+  }
+  dd.style.display = 'block';
+  setTimeout(function(){
+    document.addEventListener('click', _closeFinYearOnOutside, {once:true});
+  }, 0);
+}
+function _closeFinYearOnOutside(){
+  closeFinYearDropdown();
+}
+function closeFinYearDropdown(){
+  const dd = document.getElementById('finYearDropdown');
+  if(dd) dd.style.display = 'none';
+}
+
+/* ── Finance: Year Switcher ── */
+function switchFinYear(y){
+  _finYear = y;
+  _finSearchQuery = '';
+  closeFinYearDropdown();
+  const inp = document.getElementById('finSearchInput');
+  if(inp) inp.value = '';
+  renderFinance();
+}
+
+/* ── Finance: Search ── */
+function filterFinance(q){
+  _finSearchQuery = q || '';
+  renderFinance();
+  // restore focus & cursor after re-render
+  const inp = document.getElementById('finSearchInput');
+  if(inp){ inp.value = _finSearchQuery; inp.focus(); }
+}
+
+function _statCard(label, type, amt, isOut){
+  return '<div class="financeStatCard" onclick="openFinCategory(\''+type+'\')">'
+    + '<span class="finStatArrow">›</span>'
+    + '<div class="financeStatLabel">'+label+'</div>'
+    + '<div class="financeStatAmt'+(isOut?' out':'')+'">NT$ '+amt.toLocaleString()+'</div>'
+    + '</div>';
+}
+
+/* ── Finance: Category Sheet ── */
+function openFinCategory(type){
+  const allRecs = financeRecords.length > 0 ? financeRecords : MOCK_FINANCE_RECORDS;
+  const records = allRecs.filter(function(r){
+    return r.type === type
+        && (r.year || parseInt(r.date.slice(0,4),10)) === _finYear;
+  });
+  const fmt = function(n){ return 'NT$ '+(n).toLocaleString(); };
+  const total = records.reduce(function(a,r){ return a+r.amount; }, 0);
+
+  let html = '<div class="finCategorySummary">';
+  html += '<span style="font-size:11px;color:var(--color-text-muted);letter-spacing:0.06em">共 '+records.length+' 筆</span>';
+  html += '<span style="font-family:var(--font-body);font-size:19px;font-weight:600;letter-spacing:0">'+fmt(total)+'</span>';
+  html += '</div>';
+
+  if(!records.length){
+    html += '<div class="emptyState">此分類尚無紀錄</div>';
+  } else {
+    const sorted = records.slice().sort(function(a,b){ return b.date.localeCompare(a.date); });
+    sorted.forEach(function(r){
+      html += '<div class="finCategoryRecord">'
+        + '<div class="financeRecordLeft">'
+          + '<div class="financeRecordName">'+(r.member||'—')+'</div>'
+          + '<div class="financeRecordMeta">'+r.date+(r.note?' · '+r.note:'')+'</div>'
+          + (r.createdByName ? '<div class="financeRecordMeta" style="opacity:0.65">登記：'+r.createdByName+'</div>' : '')
+        + '</div>'
+        + '<div class="financeRecordAmt" style="font-size:16px">'+fmt(r.amount)+'</div>'
+      + '</div>';
+    });
+    // bottom padding inside sheet so last row not cut off
+    html += '<div style="height:40px"></div>';
+  }
+
+  document.getElementById('finCategoryContent').innerHTML = html;
+  document.getElementById('finCategoryTitle').textContent = (FIN_TYPE_LABEL[type]||type)+'明細';
+  document.getElementById('sheetBackdrop').classList.add('open');
+  document.getElementById('finCategorySheet').classList.add('open');
+}
+
+function closeFinCategory(){
+  document.getElementById('finCategorySheet').classList.remove('open');
+  document.getElementById('sheetBackdrop').classList.remove('open');
+}
+
+/* ── Finance: Delete ── */
+function deleteFinanceRecord(id){
+  if(!_isFinanceAdmin()){ showToast('僅管理員可刪除紀錄'); return; }
+  if(!confirm('確定刪除此筆財務紀錄？')) return;
+  // try local array first, then MOCK (const array is still mutable)
+  const fi = financeRecords.findIndex(function(r){ return r.id===id; });
+  if(fi > -1){
+    financeRecords.splice(fi, 1);
+  } else {
+    const mi = MOCK_FINANCE_RECORDS.findIndex(function(r){ return r.id===id; });
+    if(mi > -1) MOCK_FINANCE_RECORDS.splice(mi, 1);
+  }
+  renderFinance();
+  showToast('紀錄已刪除');
+}
+
+/* ── Finance: Export CSV ── */
+function exportFinanceCSV(){
+  if(!_isFinanceAdmin()){ showToast('僅管理員可匯出'); return; }
+  const allRecs = financeRecords.length > 0 ? financeRecords : MOCK_FINANCE_RECORDS;
+  const source = allRecs.filter(function(r){
+    return (r.year || parseInt(r.date.slice(0,4),10)) === _finYear;
+  });
+  if(!source.length){ showToast(_finYear+' 年沒有資料可匯出'); return; }
+
+  const sorted = source.slice().sort(function(a,b){ return a.date.localeCompare(b.date); });
+  const header = ['日期','會員','類型','金額','備註','登記人'];
+  const rows = sorted.map(function(r){
+    return [
+      r.date,
+      r.member  || '',
+      FIN_TYPE_LABEL[r.type] || r.type,
+      r.amount,
+      r.note    || '',
+      r.createdByName || '',
+    ].map(function(v){
+      // CSV escape: wrap in quotes if contains comma/newline/quote
+      const s = String(v).replace(/"/g, '""');
+      return /[,"\n]/.test(s) ? '"'+s+'"' : s;
+    }).join(',');
+  });
+
+  // BOM for Excel UTF-8 recognition
+  const bom = '﻿';
+  const csv = bom + [header.join(',')].concat(rows).join('\r\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url  = URL.createObjectURL(blob);
+
+  const filename = 'chingxin-finance-'+_finYear+'.csv';
+
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('已匯出 '+filename);
+}
+
+/* ── Finance: Form ── */
+function _finPopulateMemberSelect(selectedName){
+  const sel = document.getElementById('finFormMember');
+  sel.innerHTML = '<option value="">— 選擇會員 / 備註用 —</option>';
+  const cached = Object.values(usersCache);
+  const list = cached.length > 0
+    ? cached.filter(function(u){ return u.role !== 'blocked'; })
+    : MOCK_MEMBERS.map(function(m){ return {displayName:m.name}; });
+  list.forEach(function(u){
+    const name = u.displayName || u.name || '';
+    if(!name) return;
+    const opt = document.createElement('option');
+    opt.value = name; opt.textContent = name;
+    if(name === selectedName) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function openFinanceForm(){
+  if(!_isFinanceAdmin()){ showToast('僅管理員可新增紀錄'); return; }
+  _finEditId = null;
+  document.getElementById('financeFormTitle').textContent = '新增財務紀錄';
+  _finPopulateMemberSelect('');
+  document.getElementById('finFormType').value = 'annual';
+  document.getElementById('finFormDate').value = formatDate(today);
+  document.getElementById('finFormAmount').value = '';
+  document.getElementById('finFormNote').value = '';
+  document.getElementById('sheetBackdrop').classList.add('open');
+  document.getElementById('financeFormSheet').classList.add('open');
+}
+
+function closeFinanceForm(){
+  _finEditId = null;
+  document.getElementById('financeFormSheet').classList.remove('open');
+  document.getElementById('sheetBackdrop').classList.remove('open');
+}
+
+function submitFinanceRecord(){
+  const type   = document.getElementById('finFormType').value;
+  const member = document.getElementById('finFormMember').value;
+  const date   = document.getElementById('finFormDate').value;
+  const amount = parseInt(document.getElementById('finFormAmount').value, 10);
+  const note   = document.getElementById('finFormNote').value.trim();
+
+  if(!date){ showToast('請選擇日期'); return; }
+  if(!amount || amount <= 0){ showToast('請輸入金額'); return; }
+
+  if(_finEditId){
+    submitEditFinanceRecord(type, member, date, amount, note);
+  } else {
+    const creatorName = currentUser
+      ? (currentUser.displayName || currentUser.name || '')
+      : 'Maverick 小狸';
+    const rec = {
+      id: 'f'+(Date.now()),
+      year: _finYear,
+      type: type, member: member, date: date, amount: amount, note: note,
+      createdByName: creatorName,
+      updatedByName: null, updatedAt: null,
+    };
+    financeRecords.push(rec);
+    closeFinanceForm();
+    renderFinance();
+    showToast('紀錄已儲存');
+  }
+}
+
+function submitEditFinanceRecord(type, member, date, amount, note){
+  const editorName = currentUser
+    ? (currentUser.displayName || currentUser.name || '')
+    : 'Maverick 小狸';
+  const updatedAt = new Date().toISOString().slice(0,10);
+
+  // find in local financeRecords first, then MOCK
+  var rec = financeRecords.find(function(r){ return r.id===_finEditId; });
+  if(!rec) rec = MOCK_FINANCE_RECORDS.find(function(r){ return r.id===_finEditId; });
+  if(!rec){ showToast('找不到紀錄'); return; }
+
+  rec.type   = type;
+  rec.member = member;
+  rec.date   = date;
+  rec.amount = amount;
+  rec.note   = note;
+  rec.updatedByName = editorName;
+  rec.updatedAt     = updatedAt;
+
+  closeFinanceForm();
+  renderFinance();
+  showToast('已更新紀錄');
+}
+
+/* ── Finance: Edit ── */
+function editFinanceRecord(id){
+  if(!_isFinanceAdmin()){ showToast('僅管理員可編輯紀錄'); return; }
+  const allRecs = financeRecords.length > 0
+    ? financeRecords.concat(MOCK_FINANCE_RECORDS.filter(function(m){ return !financeRecords.find(function(f){return f.id===m.id;}); }))
+    : MOCK_FINANCE_RECORDS;
+  const rec = allRecs.find(function(r){ return r.id===id; });
+  if(!rec){ showToast('找不到紀錄'); return; }
+
+  _finEditId = id;
+  document.getElementById('financeFormTitle').textContent = '編輯財務紀錄';
+  document.getElementById('finFormType').value   = rec.type   || 'annual';
+  document.getElementById('finFormDate').value   = rec.date   || '';
+  document.getElementById('finFormAmount').value = rec.amount || '';
+  document.getElementById('finFormNote').value   = rec.note   || '';
+  _finPopulateMemberSelect(rec.member || '');
+  document.getElementById('sheetBackdrop').classList.add('open');
+  document.getElementById('financeFormSheet').classList.add('open');
 }
 
 /* ── Render: Member List ── */
@@ -1236,8 +2085,13 @@ function showTab(name, el){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('screen-'+name).classList.add('active');
   closeAllSheets();
+  // logo alignment: left on finance tab, hidden on court tab (court has inline header)
+  document.querySelector('.header').classList.toggle('fin-header-left', name==='finance');
+  document.querySelector('.header').classList.toggle('court-header-hidden', name==='court');
+  // court tab: disable min-height:100dvh so weekday grid doesn't leave blank space
+  document.querySelector('.app').classList.toggle('court-active', name==='court');
   if(name==='manage') renderManage();
-  if(name==='members'&&Object.keys(usersCache).length===0) loadUsersCache();
+  if(name==='finance'){ renderFinance(); if(Object.keys(usersCache).length===0) loadUsersCache(); }
 }
 
 function setView(v, el){
@@ -1272,7 +2126,7 @@ function closeProfile(){
   document.getElementById('sheetBackdrop').classList.remove('open');
 }
 function closeAllSheets(){
-  ['profileSheet','settingsSheet','notificationsSheet','aboutSheet','bookingFormSheet'].forEach(id=>{
+  ['profileSheet','settingsSheet','notificationsSheet','aboutSheet','bookingFormSheet','financeFormSheet','finCategorySheet'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.classList.remove('open');
   });
   document.getElementById('sheetBackdrop').classList.remove('open');
@@ -1422,6 +2276,21 @@ function openBookingForm(){
     });
     bfSel.innerHTML=opts;
   }
+  // Clay court restriction: disable options for non-admins
+  var courtSel = document.getElementById('formCourt');
+  if(courtSel){
+    Array.from(courtSel.options).forEach(function(opt){
+      var isClay = opt.value==='clay_a' || opt.value==='clay_b';
+      if(isClay){
+        opt.disabled = !isAdminLike();
+        var label = opt.value==='clay_a' ? 'Clay A' : 'Clay B';
+        opt.text = label + ' — 紅土' + (!isAdminLike() ? '（管理員限定）' : '');
+      }
+    });
+    if(!isAdminLike() && (courtSel.value==='clay_a' || courtSel.value==='clay_b')){
+      courtSel.value = 'hard_a';
+    }
+  }
   document.getElementById('bookingFormSheet').classList.add('open');
   document.getElementById('sheetBackdrop').classList.add('open');
 }
@@ -1438,6 +2307,7 @@ function submitBooking(){
   var mode=document.getElementById('formMode').value;
   var bookFor=document.getElementById('formBookFor').value;
   if(!date||!start||!end){ showToast('請填寫完整資料'); return; }
+  if((court==='clay_a'||court==='clay_b')&&!isAdminLike()){ showToast('紅土場地僅管理員可預約'); return; }
   if(timeToMin(end)<=timeToMin(start)){ showToast('結束時間需晚於開始時間'); return; }
   var displayName=currentUser?currentUser.displayName:(MOCK_USER.name||'—');
   var creatorId=currentUser?(currentUser.userId||currentUser.id||''):'';
@@ -1475,9 +2345,10 @@ function render(){
 }
 
 render();
+startNowLineTicker();
 renderBookings();
 renderManage();
-renderMembers();
+renderFinance();
 </script>
 </body>
 </html>
