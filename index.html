@@ -1033,17 +1033,6 @@ button {
   <!-- Loading -->
   <div id="authLoadingScreen" class="authCenter" style="justify-content:flex-start;padding-top:80px">
     <div class="authSpinner"></div>
-    <p style="margin-top:14px;font-size:11px;color:var(--color-text-muted);letter-spacing:0.02em">
-      Authenticating…</p>
-    <!-- Debug log — hidden until first _dbg() call -->
-    <pre id="authLoadingDebug"
-         style="display:none;margin-top:20px;padding:12px 14px;
-                background:rgba(0,0,0,0.04);border-radius:10px;
-                font-size:10px;line-height:1.55;letter-spacing:0;
-                color:#555;font-family:monospace;
-                width:calc(100vw - 48px);max-width:420px;
-                max-height:55vh;overflow-y:auto;
-                text-align:left;white-space:pre-wrap;word-break:break-all"></pre>
   </div>
   <!-- LINE Login — two sub-states toggled by _showAuthGate('login') -->
   <div id="authLoginScreen" class="authCenter" style="display:none">
@@ -1516,23 +1505,29 @@ try {
   auth = firebase.auth();
 } catch(e){
   console.error('[Firebase] Init failed:', e);
-  // Show error on loading screen for debugging
-  var _errEl = document.getElementById('authLoadingDebug');
-  if(_errEl) _errEl.textContent = 'Init error: ' + (e.message || e);
 }
 const TS = () => db ? firebase.firestore.FieldValue.serverTimestamp() : new Date();
 const ROLE_LABELS = {owner:'擁有者',admin:'管理員',annual_member:'年費會員',monthly_member:'月費會員',coach:'教練',pending:'待審核'};
 
 /* ── Browser / UA detection ──────────────────────────────────────────
-   Kept for debug logging — no longer changes auth method.
-   Root cause of LINE/iOS "missing initial state" was authDomain pointing
-   to chingxin-tennis.firebaseapp.com (different origin from the app).
-   Fixed by using chingxin-tennis.web.app as authDomain so the entire
-   OAuth callback stays on the same origin and sessionStorage is preserved.
+   In-app browsers (LINE, Facebook, Instagram, Claude, WeChat, etc.) cannot
+   complete Firebase OAuth redirect reliably — sessionStorage is isolated or
+   cleared between origins.  These users are shown "Open in Safari" instead.
+   Safari / Chrome on iOS and desktop browsers use signInWithRedirect normally.
    ─────────────────────────────────────────────────────────────────── */
-var _isIOS    = /iPad|iPhone|iPod/.test(navigator.userAgent);
-var _isLine   = /Line\//i.test(navigator.userAgent);
-var _usePopup = false; // redirect for all browsers — same-origin authDomain is safe
+var _isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+// Detect common in-app browsers that break OAuth redirect
+var _isInAppBrowser = (function(){
+  var ua = navigator.userAgent;
+  return /Line\//i.test(ua)        // LINE
+      || /FBAN|FBAV|FB_IAB/i.test(ua)  // Facebook
+      || /Instagram/i.test(ua)     // Instagram
+      || /MicroMessenger/i.test(ua)// WeChat
+      || /Claude/i.test(ua)        // Claude app
+      || /GSA\//i.test(ua);        // Google Search App (iOS)
+})();
+var _isLine   = _isInAppBrowser;   // alias kept for existing _showAuthGate logic
+var _usePopup = false;             // always signInWithRedirect; popup not used
 
 /* ══════════════════════════════════════════════
    AUTH FLOW — Firebase Auth + OIDC (oidc.line)
@@ -1733,18 +1728,10 @@ function _renderProfileSheet(){
    panel (visible under the spinner on the real device).
    ───────────────────────────────────────────────────────────────────── */
 function _dbg(label, detail){
-  var ts   = new Date().toISOString().slice(11, 23); // HH:MM:SS.mmm
+  var ts   = new Date().toISOString().slice(11, 23);
   var line = '[' + ts + '] ' + label + (detail !== undefined ? ' ' + JSON.stringify(detail) : '');
   console.log('%c[AUTH]', 'color:#06C755;font-weight:bold', line);
-  var el = document.getElementById('authLoadingDebug');
-  if(el){
-    el.style.display  = 'block';
-    el.style.cssText += ';white-space:pre-wrap;text-align:left;max-height:55vh;overflow-y:auto;';
-    el.textContent   += (el.textContent ? '\n' : '') + line;
-    el.scrollTop      = el.scrollHeight;
-  }
 }
-// Keep _setDebug as alias (called from older error paths)
 function _setDebug(msg){ _dbg('NOTE', msg); }
 
 function initAuth(){
@@ -1850,28 +1837,73 @@ async function _upsertAndRoute(fbUser){
     _dbg('_upsertAndRoute Firestore read done', snap.exists ? 'exists status:'+snap.data().status : 'NOT FOUND');
 
     if(!snap.exists){
-      _dbg('_upsertAndRoute creating new member (pending)');
+      _dbg('_upsertAndRoute creating new member');
+      // Check if any admin/owner already exists; if not, bootstrap as admin
+      var isFirstAdmin = false;
+      try {
+        var adminQ = await db.collection('members')
+          .where('role', 'in', ['admin', 'owner'])
+          .where('status', '==', 'active')
+          .limit(1).get();
+        isFirstAdmin = adminQ.empty;
+      } catch(qe){ _dbg('bootstrap query error', qe.message); }
+
       await memberRef.set({
         uid:         fbUser.uid,
         displayName: fbUser.displayName || '',
         photoURL:    fbUser.photoURL    || '',
-        status:      'pending',
-        role:        'member',
+        status:      isFirstAdmin ? 'active'  : 'pending',
+        role:        isFirstAdmin ? 'admin'   : 'member',
         createdAt:   now,
-        approvedAt:  null,
-        approvedBy:  null,
+        approvedAt:  isFirstAdmin ? now : null,
+        approvedBy:  isFirstAdmin ? 'bootstrap' : null,
         lastLoginAt: now,
       });
-      _dbg('_upsertAndRoute member created OK');
+      _dbg('_upsertAndRoute member created', isFirstAdmin ? 'admin/active (bootstrap)' : 'pending');
       snap = await memberRef.get();
     } else {
       _dbg('_upsertAndRoute updating existing member');
-      await memberRef.update({
-        displayName: fbUser.displayName || '',
-        photoURL:    fbUser.photoURL    || '',
-        lastLoginAt: now,
-      });
-      snap = await memberRef.get();
+      var existingData = snap.data();
+      // Bootstrap: if still pending and no active admin exists, promote this account
+      if(existingData.status === 'pending'){
+        try {
+          var adminQ2 = await db.collection('members')
+            .where('role', 'in', ['admin', 'owner'])
+            .where('status', '==', 'active')
+            .limit(1).get();
+          if(adminQ2.empty){
+            await memberRef.update({
+              status:     'active',
+              role:       'admin',
+              approvedAt: now,
+              approvedBy: 'bootstrap',
+              displayName: fbUser.displayName || '',
+              photoURL:    fbUser.photoURL    || '',
+              lastLoginAt: now,
+            });
+            _dbg('_upsertAndRoute bootstrap promoted existing pending → admin/active');
+            snap = await memberRef.get();
+          } else {
+            await memberRef.update({
+              displayName: fbUser.displayName || '',
+              photoURL:    fbUser.photoURL    || '',
+              lastLoginAt: now,
+            });
+            snap = await memberRef.get();
+          }
+        } catch(qe2){
+          _dbg('bootstrap promote error', qe2.message);
+          await memberRef.update({ displayName: fbUser.displayName || '', photoURL: fbUser.photoURL || '', lastLoginAt: now });
+          snap = await memberRef.get();
+        }
+      } else {
+        await memberRef.update({
+          displayName: fbUser.displayName || '',
+          photoURL:    fbUser.photoURL    || '',
+          lastLoginAt: now,
+        });
+        snap = await memberRef.get();
+      }
     }
     _dbg('_upsertAndRoute final status', snap.data().status + ' role:' + snap.data().role);
     _routeByStatus(snap.data(), fbUser);
@@ -1907,18 +1939,15 @@ function _routeByStatus(d, fbUser){
 
 function _doLineLogin(){
   if(!auth){ _dbg('ERROR auth null on _doLineLogin'); return; }
+  // Guard: should never be called from in-app browsers, but double-check
+  if(_isInAppBrowser){ _showAuthGate('login'); return; }
   _dbg('_doLineLogin called');
-  _dbg('UA snippet', navigator.userAgent.slice(0, 80));
-  _dbg('_usePopup', _usePopup);
 
   var provider = new firebase.auth.OAuthProvider('oidc.line');
   provider.addScope('profile');
   provider.addScope('openid');
   _showAuthGate('loading');
 
-  // LINE WebView users reach here only if they bypass the "Open in Safari"
-  // screen (e.g., Android LINE or if detection is wrong).  signInWithRedirect
-  // is the only option; popup has the same sessionStorage isolation problem.
   _dbg('signInWithRedirect starting…');
   auth.signInWithRedirect(provider)
     .catch(function(err){
