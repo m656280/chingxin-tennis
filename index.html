@@ -997,6 +997,21 @@ button {
 .fmsExpiryBtn { padding:6px 14px; border-radius:99px; font-size:12px; letter-spacing:0.04em; background:var(--color-text-primary); color:var(--color-bg); border:none; cursor:pointer; font-family:var(--font-body); }
 .fmsResignBtn { width:calc(100% - 40px); margin:0 20px 4px; padding:12px; text-align:center; border-radius:10px; background:rgba(130,65,52,0.08); font-size:13px; letter-spacing:0.05em; color:#8C4637; border:none; cursor:pointer; font-family:var(--font-body); }
 
+/* ── Auth Gate ── */
+@keyframes spin { to { transform:rotate(360deg); } }
+.authGate { position:fixed; inset:0; background:var(--color-bg); z-index:500; overflow-y:auto; -webkit-overflow-scrolling:touch; display:none; }
+.authCenter { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100dvh; padding:40px 32px; text-align:center; }
+.authSpinner { width:28px; height:28px; border:2px solid var(--color-border-soft); border-top-color:var(--color-text-muted); border-radius:50%; animation:spin 0.75s linear infinite; }
+.authBrand { font-family:var(--font-display); font-size:26px; letter-spacing:0.18em; color:var(--color-text-primary); margin-bottom:5px; }
+.authBrandSub { font-size:10px; letter-spacing:0.14em; color:var(--color-text-muted); text-transform:uppercase; }
+.authLineBtn { display:inline-flex; align-items:center; gap:10px; padding:14px 28px; border-radius:12px; background:#06C755; color:#fff; border:none; font-size:15px; letter-spacing:0.04em; cursor:pointer; font-family:var(--font-body); box-shadow:0 2px 16px rgba(6,199,85,0.25); transition:opacity 150ms; margin-top:40px; }
+.authLineBtn:active { opacity:0.8; }
+.authStateIcon { font-size:38px; margin-bottom:20px; }
+.authStateTitle { font-family:var(--font-display); font-size:21px; color:var(--color-text-primary); margin-bottom:10px; letter-spacing:0.03em; }
+.authStateDesc { font-size:13px; color:var(--color-text-muted); line-height:1.85; }
+.authLogoutBtn { margin-top:36px; padding:9px 24px; border-radius:99px; border:1px solid var(--color-border); background:transparent; font-size:12px; letter-spacing:0.05em; color:var(--color-text-muted); cursor:pointer; font-family:var(--font-body); }
+.authNote { font-size:11px; color:var(--color-text-muted); margin-top:28px; line-height:1.8; opacity:0.7; }
+
 /* ── Toast ── */
 .toast {
   position:fixed; bottom:76px; left:50%;
@@ -1010,6 +1025,49 @@ button {
 </style>
 </head>
 <body>
+
+<!-- ── Auth Gate ── -->
+<div class="authGate" id="authGate">
+  <!-- Loading -->
+  <div id="authLoadingScreen" class="authCenter">
+    <div class="authSpinner"></div>
+  </div>
+  <!-- LINE Login -->
+  <div id="authLoginScreen" class="authCenter" style="display:none">
+    <div style="margin-bottom:48px">
+      <div class="authBrand">CHING XIN</div>
+      <div class="authBrandSub">Tennis Society</div>
+    </div>
+    <button class="authLineBtn" onclick="_doLineLogin()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="white" aria-hidden="true">
+        <path d="M19.365 9.89c.50 0 .75.34.75.72 0 .38-.25.72-.75.72h-1.96v1.04h1.96c.50 0 .75.34.75.72 0 .38-.25.72-.75.72h-2.68c-.50 0-.75-.34-.75-.72V8.45c0-.38.25-.72.75-.72h2.68c.50 0 .75.34.75.72 0 .38-.25.72-.75.72h-1.96v1.44h1.96zM13.88 12.2c0 .44-.30.96-.84.96-.28 0-.56-.12-.76-.40l-2.32-3.10v2.54c0 .54-.36.96-.88.96s-.88-.42-.88-.96V8.45c0-.54.36-.96.88-.96.28 0 .56.14.78.44l2.30 3.08V8.45c0-.54.36-.96.88-.96s.84.42.84.96v3.75zM7.06 12.2c0 .54-.38.96-.90.96s-.90-.42-.90-.96V8.45c0-.54.38-.96.90-.96s.90.42.90.96v3.75zM2.50 12.2c0 .38-.25.72-.75.72H-.93c-.50 0-.75-.34-.75-.72V8.45c0-.38.25-.72.75-.72s.75.34.75.72v3.03h1.18c.50 0 .75.34.75.72z"/>
+      </svg>
+      使用 LINE 登入
+    </button>
+    <p class="authNote">登入即視為同意本系統使用條款<br>僅供清心網球協會會員使用</p>
+  </div>
+  <!-- Pending -->
+  <div id="authPendingScreen" class="authCenter" style="display:none">
+    <div class="authStateIcon">⏳</div>
+    <div class="authStateTitle">等待管理員審核</div>
+    <p class="authStateDesc">您的帳號已建立完成，<br>管理員核准後即可使用全部功能。</p>
+    <button class="authLogoutBtn" onclick="_doLogout()">登出</button>
+  </div>
+  <!-- Resigned -->
+  <div id="authResignedScreen" class="authCenter" style="display:none">
+    <div class="authStateIcon">🎾</div>
+    <div class="authStateTitle">會員資格已結束</div>
+    <p class="authStateDesc">感謝您曾經是清心網球協會的一員。<br>如有疑問請聯繫管理員。</p>
+    <button class="authLogoutBtn" onclick="_doLogout()">登出</button>
+  </div>
+  <!-- Blocked -->
+  <div id="authBlockedScreen" class="authCenter" style="display:none">
+    <div class="authStateIcon">🔒</div>
+    <div class="authStateTitle">帳號已停用</div>
+    <p class="authStateDesc">您的帳號目前無法使用。<br>如有疑問請聯繫管理員。</p>
+    <button class="authLogoutBtn" onclick="_doLogout()">登出</button>
+  </div>
+</div>
 
 <div class="app court-active">
   <header class="header court-header-hidden">
@@ -1441,6 +1499,8 @@ button {
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
 /* ── Firebase Init ── */
 const FB_CONFIG = {
@@ -1452,13 +1512,146 @@ const FB_CONFIG = {
   appId:"1:337148491014:web:33cab9162b64afad045a87"
 };
 const LIFF_ID = '2009941241-ymtu2MdM';
-var db;
+var db, auth, functions;
 try {
   firebase.initializeApp(FB_CONFIG);
   db = firebase.firestore();
+  auth = firebase.auth();
+  functions = firebase.app().functions('asia-east1');
 } catch(e){ console.warn('Firebase init failed:', e); }
 const TS = () => db ? firebase.firestore.FieldValue.serverTimestamp() : new Date();
 const ROLE_LABELS = {owner:'擁有者',admin:'管理員',annual_member:'年費會員',monthly_member:'月費會員',coach:'教練',pending:'待審核'};
+
+/* ══════════════════════════════════════════════
+   AUTH FLOW — LINE Login + Firebase Custom Token
+   ══════════════════════════════════════════════
+   Flow:
+   1. liff.init() → liff.login() if not logged in
+   2. liff.getIDToken() → send to Firebase Function
+   3. Function verifies with LINE, writes Firestore member, returns customToken
+   4. auth.signInWithCustomToken() → onAuthStateChanged
+   5. Read members/{uid} → route by status
+
+   DEV bypass: if DEV_ROLE is set, skip all auth and use mock currentUser.
+   ══════════════════════════════════════════════ */
+
+function _showAuthGate(state){
+  var gate = document.getElementById('authGate');
+  if(!gate) return;
+  gate.style.display = 'block';
+  ['Loading','Login','Pending','Resigned','Blocked'].forEach(function(s){
+    var el = document.getElementById('auth'+s+'Screen');
+    if(el) el.style.display = 'none';
+  });
+  var target = document.getElementById('auth' + state.charAt(0).toUpperCase() + state.slice(1) + 'Screen');
+  if(target) target.style.display = 'flex';
+}
+
+function _showMainApp(){
+  var gate = document.getElementById('authGate');
+  if(gate) gate.style.display = 'none';
+  // Fire all initial renders
+  render();
+  renderDayView();
+  startNowLineTicker();
+  renderBookings();
+  renderManage();
+  renderFinance();
+}
+
+async function initAuth(){
+  // ── DEV bypass ──────────────────────────────
+  if(DEV_ROLE){
+    // Keep currentUser null; isAdminLike() falls back to DEV_ROLE automatically
+    _showMainApp();
+    return;
+  }
+  // ─────────────────────────────────────────────
+  _showAuthGate('loading');
+
+  // Initialise LIFF
+  try {
+    await liff.init({ liffId: LIFF_ID });
+  } catch(e){
+    console.error('[Auth] LIFF init failed:', e);
+    _showAuthGate('login');
+    return;
+  }
+
+  // Watch Firebase Auth state
+  if(!auth){ _showAuthGate('login'); return; }
+  auth.onAuthStateChanged(function(fbUser){
+    if(fbUser){
+      _loadMemberAndRoute(fbUser.uid);
+    } else {
+      if(typeof liff !== 'undefined' && liff.isLoggedIn && liff.isLoggedIn()){
+        _liffExchangeToken();
+      } else {
+        _showAuthGate('login');
+      }
+    }
+  });
+}
+
+async function _liffExchangeToken(){
+  try {
+    var idToken = liff.getIDToken();
+    if(!idToken){ _showAuthGate('login'); return; }
+    if(!functions){ throw new Error('Firebase Functions not initialised'); }
+    var createFirebaseToken = functions.httpsCallable('createFirebaseToken');
+    var result = await createFirebaseToken({ idToken: idToken });
+    var customToken = result.data.customToken;
+    await auth.signInWithCustomToken(customToken);
+    // onAuthStateChanged fires → _loadMemberAndRoute()
+  } catch(e){
+    console.error('[Auth] Token exchange failed:', e);
+    _showAuthGate('login');
+  }
+}
+
+async function _loadMemberAndRoute(uid){
+  if(!db){ _showMainApp(); return; }
+  try {
+    var snap = await db.collection('members').doc(uid).get();
+    if(!snap.exists){ _showAuthGate('login'); return; }
+    var d = snap.data();
+    currentUser = {
+      uid: d.uid,
+      lineUserId: d.lineUserId,
+      displayName: d.displayName,
+      pictureUrl: d.pictureUrl || '',
+      role: d.role || 'member',
+      status: d.status,
+    };
+    switch(d.status){
+      case 'active':   _showMainApp(); break;
+      case 'pending':  _showAuthGate('pending'); break;
+      case 'resigned': _showAuthGate('resigned'); break;
+      case 'blocked':  _showAuthGate('blocked'); break;
+      default:         _showAuthGate('login');
+    }
+  } catch(e){
+    console.error('[Auth] Member load failed:', e);
+    _showMainApp(); // graceful fallback — mock data will be used
+  }
+}
+
+function _doLineLogin(){
+  if(typeof liff !== 'undefined' && liff.login){
+    liff.login();
+  }
+}
+
+function _doLogout(){
+  currentUser = null;
+  if(auth) auth.signOut().catch(function(){});
+  if(typeof liff !== 'undefined' && liff.isLoggedIn && liff.isLoggedIn()){
+    liff.logout(); // redirects page — no further code runs after this
+    return;
+  }
+  _showAuthGate('login');
+}
+/* ══ end auth flow ══ */
 
 /* ── Constants ── */
 const COURTS = ['hard_a','hard_b','clay_a','clay_b'];
@@ -3498,12 +3691,10 @@ function render(){
   loadCourtBookings(formatDate(selectedDate));
 }
 
-render();
-renderDayView();
-startNowLineTicker();
-renderBookings();
-renderManage();
-renderFinance();
+// Startup: auth gate manages when renders fire.
+// DEV mode (DEV_ROLE set) → _showMainApp() called immediately → renders fire.
+// Production → renders fire only after status === 'active' confirmed.
+initAuth();
 </script>
 </body>
 </html>

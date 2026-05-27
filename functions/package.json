@@ -1,0 +1,21 @@
+{
+  "name": "deta-functions",
+  "version": "1.0.0",
+  "description": "Firebase Functions — Deta / 清心網球協會",
+  "main": "index.js",
+  "engines": { "node": "18" },
+  "scripts": {
+    "lint": "eslint .",
+    "serve": "firebase emulators:start --only functions",
+    "deploy": "firebase deploy --only functions"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.0.0",
+    "firebase-functions": "^5.0.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.15.0",
+    "eslint-config-google": "^0.14.0"
+  },
+  "private": true
+}
