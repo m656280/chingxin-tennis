@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#faf9f5">
-<title>清心 · Calendar Preview</title>
+<title>清心網球協會</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500&family=Noto+Sans+TC:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=Noto+Sans+TC:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
   --color-bg: #faf9f5;
@@ -22,886 +22,2333 @@
   --dot-event: #4a6d4a;
   --color-clay: #b85c4a;
   --color-hard: #3d5a80;
-  --event-hard-bg: rgba(61, 90, 128, 0.08);
-  --event-hard-bar: rgba(61, 90, 128, 0.5);
-  --event-clay-bg: rgba(184, 92, 74, 0.08);
-  --event-clay-bar: rgba(184, 92, 74, 0.55);
-  --event-lock-bg: rgba(26, 31, 28, 0.05);
-  --event-lock-bar: rgba(26, 31, 28, 0.35);
+  --event-hard-bg: rgba(61,90,128,0.08);
+  --event-hard-bar: rgba(61,90,128,0.5);
+  --event-clay-bg: rgba(184,92,74,0.08);
+  --event-clay-bar: rgba(184,92,74,0.55);
+  --event-lock-bg: rgba(26,31,28,0.05);
+  --event-lock-bar: rgba(26,31,28,0.35);
   --color-now: #6b8a6b;
   --grid-line: #e9e7e0;
   --grid-line-soft: #f1efe9;
-  --font-display: 'Cormorant Garamond', 'Noto Serif TC', Georgia, serif;
-  --font-body: -apple-system, BlinkMacSystemFont, 'Inter', 'Noto Sans TC', 'PingFang TC', sans-serif;
+  --font-display: 'Cormorant Garamond','Noto Serif TC',Georgia,serif;
+  --font-body: -apple-system,BlinkMacSystemFont,'Inter','Noto Sans TC','PingFang TC',sans-serif;
 }
-
-*, *::before, *::after { box-sizing: border-box; }
-
-html, body {
-  margin: 0;
-  padding: 0;
-  min-height: 100%;
-  font-family: var(--font-body);
-  font-size: 15px;
-  line-height: 1.6;
+*,*::before,*::after { box-sizing: border-box; }
+html,body {
+  margin: 0; padding: 0; min-height: 100%;
+  font-family: var(--font-body); font-size: 15px; line-height: 1.6;
   color: var(--color-text-primary);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
 }
-
 body {
   background: #e8e3d6;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  padding: 24px 16px 48px;
-  min-height: 100vh;
+  display: flex; justify-content: center; align-items: flex-start;
+  padding: 24px 16px 48px; min-height: 100vh;
 }
-
-@media (max-width: 480px) {
-  body { padding: 0; background: var(--color-bg); }
-}
-
+@media (max-width:480px) { body { padding: 0; background: var(--color-bg); } }
 button {
-  font: inherit;
-  color: inherit;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  padding: 0;
+  font: inherit; color: inherit; border: none;
+  background: transparent; cursor: pointer; padding: 0;
   -webkit-tap-highlight-color: transparent;
 }
-
 .app {
-  max-width: 420px;
-  width: 100%;
-  background: var(--color-bg);
-  padding: 16px 16px 64px;
-  border-radius: 24px;
-  box-shadow: 0 8px 40px rgba(0,0,0,0.10);
+  max-width: 420px; width: 100%; background: var(--color-bg);
+  padding: 16px 16px 72px;
+  border-radius: 24px; box-shadow: 0 8px 40px rgba(0,0,0,0.10);
   position: relative;
 }
-
-@media (max-width: 480px) {
-  .app { border-radius: 0; box-shadow: none; min-height: 100dvh; }
+@media (max-width:480px) {
+  .app { border-radius:0; box-shadow:none; min-height:100dvh; }
+  .app.court-active { min-height:auto; }
 }
 
-.previewTag {
-  position: absolute;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 9px;
-  letter-spacing: 0.2em;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  pointer-events: none;
-}
-
-.header {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin: 28px 0 40px;
-}
-
-.brand {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-.brandRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
+/* ── Header / Brand ── */
+.header { display:flex; justify-content:flex-start; align-items:center; margin:28px 0 32px; }
+.brand { display:flex; flex-direction:column; align-items:flex-start; gap:4px; }
+.brandRow { display:flex; align-items:center; gap:12px; }
 .brandName {
-  font-family: var(--font-display);
-  font-size: 16px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--color-text-primary);
-  font-weight: 500;
+  font-family:var(--font-display); font-size:18px;
+  letter-spacing:0.20em; text-transform:uppercase;
+  color:var(--color-text-primary); font-weight:500;
+}
+.brandSub {
+  font-family:var(--font-display); font-style:italic;
+  font-size:9.5px; letter-spacing:0.26em; color:var(--color-text-muted);
+  line-height:1.5; white-space:nowrap;
 }
 
-.brandSub {
-  font-size: 9px;
-  letter-spacing: 0.18em;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
+/* ── Screens ── */
+.screen { display:none; }
+.screen.active { display:block; }
+
+/* ── Court Page Inline Header ── */
+.courtPageHeader { display:flex; align-items:center; justify-content:space-between; margin:4px 0 20px; }
+.courtBrandInline { display:flex; align-items:center; gap:10px; }
+.courtBrandText { display:flex; flex-direction:column; gap:1px; }
+.courtBrandName { font-family:var(--font-display); font-size:22px; letter-spacing:0.18em; text-transform:uppercase; color:var(--color-text-primary); font-weight:500; line-height:1.1; }
+.courtBrandSub { font-family:var(--font-display); font-style:italic; font-size:8.5px; letter-spacing:0.20em; color:var(--color-text-muted); line-height:1.5; white-space:nowrap; }
+.courtSwitcherWrap .switcherGroup { padding:2px; }
+.courtSwitcherWrap .switcherOption { padding:5px 13px; font-size:11px; letter-spacing:0.07em; }
+.header.court-header-hidden { display:none; }
+
+/* ── View Switcher ── */
+.viewSwitcher { display:flex; justify-content:center; margin-bottom:24px; }
+.switcherGroup {
+  display:inline-flex; background:var(--color-surface-alt);
+  border-radius:9999px; padding:3px; gap:2px;
 }
+.switcherOption {
+  padding:6px 20px; font-size:12px; letter-spacing:0.08em;
+  color:var(--color-text-muted); border-radius:9999px;
+  text-transform:uppercase; text-align:center;
+  transition:all 200ms ease;
+}
+.switcherOption.active {
+  background:var(--color-surface); color:var(--color-text-primary);
+  box-shadow:0 1px 3px rgba(0,0,0,0.04);
+}
+
+/* ── Week Strip ── */
+.weekStrip { margin-bottom:24px; display:flex; flex-direction:column; gap:8px; }
+.weekHeader { display:flex; align-items:center; justify-content:space-between; padding:0 4px; }
+.monthLabel {
+  font-family:var(--font-body); font-size:16px;
+  letter-spacing:0.01em; color:var(--color-text-primary); font-weight:500;
+}
+.navButton {
+  width:32px; height:32px; display:flex; align-items:center; justify-content:center;
+  font-size:18px; color:var(--color-text-muted); border-radius:9999px; transition:color 200ms ease;
+}
+.navButton:hover { color:var(--color-text-primary); }
+.chips { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; }
+.chip {
+  display:flex; flex-direction:column; align-items:center; gap:6px;
+  padding:8px 0; border-radius:8px; transition:background 200ms ease;
+}
+.chip:hover { background:var(--color-surface-alt); }
+.chipDayLabel { font-size:10px; letter-spacing:0.08em; color:var(--color-text-muted); text-transform:uppercase; }
+.chipDateNum {
+  font-size:15px; color:var(--color-text-secondary);
+  width:32px; height:32px; display:flex; align-items:center; justify-content:center;
+  border-radius:9999px; transition:all 200ms ease;
+}
+.chip.today .chipDateNum { color:var(--color-text-primary); font-weight:500; }
+.chip.selected .chipDateNum { background:var(--color-text-primary); color:var(--color-bg); font-weight:500; }
+.chip.weekend .chipDayLabel { color:var(--color-clay); opacity:0.7; }
+
+/* ── Day Header ── */
+.dayHeader { display:flex; align-items:baseline; gap:8px; margin-bottom:16px; padding:0 4px; }
+.dayLabelMain { font-family:var(--font-body); font-size:18px; color:var(--color-text-primary); font-weight:500; letter-spacing:0; }
+.dayMeta { font-size:11px; letter-spacing:0.08em; color:var(--color-text-muted); text-transform:uppercase; }
+
+/* ── Time Grid ── */
+.timeGridWrapper {
+  background:var(--color-surface); border:1px solid var(--color-border-soft);
+  border-radius:8px; overflow:hidden;
+  overflow-y:auto; max-height:calc(100dvh - 275px);
+}
+.courtHeader {
+  display:grid; grid-template-columns:44px repeat(4,1fr);
+  border-bottom:1px solid var(--color-border); background:var(--color-surface-alt);
+  position:sticky; top:0; z-index:10;
+}
+.courtLabel {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  padding:8px 4px; border-left:1px solid var(--color-border-soft);
+}
+.surfaceTag { font-size:9px; letter-spacing:0.12em; color:var(--color-text-muted); font-weight:500; }
+.courtLabel.clay .surfaceTag { color:var(--color-clay); }
+.courtLetter { font-family:var(--font-display); font-size:18px; color:var(--color-text-primary); line-height:1.1; margin-top:2px; }
+.grid { display:grid; grid-template-columns:44px repeat(4,1fr); position:relative; }
+.slotRow {
+  grid-column:1 / -1; border-top:1px solid var(--grid-line-soft);
+  display:flex; align-items:flex-start; padding-top:2px; pointer-events:none; z-index:1;
+}
+.slotRow.fullHour { border-top-color:var(--grid-line); }
+.slotRow.firstRow { border-top:none; }
+.timeLabel { width:44px; padding-left:6px; font-size:12px; letter-spacing:0.02em; color:var(--color-text-muted); line-height:1.5; }
+.courtDividers {
+  grid-column:1 / -1; grid-row:1 / -1; pointer-events:none;
+  display:grid; grid-template-columns:44px repeat(4,1fr); z-index:0;
+}
+.courtDividers > div { border-left:1px solid var(--grid-line-soft); }
+.courtDividers > div:first-child { border-left:none; }
+.event {
+  position:relative; margin:1px; padding:4px 6px 4px 8px;
+  border-radius:4px; background:var(--event-hard-bg);
+  border-left:2px solid var(--event-hard-bar);
+  overflow:hidden; display:flex; flex-direction:column; z-index:2; min-width:0;
+}
+.event.clay { background:var(--event-clay-bg); border-left-color:var(--event-clay-bar); }
+.event.eventLock { background:var(--event-lock-bg); border-left-color:var(--event-lock-bar); }
+.event .time { font-size:9px; letter-spacing:0.04em; color:var(--color-text-muted); line-height:1.3; }
+.event .name { font-size:11px; color:var(--color-text-primary); line-height:1.3; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.event .meta { font-size:9px; color:var(--color-text-muted); margin-top:2px; line-height:1.2; }
+.event .modeDot { position:absolute; top:5px; right:5px; width:5px; height:5px; border-radius:50%; }
+.event.short .time,.event.short .meta { display:none; }
+.nowLine { position:absolute; left:44px; right:0; height:1px; background:var(--color-now); z-index:3; pointer-events:none; }
+.nowLine::before { content:''; position:absolute; left:-3px; top:-2px; width:5px; height:5px; border-radius:50%; background:var(--color-now); }
+
+/* ── Month View ── */
+.monthGrid { display:grid; grid-template-columns:repeat(7,1fr); gap:1px; }
+.monthDayHeader {
+  text-align:center; padding:6px 0 8px;
+  font-size:10px; letter-spacing:0.08em; color:var(--color-text-muted); text-transform:uppercase;
+}
+.monthCell {
+  display:flex; flex-direction:column; align-items:center;
+  padding:4px 2px 6px; border-radius:6px; gap:3px; min-height:48px;
+  transition:background 160ms ease;
+}
+.monthCell:not(.empty):hover { background:var(--color-surface-alt); }
+.monthCellNum {
+  font-size:13px; color:var(--color-text-secondary);
+  width:26px; height:26px;
+  display:flex; align-items:center; justify-content:center;
+  border-radius:50%; transition:all 180ms ease;
+}
+.monthCell.today .monthCellNum { background:var(--color-text-primary); color:var(--color-bg); font-weight:500; }
+.monthCell.selected:not(.today) .monthCellNum { background:var(--color-surface-alt); color:var(--color-text-primary); font-weight:500; box-shadow:inset 0 0 0 1px var(--color-border); }
+.monthCell.weekend .monthCellNum { color:var(--color-clay); }
+.monthCell.today.weekend .monthCellNum { color:var(--color-bg); }
+.monthCell.other-month .monthCellNum { opacity:0.3; }
+.monthDots { display:flex; gap:2px; flex-wrap:wrap; justify-content:center; max-width:28px; }
+.monthDot { width:4px; height:4px; border-radius:50%; }
+.dot-hard { background:var(--color-hard); opacity:0.7; }
+.dot-clay { background:var(--color-clay); opacity:0.7; }
+.dot-event { background:var(--dot-event); opacity:0.8; }
+.dot-coach { background:var(--dot-coach); opacity:0.8; }
+
+/* ── Screen Titles ── */
+.screenTitle {
+  font-family:var(--font-display); font-size:20px; font-weight:500;
+  letter-spacing:0.04em; color:var(--color-text-primary);
+  margin:4px 0 20px; padding:0 4px;
+}
+.screenSection {
+  font-size:10px; letter-spacing:0.10em; color:var(--color-text-muted);
+  text-transform:uppercase; margin:20px 0 10px; padding:0 4px;
+}
+
+/* ── Booking Cards ── */
+.bookingCard {
+  background:var(--color-surface); border:1px solid var(--color-border-soft);
+  border-radius:12px; padding:14px 16px; margin-bottom:10px;
+  display:flex; gap:14px; align-items:flex-start;
+}
+.bookingCardDate {
+  text-align:center; min-width:36px; flex-shrink:0;
+}
+.bookingCardDateNum {
+  font-family:var(--font-body); font-size:22px; font-weight:500;
+  line-height:1; color:var(--color-text-primary); letter-spacing:0;
+}
+.bookingCardDateMon {
+  font-size:9px; letter-spacing:0.10em; color:var(--color-text-muted); text-transform:uppercase;
+}
+.bookingCardBody { flex:1; min-width:0; }
+.bookingCardTime {
+  font-size:14px; font-weight:500; color:var(--color-text-primary);
+  margin-bottom:3px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+}
+.bookingCardMeta { font-size:12px; color:var(--color-text-secondary); }
+.statusChip {
+  display:inline-flex; align-items:center;
+  padding:2px 8px; border-radius:99px;
+  font-size:10px; letter-spacing:0.06em; font-weight:500;
+}
+.statusChip.confirmed { background:rgba(74,109,74,0.10); color:var(--dot-event); }
+.statusChip.completed { background:var(--color-surface-alt); color:var(--color-text-muted); }
+.statusChip.cancelled { background:rgba(184,92,74,0.10); color:var(--color-clay); }
+
+/* ── Schedule Items ── */
+.scheduleItem {
+  display:flex; gap:14px; align-items:flex-start; padding:14px 0;
+  border-bottom:1px solid var(--color-border-soft);
+}
+.scheduleItem:last-child { border-bottom:none; }
+.scheduleItemBar {
+  width:3px; border-radius:2px; min-height:44px; flex-shrink:0; margin-top:3px;
+  background:var(--event-hard-bar);
+}
+.scheduleItemBar.clay { background:var(--event-clay-bar); }
+.scheduleItemBar.lock { background:var(--event-lock-bar); }
+.scheduleItemBody { flex:1; }
+.scheduleItemTime { font-size:12px; color:var(--color-text-muted); letter-spacing:0.04em; }
+.scheduleItemName { font-size:14px; color:var(--color-text-primary); margin:2px 0; }
+.scheduleItemMeta { font-size:12px; color:var(--color-text-secondary); }
+
+/* ── Member Cards ── */
+.memberCard {
+  display:flex; align-items:center; gap:12px;
+  padding:12px 0; border-bottom:1px solid var(--color-border-soft);
+}
+.memberCard:last-child { border-bottom:none; }
+.memberAvatar {
+  width:40px; height:40px; border-radius:50%; overflow:hidden;
+  flex-shrink:0; border:1px solid var(--color-border-soft);
+}
+.memberAvatar img { width:100%; height:100%; object-fit:cover; }
+.memberInfo { flex:1; min-width:0; }
+.memberName { font-size:14px; color:var(--color-text-primary); font-weight:500; }
+.memberMeta { font-size:11px; color:var(--color-text-muted); margin-top:2px; }
+.memberBadge {
+  font-size:10px; padding:2px 8px; border-radius:99px;
+  border:1px solid var(--color-border); color:var(--color-text-muted);
+  white-space:nowrap;
+}
+.memberBadge.coach { border-color:var(--dot-coach); color:var(--dot-coach); }
+.searchBar {
+  width:100%; padding:10px 14px; border-radius:10px;
+  background:var(--color-surface-alt); border:none;
+  font:inherit; font-size:14px; color:var(--color-text-primary);
+  outline:none; margin-bottom:16px;
+  letter-spacing:0.02em;
+}
+.searchBar::placeholder { color:var(--color-text-muted); }
 
 /* ── Bottom Nav ── */
 .bottomNav {
-  position: fixed;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 100%;
-  max-width: 420px;
-  height: 60px;
-  background: var(--color-surface);
-  border-top: 1px solid var(--color-border-soft);
-  display: flex;
-  align-items: center;
-  justify-content: space-around;
-  z-index: 100;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  position:fixed; bottom:0; left:50%; transform:translateX(-50%);
+  width:100%; max-width:420px; height:60px;
+  background:var(--color-surface); border-top:1px solid var(--color-border-soft);
+  display:flex; align-items:center; justify-content:space-around;
+  z-index:100; padding-bottom:env(safe-area-inset-bottom,0px);
 }
-@media (max-width: 480px) {
-  .bottomNav { border-radius: 0; }
-}
+@media (max-width:480px) { .bottomNav { border-radius:0; } }
 .navTab {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  flex: 1;
-  padding: 8px 0;
-  color: var(--color-text-muted);
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  transition: color 180ms ease;
+  display:flex; flex-direction:column; align-items:center; gap:2px;
+  flex:1; padding:8px 0; color:var(--color-text-muted);
+  font-size:10px; letter-spacing:0.05em; transition:color 180ms ease;
 }
-.navTab.active { color: var(--color-text-primary); }
-.navTab svg { opacity: 0.55; transition: opacity 180ms ease; }
-.navTab.active svg { opacity: 1; }
+.navTab.active { color:var(--color-text-primary); }
+.navTab svg { opacity:0.50; transition:opacity 180ms ease; }
+.navTab.active svg { opacity:1; }
 .navTabAvatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  overflow: hidden;
-  border: 1.5px solid var(--color-border);
-  transition: border-color 180ms ease;
+  width:26px; height:26px; border-radius:50%; overflow:hidden;
+  border:1.5px solid var(--color-border); transition:border-color 180ms ease;
 }
-.navTab.active .navTabAvatar { border-color: var(--color-text-primary); }
-.navTabAvatar img { width: 100%; height: 100%; object-fit: cover; }
+.navTab.active .navTabAvatar { border-color:var(--color-text-primary); }
+.navTabAvatar img { width:100%; height:100%; object-fit:cover; }
 
 /* ── Profile Sheet ── */
 .sheetBackdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(26,31,28,0.35);
-  z-index: 200;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 280ms ease;
+  position:fixed; inset:0; background:rgba(26,31,28,0.35);
+  z-index:200; opacity:0; pointer-events:none; transition:opacity 280ms ease;
 }
-.sheetBackdrop.open {
-  opacity: 1;
-  pointer-events: auto;
-}
+.sheetBackdrop.open { opacity:1; pointer-events:auto; }
 .profileSheet {
-  position: fixed;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%) translateY(100%);
-  width: 100%;
-  max-width: 420px;
-  background: var(--color-bg);
-  border-radius: 20px 20px 0 0;
-  z-index: 201;
-  transition: transform 300ms cubic-bezier(0.32,0.72,0,1);
-  padding: 0 0 calc(24px + env(safe-area-inset-bottom, 0px));
+  position:fixed; bottom:0; left:50%;
+  transform:translateX(-50%) translateY(100%);
+  width:100%; max-width:420px; background:var(--color-bg);
+  border-radius:20px 20px 0 0; z-index:201;
+  transition:transform 300ms cubic-bezier(0.32,0.72,0,1);
+  padding:0 0 calc(24px + env(safe-area-inset-bottom,0px));
+  max-height:90vh; overflow-y:auto;
 }
-.profileSheet.open {
-  transform: translateX(-50%) translateY(0);
-}
-.sheetHandle {
-  width: 36px;
-  height: 4px;
-  background: var(--color-border);
-  border-radius: 2px;
-  margin: 12px auto 24px;
-}
+.profileSheet.open { transform:translateX(-50%) translateY(0); }
+.sheetHandle { width:36px; height:4px; background:var(--color-border); border-radius:2px; margin:12px auto 20px; }
 .sheetUserRow {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 0 20px 20px;
-  border-bottom: 1px solid var(--color-border-soft);
+  display:flex; align-items:center; gap:14px;
+  padding:0 20px 18px; border-bottom:1px solid var(--color-border-soft);
 }
-.sheetAvatar {
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  overflow: hidden;
-  border: 1.5px solid var(--color-border);
-  flex-shrink: 0;
+.sheetAvatar { width:52px; height:52px; border-radius:50%; overflow:hidden; border:1.5px solid var(--color-border); flex-shrink:0; }
+.sheetAvatar img { width:100%; height:100%; object-fit:cover; }
+.sheetUserInfo { display:flex; flex-direction:column; gap:4px; }
+.sheetNameRow { display:flex; align-items:center; gap:8px; }
+.sheetUserName { font-family:var(--font-display); font-size:17px; font-weight:500; color:var(--color-text-primary); letter-spacing:0.04em; }
+.editNameBtn {
+  font-size:10px; letter-spacing:0.06em; color:var(--color-text-muted);
+  border:1px solid var(--color-border); border-radius:99px; padding:2px 8px;
 }
-.sheetAvatar img { width: 100%; height: 100%; object-fit: cover; }
-.sheetUserInfo { display: flex; flex-direction: column; gap: 3px; }
-.sheetUserName {
-  font-family: var(--font-display);
-  font-size: 17px;
-  font-weight: 500;
-  color: var(--color-text-primary);
-  letter-spacing: 0.04em;
-}
-.sheetMemberBadge {
-  font-size: 11px;
-  color: var(--color-text-secondary);
-  letter-spacing: 0.06em;
-}
-.sheetSection {
-  padding: 16px 20px 0;
-}
+.sheetMemberBadge { font-size:11px; color:var(--color-text-secondary); letter-spacing:0.04em; }
+.sheetSection { padding:12px 20px 0; }
 .sheetRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 13px 0;
-  border-bottom: 1px solid var(--color-border-soft);
-  font-size: 14px;
-  color: var(--color-text-primary);
+  display:flex; align-items:center; justify-content:space-between;
+  padding:12px 0; border-bottom:1px solid var(--color-border-soft);
+  font-size:14px;
 }
-.sheetRow:last-child { border-bottom: none; }
-.sheetRowLabel {
-  color: var(--color-text-secondary);
-  font-size: 13px;
-  letter-spacing: 0.04em;
-}
-.sheetRowValue {
-  font-size: 13px;
-  color: var(--color-text-primary);
-  text-align: right;
-}
+.sheetRow:last-child { border-bottom:none; }
+.sheetRowLabel { color:var(--color-text-secondary); font-size:13px; letter-spacing:0.04em; }
+.sheetRowValue { font-size:13px; color:var(--color-text-primary); text-align:right; }
+.sheetNavRow { cursor:pointer; transition:opacity 150ms ease; }
+.sheetNavRow:active { opacity:0.6; }
+.sheetRowChevron { font-size:18px; color:var(--color-text-muted); line-height:1; }
 
-.viewSwitcher {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 24px;
+/* ── Sub-Sheets ── */
+.subSheet {
+  position:fixed; bottom:0; left:50%;
+  transform:translateX(-50%) translateY(100%);
+  width:100%; max-width:420px; background:var(--color-bg);
+  border-radius:20px 20px 0 0; z-index:202;
+  transition:transform 300ms cubic-bezier(0.32,0.72,0,1);
+  padding:0 0 calc(24px + env(safe-area-inset-bottom,0px));
+  max-height:90vh; overflow-y:auto;
 }
-
-.switcherGroup {
-  display: inline-flex;
-  background: var(--color-surface-alt);
-  border-radius: 9999px;
-  padding: 3px;
-  gap: 2px;
+.subSheet.open { transform:translateX(-50%) translateY(0); }
+.subSheetHeader {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:14px 20px; border-bottom:1px solid var(--color-border-soft);
 }
-
-.switcherOption {
-  padding: 6px 16px;
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  color: var(--color-text-muted);
-  border-radius: 9999px;
-  text-transform: uppercase;
-  min-width: 56px;
-  text-align: center;
-  transition: all 200ms ease;
+.subSheetBack {
+  font-size:22px; line-height:1; color:var(--color-text-secondary); width:32px;
 }
+.subSheetTitle { font-family:var(--font-display); font-size:15px; letter-spacing:0.06em; color:var(--color-text-primary); }
 
-.switcherOption.active {
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+/* ── Settings ── */
+.settingsRow { padding:16px 20px; border-bottom:1px solid var(--color-border-soft); }
+.settingsRow:last-child { border-bottom:none; }
+.settingsLabel {
+  display:block; font-size:10px; letter-spacing:0.08em; color:var(--color-text-muted);
+  text-transform:uppercase; margin-bottom:8px;
 }
-
-.switcherOption.disabled { opacity: 0.5; cursor: not-allowed; }
-
-.weekStrip {
-  margin-bottom: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.settingsInput,.settingsSelect {
+  width:100%; font:inherit; font-size:14px; color:var(--color-text-primary);
+  background:transparent; border:none; border-bottom:1px solid var(--color-border);
+  padding:4px 0; outline:none; appearance:none;
+}
+.settingsSelect { cursor:pointer; }
+.saveBtn {
+  display:block; width:calc(100% - 40px); margin:16px 20px;
+  padding:14px; background:var(--color-text-primary); color:var(--color-bg);
+  border-radius:12px; font-size:14px; letter-spacing:0.10em;
+  text-align:center; cursor:pointer;
 }
 
-.weekHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 4px;
+/* ── Notifications ── */
+.notifItem {
+  display:flex; gap:12px; padding:14px 20px;
+  border-bottom:1px solid var(--color-border-soft);
+  align-items:flex-start;
+}
+.notifDot {
+  width:8px; height:8px; border-radius:50%;
+  background:var(--color-text-primary); flex-shrink:0; margin-top:5px;
+  transition:opacity 200ms;
+}
+.notifItem.read .notifDot { opacity:0; }
+.notifBody { flex:1; }
+.notifTitle { font-size:13px; font-weight:500; color:var(--color-text-primary); margin-bottom:2px; }
+.notifText { font-size:12px; color:var(--color-text-secondary); }
+.notifTime { font-size:10px; color:var(--color-text-muted); letter-spacing:0.04em; margin-top:3px; }
+
+/* ── About ── */
+.aboutContent { padding:20px 20px 0; }
+.aboutLogo { text-align:center; margin-bottom:24px; }
+.aboutBlock { margin-bottom:20px; }
+.aboutBlockTitle {
+  font-size:10px; letter-spacing:0.10em; color:var(--color-text-muted);
+  text-transform:uppercase; margin-bottom:8px;
+}
+.aboutBlockText { font-size:13px; color:var(--color-text-secondary); line-height:1.7; }
+.aboutDivider { height:1px; background:var(--color-border-soft); margin:20px 0; }
+
+/* ── Empty State ── */
+.emptyState {
+  text-align:center; padding:48px 20px;
+  color:var(--color-text-muted); font-size:13px; letter-spacing:0.04em;
+}
+.emptyStateIcon { font-size:32px; margin-bottom:12px; opacity:0.4; }
+
+/* ── Add Booking Button ── */
+.addBookingBtn {
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  width:100%; padding:13px; border-radius:10px;
+  background:var(--color-surface-alt); border:1px solid var(--color-border);
+  font-size:13px; letter-spacing:0.08em; color:var(--color-text-secondary);
+  cursor:pointer; margin-bottom:20px; transition:all 180ms ease;
+}
+.addBookingBtn:hover { border-color:var(--color-text-primary); color:var(--color-text-primary); }
+
+/* ── Cancel Button ── */
+.cancelBtn {
+  font-size:11px; padding:4px 12px; border-radius:99px;
+  border:1px solid var(--color-border); color:var(--color-text-muted);
+  letter-spacing:0.06em; cursor:pointer; margin-top:8px;
+  transition:all 150ms ease;
+}
+.cancelBtn:hover { border-color:var(--color-clay); color:var(--color-clay); }
+.bookingCardActions { display:flex; gap:8px; margin-top:4px; }
+
+/* ── Event Avatar ── */
+.event .eAvatar {
+  position:absolute; bottom:3px; right:4px;
+  width:14px; height:14px; border-radius:50%; overflow:hidden;
+  border:1px solid rgba(255,255,255,0.4); flex-shrink:0;
+}
+.event .eAvatar img { width:100%; height:100%; object-fit:cover; }
+
+/* ── Booking Form Sheet ── */
+.formSection { padding:16px 20px; }
+.formRow { margin-bottom:16px; }
+.formLabel {
+  display:block; font-size:10px; letter-spacing:0.10em;
+  color:var(--color-text-muted); text-transform:uppercase; margin-bottom:8px;
+}
+.formSelect, .formInput {
+  width:100%; padding:10px 12px; border-radius:9px;
+  background:var(--color-surface-alt); border:1px solid var(--color-border-soft);
+  font:inherit; font-size:14px; color:var(--color-text-primary);
+  appearance:none; cursor:pointer;
+}
+.formGrid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.primaryBtn {
+  width:100%; padding:14px; border-radius:12px;
+  background:var(--color-text-primary); color:var(--color-bg);
+  font-size:14px; letter-spacing:0.10em; font-weight:500; cursor:pointer;
+  transition:opacity 180ms ease; margin-top:4px;
+}
+.primaryBtn:active { opacity:0.7; }
+.primaryBtn:disabled { opacity:0.4; cursor:not-allowed; }
+
+/* ── Pending Card (管理) ── */
+.pendingCard {
+  background:var(--color-surface); border:1px solid var(--color-border-soft);
+  border-radius:12px; padding:14px 16px; margin-bottom:10px;
+}
+.pendingCardTop { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+.pendingCardName { font-size:14px; color:var(--color-text-primary); font-weight:500; }
+.pendingCardMeta { font-size:11px; color:var(--color-text-muted); margin-top:2px; }
+.pendingActions { display:flex; gap:8px; }
+.approveBtn {
+  flex:1; padding:9px; border-radius:9px; font-size:12px; letter-spacing:0.06em;
+  background:rgba(74,109,74,0.12); color:var(--dot-event); cursor:pointer;
+  transition:background 150ms ease;
+}
+.approveBtn:hover { background:rgba(74,109,74,0.22); }
+.rejectBtn {
+  flex:1; padding:9px; border-radius:9px; font-size:12px; letter-spacing:0.06em;
+  background:rgba(184,92,74,0.10); color:var(--color-clay); cursor:pointer;
+  transition:background 150ms ease;
+}
+.rejectBtn:hover { background:rgba(184,92,74,0.20); }
+
+/* ── Finance Screen Header ── */
+.finScreenHeader {
+  display:flex; align-items:center; justify-content:space-between;
+  margin:4px 0 20px; padding:0 2px;
+}
+.finScreenTitle {
+  font-family:var(--font-display); font-size:20px; font-weight:500;
+  letter-spacing:0.04em; color:var(--color-text-primary);
+}
+.finHeaderActions { display:flex; gap:8px; align-items:center; }
+.finActionBtn {
+  padding:6px 14px; border-radius:99px; font-size:12px; letter-spacing:0.06em;
+  border:1px solid var(--color-border); color:var(--color-text-secondary);
+  cursor:pointer; background:transparent; transition:all 160ms ease;
+  font-family:var(--font-body);
+}
+.finActionBtn:hover { border-color:var(--color-text-primary); color:var(--color-text-primary); }
+.finActionBtnPrimary {
+  background:var(--color-text-primary); color:var(--color-bg);
+  border-color:var(--color-text-primary);
+}
+.finActionBtnPrimary:hover { opacity:0.82; }
+
+/* ── Finance Screen ── */
+.financeBalanceCard {
+  background:var(--color-text-primary); color:var(--color-bg);
+  border-radius:14px; padding:18px 20px; margin-bottom:20px;
+  display:flex; justify-content:space-between; align-items:flex-end;
+}
+.financeBalanceLabel {
+  font-size:10px; letter-spacing:0.10em; text-transform:uppercase; opacity:0.55; margin-bottom:6px;
+}
+.financeBalanceAmt {
+  font-family:var(--font-body); font-size:32px; font-weight:600; letter-spacing:0; line-height:1;
+}
+.financeStats {
+  display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:24px;
+}
+.financeStatCard {
+  background:var(--color-surface); border:1px solid var(--color-border-soft);
+  border-radius:12px; padding:13px 15px;
+}
+.financeStatLabel {
+  font-size:10px; letter-spacing:0.07em; color:var(--color-text-muted);
+  text-transform:uppercase; margin-bottom:5px;
+}
+.financeStatAmt {
+  font-family:var(--font-body); font-size:18px; font-weight:600; letter-spacing:0;
+  color:var(--color-text-primary);
+}
+.financeStatAmt.out { color:var(--color-clay); }
+.financeRecord {
+  display:flex; align-items:center; gap:10px;
+  padding:13px 0; border-bottom:1px solid var(--color-border-soft);
+}
+.financeRecord:last-child { border-bottom:none; }
+.financeRecordLeft { flex:1; min-width:0; }
+.financeRecordName {
+  font-size:15px; color:var(--color-text-primary); font-weight:500;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.financeRecordMeta { font-size:12.5px; color:var(--color-text-muted); margin-top:3px; line-height:1.5; }
+.financeRecordAmt {
+  font-family:var(--font-body); font-size:17px; font-weight:500; letter-spacing:0;
+  color:var(--color-text-primary); flex-shrink:0;
+}
+.financeRecordAmt.out { color:var(--color-clay); }
+.finTypeBadge {
+  font-size:11px; letter-spacing:0.04em; padding:3px 10px;
+  border-radius:99px; flex-shrink:0; white-space:nowrap;
+}
+.fin-annual { background:rgba(74,109,74,0.12); color:#4a6d4a; }
+.fin-monthly { background:rgba(61,90,128,0.10); color:#3d5a80; }
+.fin-donate  { background:rgba(201,169,110,0.18); color:#8a6c30; }
+.fin-expense { background:rgba(184,92,74,0.10); color:var(--color-clay); }
+.financeStatCard { cursor:pointer; transition:opacity 150ms ease; }
+.financeStatCard:active { opacity:0.6; }
+.finYearSwitcher {
+  display:flex; justify-content:center; margin-bottom:18px;
+}
+.finYearGroup {
+  display:inline-flex; background:var(--color-surface-alt);
+  border-radius:9999px; padding:3px; gap:2px;
+}
+.finYearBtn {
+  padding:6px 18px; font-size:12px; letter-spacing:0.08em;
+  color:var(--color-text-muted); border-radius:9999px;
+  text-transform:none; cursor:pointer; background:transparent;
+  border:none; font-family:var(--font-body);
+  transition:all 180ms ease;
+}
+.finYearBtn.active {
+  background:var(--color-surface); color:var(--color-text-primary);
+  box-shadow:0 1px 3px rgba(0,0,0,0.06);
+}
+.finSearchBar {
+  display:block; width:100%; padding:10px 14px; margin-bottom:16px;
+  border-radius:10px; border:1px solid var(--color-border-soft);
+  background:var(--color-surface-alt); font:inherit; font-size:14px;
+  color:var(--color-text-primary); outline:none;
+  -webkit-appearance:none; appearance:none;
+}
+.finSearchBar::placeholder { color:var(--color-text-muted); }
+.finSearchBar:focus { border-color:var(--color-border); }
+.finDeleteBtn {
+  flex-shrink:0; padding:5px 10px; border-radius:99px;
+  font-size:11px; letter-spacing:0.04em;
+  color:var(--color-text-muted); border:1px solid var(--color-border-soft);
+  cursor:pointer; transition:all 150ms ease; background:transparent;
+}
+.finDeleteBtn:hover { border-color:var(--color-clay); color:var(--color-clay); }
+.finCategoryRecord {
+  display:flex; align-items:center; gap:10px;
+  padding:12px 20px; border-bottom:1px solid var(--color-border-soft);
+}
+.finCategoryRecord:last-child { border-bottom:none; }
+.finCategorySummary {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:10px 20px 14px; border-bottom:1px solid var(--color-border-soft);
+  margin-bottom:2px;
 }
 
-.monthLabel {
-  font-family: var(--font-display);
-  font-size: 16px;
-  letter-spacing: 0.04em;
-  color: var(--color-text-primary);
-  font-weight: 500;
+/* ── Finance Stage 3C ── */
+.finRecordLeft { cursor:pointer; }
+.finRecordLeft:active { opacity:0.65; }
+.finDeleteIcon {
+  flex-shrink:0; width:28px; height:28px; border-radius:8px;
+  display:flex; align-items:center; justify-content:center;
+  color:var(--color-text-muted); border:none; background:transparent;
+  cursor:pointer; transition:all 150ms ease; margin-top:2px;
+}
+.finDeleteIcon:hover { background:rgba(184,92,74,0.10); color:var(--color-clay); }
+
+/* ── Finance Stage 3B: header left-align on finance tab ── */
+.header.fin-header-left { justify-content:flex-start; }
+.header.fin-header-left .brand { align-items:flex-start; }
+
+/* ── Finance Stage 3A overrides ── */
+
+/* nav inactive icon less dim */
+.navTab svg { opacity:0.70 !important; }
+
+/* year picker button (replaces segmented) */
+.finYearPicker {
+  display:inline-flex; align-items:center; gap:5px;
+  padding:5px 12px; border-radius:99px;
+  border:1px solid var(--color-border); background:var(--color-surface-alt);
+  font-size:13px; letter-spacing:0.04em; color:var(--color-text-primary);
+  cursor:pointer; font-family:var(--font-body);
+  transition:border-color 150ms ease;
+}
+.finYearPicker:hover { border-color:var(--color-text-primary); }
+.finYearPickerCaret { font-size:10px; opacity:0.55; }
+
+/* year dropdown popup */
+.finYearDropdown {
+  position:fixed; z-index:300;
+  background:var(--color-surface); border:1px solid var(--color-border-soft);
+  border-radius:12px; padding:6px;
+  box-shadow:0 8px 24px rgba(0,0,0,0.10);
+  min-width:110px;
+}
+.finYearDropItem {
+  display:block; width:100%; text-align:left;
+  padding:9px 14px; border-radius:8px; font-size:14px;
+  letter-spacing:0.04em; color:var(--color-text-primary);
+  cursor:pointer; background:transparent; border:none;
+  font-family:var(--font-body); transition:background 120ms ease;
+}
+.finYearDropItem:hover { background:var(--color-surface-alt); }
+.finYearDropItem.active { font-weight:500; }
+
+/* search bar — slimmer */
+.finSearchBar {
+  padding:7px 12px !important;
+  font-size:13px !important;
+  margin-bottom:14px !important;
 }
 
-.navButton {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  color: var(--color-text-muted);
-  border-radius: 9999px;
-  transition: color 200ms ease;
+/* balance card — only balance, centered */
+.financeBalanceCard {
+  flex-direction:column; align-items:flex-start !important;
+  justify-content:flex-start !important;
 }
 
-.navButton:hover { color: var(--color-text-primary); }
-
-.chips {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 2px;
+/* stat card hover border + arrow */
+.financeStatCard {
+  position:relative; transition:border-color 160ms ease, opacity 150ms ease !important;
+  border:1px solid var(--color-border-soft) !important;
+}
+.financeStatCard:hover { border-color:var(--color-border) !important; }
+.finStatArrow {
+  position:absolute; top:10px; right:11px;
+  font-size:11px; color:var(--color-text-muted); opacity:0.45;
 }
 
-.chip {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 0;
-  border-radius: 8px;
-  transition: background 200ms ease;
+/* record row — club typography */
+.finRecordNote {
+  font-size:13.5px; color:var(--color-text-secondary);
+  margin-top:2px; line-height:1.4;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.finRecordDateMeta {
+  font-size:11.5px; color:var(--color-text-muted); opacity:0.75;
+  margin-top:2px; letter-spacing:0.02em;
+}
+.finRecordRight {
+  display:flex; flex-direction:column; align-items:flex-end;
+  gap:4px; flex-shrink:0;
 }
 
-.chip:hover { background: var(--color-surface-alt); }
-
-.chipDayLabel {
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
+/* ── Toast ── */
+.toast {
+  position:fixed; bottom:76px; left:50%;
+  transform:translateX(-50%) translateY(10px);
+  background:var(--color-text-primary); color:var(--color-bg);
+  padding:9px 18px; border-radius:20px;
+  font-size:13px; letter-spacing:0.04em; z-index:400;
+  opacity:0; transition:all 220ms ease; pointer-events:none; white-space:nowrap;
 }
-
-.chipDateNum {
-  font-size: 15px;
-  color: var(--color-text-secondary);
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 9999px;
-  transition: all 200ms ease;
-}
-
-.chip.today .chipDateNum {
-  color: var(--color-text-primary);
-  font-weight: 500;
-}
-
-.chip.selected .chipDateNum {
-  background: var(--color-text-primary);
-  color: var(--color-bg);
-  font-weight: 500;
-}
-
-.chip.weekend .chipDayLabel {
-  color: var(--color-clay);
-  opacity: 0.7;
-}
-
-.dayHeader {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 16px;
-  padding: 0 4px;
-}
-
-.dayLabelMain {
-  font-family: var(--font-display);
-  font-size: 18px;
-  color: var(--color-text-primary);
-  font-weight: 500;
-}
-
-.dayMeta {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-}
-
-.timeGridWrapper {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border-soft);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.courtHeader {
-  display: grid;
-  grid-template-columns: 44px repeat(4, 1fr);
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface-alt);
-}
-
-.courtLabel {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 4px;
-  border-left: 1px solid var(--color-border-soft);
-}
-
-.surfaceTag {
-  font-size: 9px;
-  letter-spacing: 0.12em;
-  color: var(--color-text-muted);
-  font-weight: 500;
-}
-
-.courtLabel.clay .surfaceTag { color: var(--color-clay); }
-
-.courtLetter {
-  font-family: var(--font-display);
-  font-size: 18px;
-  color: var(--color-text-primary);
-  line-height: 1.1;
-  margin-top: 2px;
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: 44px repeat(4, 1fr);
-  position: relative;
-}
-
-.slotRow {
-  grid-column: 1 / -1;
-  border-top: 1px solid var(--grid-line-soft);
-  display: flex;
-  align-items: flex-start;
-  padding-top: 2px;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.slotRow.fullHour { border-top-color: var(--grid-line); }
-.slotRow.firstRow { border-top: none; }
-
-.timeLabel {
-  width: 44px;
-  padding-left: 6px;
-  font-size: 9px;
-  letter-spacing: 0.04em;
-  color: var(--color-text-muted);
-}
-
-.courtDividers {
-  grid-column: 1 / -1;
-  grid-row: 1 / -1;
-  pointer-events: none;
-  display: grid;
-  grid-template-columns: 44px repeat(4, 1fr);
-  z-index: 0;
-}
-
-.courtDividers > div { border-left: 1px solid var(--grid-line-soft); }
-.courtDividers > div:first-child { border-left: none; }
-
-.event {
-  position: relative;
-  margin: 1px;
-  padding: 4px 6px 4px 8px;
-  border-radius: 4px;
-  background: var(--event-hard-bg);
-  border-left: 2px solid var(--event-hard-bar);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  z-index: 2;
-  min-width: 0;
-}
-
-.event.clay {
-  background: var(--event-clay-bg);
-  border-left-color: var(--event-clay-bar);
-}
-
-.event.eventLock {
-  background: var(--event-lock-bg);
-  border-left-color: var(--event-lock-bar);
-}
-
-.event .time {
-  font-size: 9px;
-  letter-spacing: 0.04em;
-  color: var(--color-text-muted);
-  line-height: 1.3;
-}
-
-.event .name {
-  font-size: 11px;
-  color: var(--color-text-primary);
-  line-height: 1.3;
-  margin-top: 1px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.event .meta {
-  font-size: 9px;
-  color: var(--color-text-muted);
-  margin-top: 2px;
-  line-height: 1.2;
-}
-
-.event .modeDot {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-}
-
-.event.short .time, .event.short .meta { display: none; }
-
-.nowLine {
-  position: absolute;
-  left: 44px;
-  right: 0;
-  height: 1px;
-  background: var(--color-now);
-  z-index: 3;
-  pointer-events: none;
-}
-
-.nowLine::before {
-  content: '';
-  position: absolute;
-  left: -3px;
-  top: -2px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--color-now);
-}
-
-.footer {
-  margin-top: 32px;
-  text-align: center;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  color: var(--color-text-muted);
-  line-height: 1.8;
-}
+.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
 </style>
 </head>
 <body>
 
-<div class="app">
-  <div class="previewTag">PHASE 3 · PREVIEW</div>
-
-  <header class="header">
+<div class="app court-active">
+  <header class="header court-header-hidden">
     <div class="brand">
       <div class="brandRow">
-        <svg width="22" height="22" viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.3" aria-label="CHING XIN knot logo">
-          <circle cx="20" cy="14" r="7"/>
-          <circle cx="20" cy="26" r="7"/>
+        <svg width="40" height="40" viewBox="0 0 100 100" aria-label="CHING XIN logo mark">
+          <line x1="28" y1="28" x2="72" y2="72" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" fill="none"/>
+          <line x1="72" y1="28" x2="28" y2="72" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" fill="none"/>
+          <path d="M 50 7 Q 62 22 50 37 Q 38 22 50 7 Z" fill="currentColor"/>
+          <path d="M 50 63 Q 62 78 50 93 Q 38 78 50 63 Z" fill="currentColor"/>
+          <path d="M 7 50 Q 22 38 37 50 Q 22 62 7 50 Z" fill="currentColor"/>
+          <path d="M 63 50 Q 78 38 93 50 Q 78 62 63 50 Z" fill="currentColor"/>
         </svg>
         <span class="brandName">CHING XIN</span>
       </div>
-      <span class="brandSub">Tennis Society · 清心網球會</span>
+      <span class="brandSub">Tennis Society  ·  清心網球協會</span>
     </div>
   </header>
 
-  <div class="viewSwitcher">
-    <div class="switcherGroup">
-      <button class="switcherOption disabled" disabled>Day</button>
-      <button class="switcherOption active">Week</button>
-      <button class="switcherOption disabled" disabled>Month</button>
+  <!-- ── Screen: 場地 ── -->
+  <div class="screen active" id="screen-court">
+    <div class="courtPageHeader">
+      <div class="courtBrandInline">
+        <svg width="36" height="36" viewBox="0 0 100 100" aria-hidden="true">
+          <line x1="28" y1="28" x2="72" y2="72" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" fill="none"/>
+          <line x1="72" y1="28" x2="28" y2="72" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" fill="none"/>
+          <path d="M 50 7 Q 62 22 50 37 Q 38 22 50 7 Z" fill="currentColor"/>
+          <path d="M 50 63 Q 62 78 50 93 Q 38 78 50 63 Z" fill="currentColor"/>
+          <path d="M 7 50 Q 22 38 37 50 Q 22 62 7 50 Z" fill="currentColor"/>
+          <path d="M 63 50 Q 78 38 93 50 Q 78 62 63 50 Z" fill="currentColor"/>
+        </svg>
+        <div class="courtBrandText">
+          <span class="courtBrandName">CHING XIN</span>
+          <span class="courtBrandSub">Tennis Society · 清心網球協會</span>
+        </div>
+      </div>
+      <div class="courtSwitcherWrap">
+        <div class="switcherGroup">
+          <button class="switcherOption active" id="btnWeek" onclick="setView('week',this)">Week</button>
+          <button class="switcherOption" id="btnMonth" onclick="setView('month',this)">Month</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Week view -->
+    <div id="view-week">
+      <div class="weekStrip">
+        <div class="weekHeader">
+          <button class="navButton" onclick="changeWeek(-1)" aria-label="上一週">‹</button>
+          <span class="monthLabel" id="weekMonthLabel"></span>
+          <button class="navButton" onclick="changeWeek(1)" aria-label="下一週">›</button>
+        </div>
+        <div class="chips" id="chips"></div>
+      </div>
+      <div class="dayHeader">
+        <span class="dayLabelMain" id="dayLabel"></span>
+        <span class="dayMeta" id="dayMeta"></span>
+      </div>
+      <div class="timeGridWrapper">
+        <div class="courtHeader" id="courtHeader"></div>
+        <div class="grid" id="grid"></div>
+      </div>
+    </div>
+
+    <!-- Month view -->
+    <div id="view-month" style="display:none">
+      <div class="weekStrip">
+        <div class="weekHeader">
+          <button class="navButton" onclick="changeMonth(-1)">‹</button>
+          <span class="monthLabel" id="monthViewLabel"></span>
+          <button class="navButton" onclick="changeMonth(1)">›</button>
+        </div>
+      </div>
+      <div id="monthGrid"></div>
     </div>
   </div>
 
-  <div class="weekStrip">
-    <div class="weekHeader">
-      <button class="navButton" onclick="changeWeek(-1)" aria-label="上一週">‹</button>
-      <span class="monthLabel" id="monthLabel"></span>
-      <button class="navButton" onclick="changeWeek(1)" aria-label="下一週">›</button>
+  <!-- ── Screen: 預約 ── -->
+  <div class="screen" id="screen-book">
+    <div class="screenTitle">預約紀錄</div>
+    <button class="addBookingBtn" onclick="openBookingForm()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      新增預約
+    </button>
+    <div class="screenSection">即將到來</div>
+    <div id="bookUpcoming"></div>
+    <div class="screenSection">過往紀錄</div>
+    <div id="bookPast"></div>
+  </div>
+
+  <!-- ── Screen: 管理 ── -->
+  <div class="screen" id="screen-manage">
+    <div class="screenTitle">管理</div>
+    <div id="manageContent"></div>
+  </div>
+
+  <!-- ── Screen: 財務 ── -->
+  <div class="screen" id="screen-finance">
+    <div class="finScreenHeader">
+      <span class="finScreenTitle">財務</span>
+      <div class="finHeaderActions">
+        <button class="finActionBtn" id="finExportBtn" onclick="exportFinanceCSV()">匯出</button>
+        <button class="finActionBtn finActionBtnPrimary" id="finAddBtn" onclick="openFinanceForm()">＋ 新增</button>
+      </div>
     </div>
-    <div class="chips" id="chips"></div>
+    <input class="finSearchBar" id="finSearchInput" type="search"
+      placeholder="搜尋會員 / 備註"
+      oninput="filterFinance(this.value)"
+      autocomplete="off" autocorrect="off" spellcheck="false">
+    <div id="financeContent"></div>
   </div>
 
-  <div class="dayHeader">
-    <span class="dayLabelMain" id="dayLabel"></span>
-    <span class="dayMeta" id="dayMeta"></span>
-  </div>
+  <!-- ── Finance Year Dropdown ── -->
+  <div class="finYearDropdown" id="finYearDropdown" style="display:none"></div>
 
-  <div class="timeGridWrapper">
-    <div class="courtHeader" id="courtHeader"></div>
-    <div class="grid" id="grid"></div>
-  </div>
-
-  <p class="footer">
-    Phase 3 Preview · Mock Data<br>
-    預約 / 收費功能將於後續階段開放
-  </p>
-
-  <!-- Bottom Nav -->
+  <!-- ── Bottom Nav ── -->
   <nav class="bottomNav">
-    <button class="navTab active" onclick="setTab(this,'court')">
+    <button class="navTab active" onclick="showTab('court',this)">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
         <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="12" y1="3" x2="12" y2="21"/>
       </svg>
-      球場
+      場地
     </button>
-    <button class="navTab" onclick="setTab(this,'book')">
+    <button class="navTab" onclick="showTab('book',this)">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
         <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
       </svg>
       預約
     </button>
-    <button class="navTab" onclick="setTab(this,'schedule')">
+    <button class="navTab" onclick="showTab('manage',this)">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
-        <circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/>
+        <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
       </svg>
-      行程
+      管理
+    </button>
+    <button class="navTab" onclick="showTab('finance',this)">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+        <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/>
+      </svg>
+      財務
     </button>
     <button class="navTab" id="tabProfile" onclick="openProfile()">
       <div class="navTabAvatar">
-        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Crect width='28' height='28' fill='%23d4c9b5'/%3E%3Ccircle cx='14' cy='11' r='5' fill='%238a7f6e'/%3E%3Cellipse cx='14' cy='24' rx='8' ry='6' fill='%238a7f6e'/%3E%3C/svg%3E" alt="我的頭像">
+        <img id="navAvatarImg" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 26 26'%3E%3Crect width='26' height='26' fill='%23d4c9b5'/%3E%3Ccircle cx='13' cy='10' r='4.5' fill='%238a7f6e'/%3E%3Cellipse cx='13' cy='22' rx='7.5' ry='5.5' fill='%238a7f6e'/%3E%3C/svg%3E" alt="我的">
       </div>
+      我的
     </button>
   </nav>
 </div>
 
-<!-- Profile Sheet Backdrop -->
-<div class="sheetBackdrop" id="sheetBackdrop" onclick="closeProfile()"></div>
+<!-- Backdrop -->
+<div class="sheetBackdrop" id="sheetBackdrop" onclick="closeAllSheets()"></div>
 
-<!-- Profile Sheet -->
+<!-- ── Profile Sheet ── -->
 <div class="profileSheet" id="profileSheet">
   <div class="sheetHandle"></div>
   <div class="sheetUserRow">
     <div class="sheetAvatar">
-      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='52' height='52' viewBox='0 0 52 52'%3E%3Crect width='52' height='52' fill='%23d4c9b5'/%3E%3Ccircle cx='26' cy='20' r='9' fill='%238a7f6e'/%3E%3Cellipse cx='26' cy='44' rx='14' ry='10' fill='%238a7f6e'/%3E%3C/svg%3E" alt="頭像">
+      <img id="profileAvatarImg" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='52' height='52' viewBox='0 0 52 52'%3E%3Crect width='52' height='52' fill='%23d4c9b5'/%3E%3Ccircle cx='26' cy='20' r='9' fill='%238a7f6e'/%3E%3Cellipse cx='26' cy='44' rx='14' ry='10' fill='%238a7f6e'/%3E%3C/svg%3E" alt="頭像">
     </div>
     <div class="sheetUserInfo">
-      <span class="sheetUserName">Maverick 小狸</span>
-      <span class="sheetMemberBadge">Annual Member · Expire 2026/12/31</span>
+      <div class="sheetNameRow">
+        <span class="sheetUserName" id="profileDisplayName">Maverick 小狸</span>
+        <button class="editNameBtn" onclick="openSettings()">編輯</button>
+      </div>
+      <span class="sheetMemberBadge" id="profileBadge">Annual Member · Expire 2026/12/31</span>
     </div>
   </div>
   <div class="sheetSection">
     <div class="sheetRow">
+      <span class="sheetRowLabel">NTRP</span>
+      <span class="sheetRowValue" id="profileNTRP">3.5</span>
+    </div>
+    <div class="sheetRow">
+      <span class="sheetRowLabel">擅長位置</span>
+      <span class="sheetRowValue" id="profilePosition">底線型 / 後場</span>
+    </div>
+    <div class="sheetRow">
       <span class="sheetRowLabel">會員類型</span>
-      <span class="sheetRowValue">Annual Member</span>
+      <span class="sheetRowValue" id="profileMemberType">Annual Member</span>
     </div>
     <div class="sheetRow">
       <span class="sheetRowLabel">會費到期日</span>
-      <span class="sheetRowValue">2026 / 12 / 31</span>
-    </div>
-    <div class="sheetRow">
-      <span class="sheetRowLabel">球場積分</span>
-      <span class="sheetRowValue">2.5</span>
+      <span class="sheetRowValue" id="profileExpire">2026 / 12 / 31</span>
     </div>
     <div class="sheetRow">
       <span class="sheetRowLabel">本月出席</span>
-      <span class="sheetRowValue">1 次</span>
+      <span class="sheetRowValue" id="profileAttendance">1 次</span>
+    </div>
+  </div>
+  <div class="sheetSection">
+    <div class="sheetRow sheetNavRow" onclick="openNotifications()">
+      <span class="sheetRowLabel">通知中心</span>
+      <span class="sheetRowChevron">›</span>
+    </div>
+    <div class="sheetRow sheetNavRow" onclick="openAbout()">
+      <span class="sheetRowLabel">關於清心網球協會</span>
+      <span class="sheetRowChevron">›</span>
     </div>
   </div>
 </div>
 
+<!-- ── Settings Sub-Sheet ── -->
+<div class="subSheet" id="settingsSheet">
+  <div class="sheetHandle"></div>
+  <div class="subSheetHeader">
+    <button class="subSheetBack" onclick="closeSettings()">‹</button>
+    <span class="subSheetTitle">會員設定</span>
+    <span style="width:32px"></span>
+  </div>
+  <div class="settingsRow">
+    <label class="settingsLabel" for="nameInput">顯示名稱</label>
+    <input class="settingsInput" id="nameInput" type="text" value="Maverick 小狸">
+  </div>
+  <div class="settingsRow">
+    <label class="settingsLabel" for="ntrpSelect">NTRP</label>
+    <select class="settingsSelect" id="ntrpSelect">
+      <option>2.5</option><option>3.0</option>
+      <option selected>3.5</option>
+      <option>4.0</option><option>4.5</option><option>5.0</option>
+    </select>
+  </div>
+  <div class="settingsRow">
+    <label class="settingsLabel" for="positionSelect">擅長位置</label>
+    <select class="settingsSelect" id="positionSelect">
+      <option selected>底線型 / 後場</option>
+      <option>網前型</option>
+      <option>全場</option>
+      <option>雙打後場</option>
+      <option>雙打網前</option>
+    </select>
+  </div>
+  <button class="saveBtn" onclick="saveSettings()">儲存設定</button>
+</div>
+
+<!-- ── Notifications Sub-Sheet ── -->
+<div class="subSheet" id="notificationsSheet">
+  <div class="sheetHandle"></div>
+  <div class="subSheetHeader">
+    <button class="subSheetBack" onclick="closeNotifications()">‹</button>
+    <span class="subSheetTitle">通知中心</span>
+    <span style="width:32px"></span>
+  </div>
+  <div id="notificationsList"></div>
+</div>
+
+<!-- ── About Sub-Sheet ── -->
+<div class="subSheet" id="aboutSheet">
+  <div class="sheetHandle"></div>
+  <div class="subSheetHeader">
+    <button class="subSheetBack" onclick="closeAbout()">‹</button>
+    <span class="subSheetTitle">關於清心網球協會</span>
+    <span style="width:32px"></span>
+  </div>
+  <div class="aboutContent">
+    <div class="aboutLogo">
+      <svg width="48" height="48" viewBox="0 0 100 100" style="opacity:0.6">
+        <line x1="28" y1="28" x2="72" y2="72" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" fill="none"/>
+        <line x1="72" y1="28" x2="28" y2="72" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" fill="none"/>
+        <path d="M 50 7 Q 62 22 50 37 Q 38 22 50 7 Z" fill="currentColor"/>
+        <path d="M 50 63 Q 62 78 50 93 Q 38 78 50 63 Z" fill="currentColor"/>
+        <path d="M 7 50 Q 22 38 37 50 Q 22 62 7 50 Z" fill="currentColor"/>
+        <path d="M 63 50 Q 78 38 93 50 Q 78 62 63 50 Z" fill="currentColor"/>
+      </svg>
+    </div>
+    <div class="aboutBlock">
+      <div class="aboutBlockTitle">關於我們</div>
+      <div class="aboutBlockText">清心網球協會是一個以慢活精神為核心的私人網球社群。我們重視品質、紀律與會員之間的深厚情誼。</div>
+    </div>
+    <div class="aboutDivider"></div>
+    <div class="aboutBlock">
+      <div class="aboutBlockTitle">場地</div>
+      <div class="aboutBlockText">
+        HARD A · HARD B — 硬地標準場<br>
+        CLAY A · CLAY B — 紅土場地<br>
+        平日開放時段：17:30 – 24:00<br>
+        週末 / 假日：05:30 – 24:00
+      </div>
+    </div>
+    <div class="aboutDivider"></div>
+    <div class="aboutBlock">
+      <div class="aboutBlockTitle">教練</div>
+      <div class="aboutBlockText">
+        Coach Lin — 主教練 · NTRP 5.0<br>
+        Coach 王 — 協助教練 · NTRP 4.5
+      </div>
+    </div>
+    <div class="aboutDivider"></div>
+    <div class="aboutBlock">
+      <div class="aboutBlockTitle">版本</div>
+      <div class="aboutBlockText">Prototype · Mock Data · v0.3</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Booking Form Sub-Sheet ── -->
+<div class="subSheet" id="bookingFormSheet">
+  <div class="sheetHandle"></div>
+  <div class="subSheetHeader">
+    <button class="subSheetBack" onclick="closeBookingForm()">‹</button>
+    <span class="subSheetTitle">新增預約</span>
+    <span style="width:32px"></span>
+  </div>
+  <div class="formSection">
+    <div class="formRow">
+      <label class="formLabel">場地</label>
+      <select class="formSelect" id="formCourt">
+        <option value="hard_a">Hard A — 硬地</option>
+        <option value="hard_b">Hard B — 硬地</option>
+        <option value="clay_a">Clay A — 紅土</option>
+        <option value="clay_b">Clay B — 紅土</option>
+      </select>
+    </div>
+    <div class="formRow">
+      <label class="formLabel">日期</label>
+      <input class="formInput" id="formDate" type="date">
+    </div>
+    <div class="formGrid" style="margin-bottom:16px">
+      <div>
+        <label class="formLabel">開始時間</label>
+        <select class="formSelect" id="formStart"></select>
+      </div>
+      <div>
+        <label class="formLabel">結束時間</label>
+        <select class="formSelect" id="formEnd"></select>
+      </div>
+    </div>
+    <div class="formRow">
+      <label class="formLabel">模式</label>
+      <select class="formSelect" id="formMode">
+        <option value="normal">一般</option>
+        <option value="pickleball">匹克球</option>
+        <option value="coaching">教學</option>
+        <option value="group_class">團課</option>
+      </select>
+    </div>
+    <div class="formRow" id="bookForRow">
+      <label class="formLabel">代預約會員（選填）</label>
+      <select class="formSelect" id="formBookFor"><option value="">— 自己 —</option></select>
+    </div>
+    <button class="primaryBtn" id="submitBookingBtn" onclick="submitBooking()">確認預約</button>
+  </div>
+</div>
+
+<!-- ── Finance Form Sheet ── -->
+<div class="subSheet" id="financeFormSheet">
+  <div class="sheetHandle"></div>
+  <div class="subSheetHeader">
+    <button class="subSheetBack" onclick="closeFinanceForm()">‹</button>
+    <span class="subSheetTitle" id="financeFormTitle">新增財務紀錄</span>
+    <span style="width:32px"></span>
+  </div>
+  <div class="formSection">
+    <div class="formRow">
+      <label class="formLabel">類型</label>
+      <select class="formSelect" id="finFormType">
+        <option value="annual">年費</option>
+        <option value="monthly">月費</option>
+        <option value="donate">抖內</option>
+        <option value="expense">支出</option>
+      </select>
+    </div>
+    <div class="formRow">
+      <label class="formLabel">會員</label>
+      <select class="formSelect" id="finFormMember">
+        <option value="">— 選擇會員 / 備註用 —</option>
+      </select>
+    </div>
+    <div class="formRow">
+      <label class="formLabel">繳費日期</label>
+      <input class="formInput" id="finFormDate" type="date">
+    </div>
+    <div class="formRow">
+      <label class="formLabel">金額（元）</label>
+      <input class="formInput" id="finFormAmount" type="number" inputmode="numeric" placeholder="0">
+    </div>
+    <div class="formRow">
+      <label class="formLabel">備註（選填）</label>
+      <input class="formInput" id="finFormNote" type="text" placeholder="">
+    </div>
+    <button class="primaryBtn" onclick="submitFinanceRecord()">儲存紀錄</button>
+  </div>
+</div>
+
+<!-- ── Finance Category Sheet ── -->
+<div class="subSheet" id="finCategorySheet">
+  <div class="sheetHandle"></div>
+  <div class="subSheetHeader">
+    <button class="subSheetBack" onclick="closeFinCategory()">‹</button>
+    <span class="subSheetTitle" id="finCategoryTitle"></span>
+    <span style="width:32px"></span>
+  </div>
+  <div id="finCategoryContent"></div>
+</div>
+
+<!-- ── Toast ── -->
+<div class="toast" id="toast"></div>
+
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
-const COURTS = ['hard_a', 'hard_b', 'clay_a', 'clay_b'];
+/* ── Firebase Init ── */
+const FB_CONFIG = {
+  apiKey:"AIzaSyBrqZAvkN57jGx5LNOMtquWzK3YQ1QLFQ",
+  authDomain:"court-board-c1e29.firebaseapp.com",
+  projectId:"court-board-c1e29",
+  storageBucket:"court-board-c1e29.firebasestorage.app",
+  messagingSenderId:"337148491014",
+  appId:"1:337148491014:web:33cab9162b64afad045a87"
+};
+const LIFF_ID = '2009941241-ymtu2MdM';
+var db;
+try {
+  firebase.initializeApp(FB_CONFIG);
+  db = firebase.firestore();
+} catch(e){ console.warn('Firebase init failed:', e); }
+const TS = () => db ? firebase.firestore.FieldValue.serverTimestamp() : new Date();
+const ROLE_LABELS = {owner:'擁有者',admin:'管理員',annual_member:'年費會員',monthly_member:'月費會員',coach:'教練',pending:'待審核'};
+
+/* ── Constants ── */
+const COURTS = ['hard_a','hard_b','clay_a','clay_b'];
 const COURT_LABELS = {
-  hard_a: { surface: 'HARD', letter: 'A' },
-  hard_b: { surface: 'HARD', letter: 'B' },
-  clay_a: { surface: 'CLAY', letter: 'A' },
-  clay_b: { surface: 'CLAY', letter: 'B' },
+  hard_a:{surface:'HARD',letter:'A'}, hard_b:{surface:'HARD',letter:'B'},
+  clay_a:{surface:'CLAY',letter:'A'}, clay_b:{surface:'CLAY',letter:'B'},
 };
-const COURT_SURFACE = { hard_a:'hard', hard_b:'hard', clay_a:'clay', clay_b:'clay' };
-const MODE_LABELS = {
-  normal:'一般', coaching:'教學', group_class:'團課',
-  pickleball:'匹克球', event_lock:'活動',
-};
+const COURT_SURFACE = {hard_a:'hard',hard_b:'hard',clay_a:'clay',clay_b:'clay'};
+const MODE_LABELS = {normal:'一般',coaching:'教學',group_class:'團課',pickleball:'匹克球',event_lock:'活動'};
 const DAYS_TC = ['日','一','二','三','四','五','六'];
 const MONTHS_TC = ['1 月','2 月','3 月','4 月','5 月','6 月','7 月','8 月','9 月','10 月','11 月','12 月'];
-
 const SLOT_HEIGHT = 32;
 const SLOT_MIN = 30;
+
+/* ── State ── */
 const today = new Date();
 let selectedDate = new Date(today);
+let currentView = 'week';
+/* Firebase state — null = use mock data fallback */
+let currentUser = null;
+let usersCache = {};          // uid → user doc
+let courtBookingsFirestore = null;  // array when loaded, null = use mock
+let myBookingsFirestore = null;     // array when loaded, null = use mock
+let pendingUsersFirestore = [];
+let unsubMyBookings = null;
+let _manageTab = 'pending';   // 'pending' | 'schedule' | 'notices'
+let financeRecords = [];      // local array; Firestore layer can be added later
+let _finSearchQuery = '';     // finance search filter state
+let _finYear = 2026;    // active year ledger (fixed range 2026–2036)
+let _finEditId = null; // null = add mode; string = edit mode
+var _nowTickInterval = null; // court: live nowLine ticker
 
+/* ── Date Utilities ── */
 function pad(n){ return String(n).padStart(2,'0'); }
 function formatDate(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
-function addDays(d,n){ const r = new Date(d); r.setDate(r.getDate()+n); return r; }
-function startOfWeek(d){ const r = new Date(d); r.setHours(0,0,0,0); r.setDate(r.getDate()-r.getDay()); return r; }
-function isWeekend(d){ const dd = d.getDay(); return dd === 0 || dd === 6; }
-function isSameDay(a,b){ return formatDate(a) === formatDate(b); }
-function timeToMin(t){ const [h,m] = t.split(':').map(Number); return h*60+m; }
+function addDays(d,n){ const r=new Date(d); r.setDate(r.getDate()+n); return r; }
+function startOfWeek(d){ const r=new Date(d); r.setHours(0,0,0,0); r.setDate(r.getDate()-r.getDay()); return r; }
+function isWeekend(d){ const dd=d.getDay(); return dd===0||dd===6; }
+function isSameDay(a,b){ return formatDate(a)===formatDate(b); }
+function timeToMin(t){ const [h,m]=t.split(':').map(Number); return h*60+m; }
 function minToTime(m){ return pad(Math.floor(m/60))+':'+pad(m%60); }
-function getDaySlots(weekend){
-  const open = weekend ? '05:30' : '17:30';
-  const close = '24:00';
-  const out = [];
-  let cur = timeToMin(open);
-  const end = timeToMin(close);
-  while (cur < end) { out.push(minToTime(cur)); cur += SLOT_MIN; }
-  return out;
-}
-function getSlotPosition(start,end,open){
-  const o = timeToMin(open);
-  const s = timeToMin(start);
-  const e = timeToMin(end);
-  return {
-    startSlot: Math.max(0, Math.floor((s-o)/SLOT_MIN)),
-    spanSlots: Math.max(1, Math.floor((e-s)/SLOT_MIN)),
-  };
-}
-function formatDayLabel(d){
-  return MONTHS_TC[d.getMonth()] + d.getDate() + '日 週' + DAYS_TC[d.getDay()];
-}
-function formatMonthYear(d){
-  return d.getFullYear() + ' 年 ' + MONTHS_TC[d.getMonth()];
+function offsetDays(n){ return formatDate(addDays(today,n)); }
+function offsetToNext(dow){ const diff=(dow-today.getDay()+7)%7; return diff===0?7:diff; }
+function formatDayLabel(d){ return MONTHS_TC[d.getMonth()]+d.getDate()+'日 週'+DAYS_TC[d.getDay()]; }
+function formatMonthYear(d){ return d.getFullYear()+' 年 '+MONTHS_TC[d.getMonth()]; }
+function shortDateStr(dateStr){
+  const d=new Date(dateStr+'T00:00:00');
+  return (d.getMonth()+1)+'/'+d.getDate()+' ('+DAYS_TC[d.getDay()]+')';
 }
 
-function offsetDays(n){ return formatDate(addDays(today,n)); }
-function offsetToNext(dow){ const diff = (dow - today.getDay() + 7) % 7; return diff === 0 ? 7 : diff; }
+/* ── Mock Data ── */
 const TODAY_STR = offsetDays(0);
 const TOMORROW = offsetDays(1);
 const D2 = offsetDays(2);
+const D3 = offsetDays(3);
+const D5 = offsetDays(5);
+const D_2 = offsetDays(-2);
+const D_7 = offsetDays(-7);
 const NEXT_SAT = offsetDays(offsetToNext(6));
 const NEXT_SUN = offsetDays(offsetToNext(0));
 const todayIsWeekend = isWeekend(today);
 
+const MOCK_USER = {
+  name: 'Maverick 小狸',
+  memberType: 'Annual Member',
+  expireDate: '2026/12/31',
+  ntrp: '3.5',
+  position: '底線型 / 後場',
+  attendance: 1,
+};
+
 const MOCK_BOOKINGS = [
   ...(todayIsWeekend ? [
-    { id:'mb-w01', date:TODAY_STR, startTime:'07:00', endTime:'09:00', court:'clay_a', mode:'normal', primaryName:'早晨組', participantCount:4 },
-    { id:'mb-w02', date:TODAY_STR, startTime:'09:30', endTime:'11:30', court:'hard_a', mode:'coaching', primaryName:'Coach 王', participantCount:3 },
+    {id:'mb-w01',date:TODAY_STR,startTime:'07:00',endTime:'09:00',court:'clay_a',mode:'normal',primaryName:'早晨組',participantCount:4},
+    {id:'mb-w02',date:TODAY_STR,startTime:'09:30',endTime:'11:30',court:'hard_a',mode:'coaching',primaryName:'Coach 王',participantCount:3},
   ] : []),
-  { id:'mb-001', date:TODAY_STR, startTime:'18:00', endTime:'19:30', court:'hard_a', mode:'normal', primaryName:'林志強', participantCount:4 },
-  { id:'mb-002', date:TODAY_STR, startTime:'19:00', endTime:'20:30', court:'hard_b', mode:'coaching', primaryName:'Coach Lin', participantCount:2 },
-  { id:'mb-003', date:TODAY_STR, startTime:'20:00', endTime:'22:00', court:'clay_a', mode:'normal', primaryName:'王雅琴', participantCount:4 },
-  { id:'mb-004', date:TODAY_STR, startTime:'21:00', endTime:'23:00', court:'clay_b', mode:'group_class', primaryName:'Coach 吳 團課', participantCount:6 },
-  { id:'mb-005', date:TOMORROW, startTime:'18:30', endTime:'20:30', court:'hard_a', mode:'pickleball', primaryName:'匹克球聚會', participantCount:8 },
-  { id:'mb-006', date:TOMORROW, startTime:'19:30', endTime:'21:00', court:'clay_a', mode:'coaching', primaryName:'Coach Chen', participantCount:2 },
-  { id:'mb-007', date:D2, startTime:'18:00', endTime:'21:00', court:'hard_a', mode:'event_lock', primaryName:'會員之夜', participantCount:0 },
-  { id:'mb-008', date:D2, startTime:'18:00', endTime:'21:00', court:'hard_b', mode:'event_lock', primaryName:'會員之夜', participantCount:0 },
-  { id:'mb-009', date:NEXT_SAT, startTime:'07:00', endTime:'09:00', court:'clay_a', mode:'normal', primaryName:'張教練 私訓', participantCount:2 },
-  { id:'mb-010', date:NEXT_SAT, startTime:'08:30', endTime:'10:30', court:'hard_a', mode:'coaching', primaryName:'Coach 黃', participantCount:3 },
-  { id:'mb-011', date:NEXT_SAT, startTime:'19:00', endTime:'21:00', court:'hard_b', mode:'normal', primaryName:'陳俊宏', participantCount:4 },
-  { id:'mb-012', date:NEXT_SUN, startTime:'08:00', endTime:'10:00', court:'hard_a', mode:'normal', primaryName:'週日早場', participantCount:4 },
+  {id:'mb-001',date:TODAY_STR,startTime:'18:00',endTime:'19:30',court:'hard_a',mode:'normal',primaryName:'林志強',participantCount:4},
+  {id:'mb-002',date:TODAY_STR,startTime:'19:00',endTime:'20:30',court:'hard_b',mode:'coaching',primaryName:'Coach Lin',participantCount:2},
+  {id:'mb-003',date:TODAY_STR,startTime:'20:00',endTime:'22:00',court:'clay_a',mode:'normal',primaryName:'王雅琴',participantCount:4},
+  {id:'mb-004',date:TODAY_STR,startTime:'21:00',endTime:'23:00',court:'clay_b',mode:'group_class',primaryName:'Coach 吳 團課',participantCount:6},
+  {id:'mb-005',date:TOMORROW,startTime:'18:30',endTime:'20:30',court:'hard_a',mode:'pickleball',primaryName:'匹克球聚會',participantCount:8},
+  {id:'mb-006',date:TOMORROW,startTime:'19:30',endTime:'21:00',court:'clay_a',mode:'coaching',primaryName:'Coach Chen',participantCount:2},
+  {id:'mb-007',date:D2,startTime:'18:00',endTime:'21:00',court:'hard_a',mode:'event_lock',primaryName:'會員之夜',participantCount:0},
+  {id:'mb-008',date:D2,startTime:'18:00',endTime:'21:00',court:'hard_b',mode:'event_lock',primaryName:'會員之夜',participantCount:0},
+  {id:'mb-009',date:NEXT_SAT,startTime:'07:00',endTime:'09:00',court:'clay_a',mode:'normal',primaryName:'張教練 私訓',participantCount:2},
+  {id:'mb-010',date:NEXT_SAT,startTime:'08:30',endTime:'10:30',court:'hard_a',mode:'coaching',primaryName:'Coach 黃',participantCount:3},
+  {id:'mb-011',date:NEXT_SAT,startTime:'19:00',endTime:'21:00',court:'hard_b',mode:'normal',primaryName:'陳俊宏',participantCount:4},
+  {id:'mb-012',date:NEXT_SUN,startTime:'08:00',endTime:'10:00',court:'hard_a',mode:'normal',primaryName:'週日早場',participantCount:4},
 ];
 
-function renderCourtHeader(){
-  document.getElementById('courtHeader').innerHTML = '<div></div>' + COURTS.map(c => (
-    '<div class="courtLabel '+(COURT_SURFACE[c]==='clay'?'clay':'')+'">'+
-      '<span class="surfaceTag">'+COURT_LABELS[c].surface+'</span>'+
-      '<span class="courtLetter">'+COURT_LABELS[c].letter+'</span>'+
-    '</div>'
-  )).join('');
+const MOCK_MY_BOOKINGS = [
+  {id:'me-1',date:D3,startTime:'19:00',endTime:'21:00',court:'hard_a',mode:'normal',status:'confirmed',partners:['陳志明','林雅琳'],courtLabel:'Hard A'},
+  {id:'me-2',date:D5,startTime:'08:30',endTime:'10:30',court:'clay_a',mode:'coaching',status:'confirmed',partners:['Coach Lin'],courtLabel:'Clay A'},
+  {id:'me-3',date:D_2,startTime:'20:00',endTime:'22:00',court:'hard_b',mode:'normal',status:'completed',partners:['王大明'],courtLabel:'Hard B'},
+  {id:'me-4',date:D_7,startTime:'18:30',endTime:'20:00',court:'clay_b',mode:'normal',status:'completed',partners:['陳志明'],courtLabel:'Clay B'},
+];
+
+const MOCK_MEMBERS = [
+  {id:'c1',name:'Coach Lin',type:'coach',ntrp:'5.0',position:'全場',joined:'2020'},
+  {id:'c2',name:'Coach 王',type:'coach',ntrp:'4.5',position:'全場',joined:'2021'},
+  {id:'m1',name:'Maverick 小狸',type:'annual',ntrp:'3.5',position:'底線型 / 後場',joined:'2024'},
+  {id:'m2',name:'陳志明',type:'annual',ntrp:'4.0',position:'網前型',joined:'2023'},
+  {id:'m3',name:'林雅琳',type:'annual',ntrp:'3.0',position:'雙打後場',joined:'2024'},
+  {id:'m4',name:'王大明',type:'monthly',ntrp:'3.5',position:'底線型',joined:'2025'},
+  {id:'m5',name:'張芷晴',type:'annual',ntrp:'3.5',position:'全場',joined:'2022'},
+  {id:'m6',name:'李建宏',type:'monthly',ntrp:'4.0',position:'網前型',joined:'2025'},
+  {id:'m7',name:'吳美玲',type:'annual',ntrp:'3.0',position:'雙打後場',joined:'2023'},
+  {id:'m8',name:'黃俊傑',type:'annual',ntrp:'4.5',position:'底線型',joined:'2021'},
+];
+
+const MOCK_FINANCE_RECORDS = [
+  // ── 2025 歷史 ──
+  {id:'f0a',year:2025,type:'annual', member:'Maverick 小狸', date:'2025-01-10', amount:5500, note:'2025 年費',  createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
+  {id:'f0b',year:2025,type:'annual', member:'陳志明',        date:'2025-01-18', amount:5500, note:'2025 年費',  createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
+  {id:'f0c',year:2025,type:'expense',member:'',               date:'2025-06-20', amount:1200, note:'球場維護',   createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
+  // ── 2026 ──
+  {id:'f1', year:2026,type:'annual', member:'Maverick 小狸', date:'2026-01-15', amount:6000, note:'2026 年費',  createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
+  {id:'f2', year:2026,type:'annual', member:'陳志明',        date:'2026-01-20', amount:6000, note:'2026 年費',  createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
+  {id:'f3', year:2026,type:'monthly',member:'王大明',         date:'2026-04-01', amount:1200, note:'4 月月費',   createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
+  {id:'f4', year:2026,type:'annual', member:'林雅琳',         date:'2026-02-03', amount:6000, note:'2026 年費',  createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
+  {id:'f5', year:2026,type:'donate', member:'黃俊傑',         date:'2026-03-10', amount:2000, note:'球場修繕支持',createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
+  {id:'f6', year:2026,type:'expense',member:'',               date:'2026-03-15', amount:3500, note:'球網更換',   createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
+  {id:'f7', year:2026,type:'monthly',member:'李建宏',         date:'2026-05-01', amount:1200, note:'5 月月費',   createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
+  {id:'f8', year:2026,type:'expense',member:'',               date:'2026-05-10', amount:800,  note:'清潔用品',   createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
+];
+
+const MOCK_NOTIFICATIONS = [
+  {id:'n1',type:'booking',title:'預約確認',text:shortDateStr(D3)+' Hard A 19:00 已確認',time:'2 小時前',read:false},
+  {id:'n2',type:'event',title:'活動公告',text:shortDateStr(D2)+' 會員之夜已開放報名',time:'昨天',read:false},
+  {id:'n3',type:'system',title:'會費提醒',text:'您的年費將於 2026/12/31 到期，請提早續費',time:'3 天前',read:true},
+  {id:'n4',type:'booking',title:'預約完成',text:shortDateStr(D_2)+' Hard B 20:00 已完成',time:'2 天前',read:true},
+];
+
+/* ── Court: Scroll to current time ── */
+function scrollToNow(){
+  if(!isSameDay(selectedDate,today)) return;
+  var wrapper=document.querySelector('.timeGridWrapper');
+  var nl=wrapper?wrapper.querySelector('.nowLine'):null;
+  if(!wrapper||!nl) return;
+  var top=nl.offsetTop;
+  wrapper.scrollTop=Math.max(0,top-100);
 }
 
+/* ── Court: Live nowLine ticker (every minute) ── */
+function startNowLineTicker(){
+  if(_nowTickInterval) clearInterval(_nowTickInterval);
+  _nowTickInterval=setInterval(function(){
+    if(currentView!=='week'||!isSameDay(selectedDate,today)) return;
+    var we=isWeekend(selectedDate);
+    var openMin=timeToMin(we?'05:30':'17:30');
+    var now=new Date();
+    var nowMin=now.getHours()*60+now.getMinutes();
+    var nl=document.querySelector('.timeGridWrapper .nowLine');
+    if(nl&&nowMin>=openMin&&nowMin<timeToMin('24:00')){
+      var offset=(nowMin-openMin)/SLOT_MIN;
+      nl.style.top=(offset*SLOT_HEIGHT)+'px';
+    }
+  },60000);
+}
+
+/* ── Week / Grid Helpers ── */
+function getDaySlots(weekend){
+  const open=weekend?'05:30':'17:30';
+  const out=[]; let cur=timeToMin(open);
+  while(cur<timeToMin('24:00')){ out.push(minToTime(cur)); cur+=SLOT_MIN; }
+  return out;
+}
+function getSlotPosition(start,end,open){
+  const o=timeToMin(open),s=timeToMin(start),e=timeToMin(end);
+  return {startSlot:Math.max(0,Math.floor((s-o)/SLOT_MIN)),spanSlots:Math.max(1,Math.floor((e-s)/SLOT_MIN))};
+}
+
+/* ── Render: Court Header ── */
+function renderCourtHeader(){
+  document.getElementById('courtHeader').innerHTML='<div></div>'+COURTS.map(c=>
+    '<div class="courtLabel '+(COURT_SURFACE[c]==='clay'?'clay':'')+'">'+
+    '<span class="surfaceTag">'+COURT_LABELS[c].surface+'</span>'+
+    '<span class="courtLetter">'+COURT_LABELS[c].letter+'</span></div>'
+  ).join('');
+}
+
+/* ── Render: Week Strip ── */
 function renderWeekStrip(){
-  const ws = startOfWeek(selectedDate);
-  const dates = Array.from({length:7}, (_,i) => addDays(ws, i));
-  document.getElementById('monthLabel').textContent = formatMonthYear(dates[3]);
-  document.getElementById('chips').innerHTML = dates.map(d => {
-    const sel = isSameDay(d, selectedDate);
-    const tod = isSameDay(d, today);
-    const we = isWeekend(d);
-    const cls = ['chip', sel?'selected':'', tod?'today':'', we?'weekend':''].filter(Boolean).join(' ');
+  const ws=startOfWeek(selectedDate);
+  const dates=Array.from({length:7},(_,i)=>addDays(ws,i));
+  document.getElementById('weekMonthLabel').textContent=formatMonthYear(dates[3]);
+  document.getElementById('chips').innerHTML=dates.map(d=>{
+    const sel=isSameDay(d,selectedDate),tod=isSameDay(d,today),we=isWeekend(d);
+    const cls=['chip',sel?'selected':'',tod?'today':'',we?'weekend':''].filter(Boolean).join(' ');
     return '<button class="'+cls+'" onclick="selectDate(\''+formatDate(d)+'\')">'+
       '<span class="chipDayLabel">'+DAYS_TC[d.getDay()]+'</span>'+
-      '<span class="chipDateNum">'+d.getDate()+'</span>'+
-    '</button>';
+      '<span class="chipDateNum">'+d.getDate()+'</span></button>';
   }).join('');
 }
 
+/* ── Render: Day Header ── */
 function renderDayHeader(){
-  document.getElementById('dayLabel').textContent = formatDayLabel(selectedDate);
-  document.getElementById('dayMeta').textContent = '· ' + (isWeekend(selectedDate) ? '週末・寒暑假時段' : '平日時段');
+  document.getElementById('dayLabel').textContent=formatDayLabel(selectedDate);
+  document.getElementById('dayMeta').textContent='· '+(isWeekend(selectedDate)?'週末・寒暑假時段':'平日時段');
 }
 
+/* ── Render: Time Grid ── */
 function renderGrid(){
-  const we = isWeekend(selectedDate);
-  const open = we ? '05:30' : '17:30';
-  const slots = getDaySlots(we);
-  const grid = document.getElementById('grid');
-  grid.style.gridTemplateRows = 'repeat('+slots.length+', '+SLOT_HEIGHT+'px)';
-
-  let html = '<div class="courtDividers" style="grid-template-rows: repeat('+slots.length+', '+SLOT_HEIGHT+'px)">'+
-    '<div></div><div></div><div></div><div></div><div></div>'+
-  '</div>';
-
-  slots.forEach((slot, i) => {
-    const full = slot.endsWith(':00');
-    const showLabel = full || i === 0;
-    const cls = 'slotRow' + (full ? ' fullHour' : '') + (i === 0 ? ' firstRow' : '');
-    html += '<div class="'+cls+'" style="grid-row:'+(i+1)+'; grid-column:1/-1">'+
-      '<span class="timeLabel">'+(showLabel ? slot : '')+'</span>'+
-    '</div>';
+  const we=isWeekend(selectedDate);
+  const open=we?'05:30':'17:30';
+  const slots=getDaySlots(we);
+  const grid=document.getElementById('grid');
+  grid.style.gridTemplateRows='repeat('+slots.length+', '+SLOT_HEIGHT+'px)';
+  let html='<div class="courtDividers" style="grid-template-rows:repeat('+slots.length+','+SLOT_HEIGHT+'px)">'+
+    '<div></div><div></div><div></div><div></div><div></div></div>';
+  slots.forEach((slot,i)=>{
+    const full=slot.endsWith(':00'),showLabel=full||i===0;
+    const cls='slotRow'+(full?' fullHour':'')+(i===0?' firstRow':'');
+    html+='<div class="'+cls+'" style="grid-row:'+(i+1)+';grid-column:1/-1">'+
+      '<span class="timeLabel">'+(showLabel?slot:'')+'</span></div>';
   });
-
-  const ds = formatDate(selectedDate);
-  const bookings = MOCK_BOOKINGS.filter(b => b.date === ds);
-  bookings.forEach(b => {
-    const { startSlot, spanSlots } = getSlotPosition(b.startTime, b.endTime, open);
-    const courtIdx = COURTS.indexOf(b.court);
-    if (courtIdx < 0) return;
-    const surface = COURT_SURFACE[b.court];
-    const isLock = b.mode === 'event_lock';
-    const cls = 'event ' +
-      (isLock ? 'eventLock' : (surface === 'clay' ? 'clay' : '')) +
-      (spanSlots <= 1 ? ' short' : '');
-    const dotColor = (b.mode === 'coaching' || b.mode === 'group_class')
-      ? 'var(--dot-coach)'
-      : (isLock ? 'var(--dot-event)' : null);
-    const showMeta = spanSlots >= 3;
-    html += '<div class="'+cls+'" style="grid-column:'+(courtIdx+2)+'; grid-row:'+(startSlot+1)+'/span '+spanSlots+'">'+
-      (dotColor ? '<span class="modeDot" style="background:'+dotColor+'"></span>' : '')+
+  const ds=formatDate(selectedDate);
+  const bookingsForDay=(courtBookingsFirestore!==null?courtBookingsFirestore:MOCK_BOOKINGS).filter(b=>b.date===ds);
+  bookingsForDay.forEach(b=>{
+    const {startSlot,spanSlots}=getSlotPosition(b.startTime,b.endTime,open);
+    const courtIdx=COURTS.indexOf(b.court);
+    if(courtIdx<0) return;
+    const surface=COURT_SURFACE[b.court];
+    const isLock=b.mode==='event_lock';
+    const cls='event '+(isLock?'eventLock':(surface==='clay'?'clay':''))+(spanSlots<=1?' short':'');
+    const dotColor=(b.mode==='coaching'||b.mode==='group_class')?'var(--dot-coach)':(isLock?'var(--dot-event)':null);
+    const u=b.createdBy?usersCache[b.createdBy]:null;
+    const avatarHtml=u&&u.lineAvatar?'<div class="eAvatar"><img src="'+u.lineAvatar+'" alt=""></div>':'';
+    const displayName=u?u.displayName:(b.primaryName||'—');
+    html+='<div class="'+cls+'" style="grid-column:'+(courtIdx+2)+';grid-row:'+(startSlot+1)+'/span '+spanSlots+'"'+
+      ' onclick="showBookingDetail(\''+b.id+'\')" title="'+displayName+'">'+
+      (dotColor?'<span class="modeDot" style="background:'+dotColor+'"></span>':'')+
       '<span class="time">'+b.startTime+'</span>'+
-      '<span class="name">'+b.primaryName+'</span>'+
-      (showMeta ? '<span class="meta">'+MODE_LABELS[b.mode]+(b.participantCount>0?(' · '+b.participantCount+'P'):'')+'</span>' : '')+
+      '<span class="name">'+displayName+'</span>'+
+      (spanSlots>=3?'<span class="meta">'+MODE_LABELS[b.mode]+(b.participantCount>0?(' · '+b.participantCount+'P'):'')+'</span>':'')+
+      avatarHtml+
     '</div>';
   });
-
-  if (isSameDay(selectedDate, today)) {
-    const nowMin = today.getHours()*60 + today.getMinutes();
-    const openMin = timeToMin(open);
-    const closeMin = timeToMin('24:00');
-    if (nowMin >= openMin && nowMin < closeMin) {
-      const offset = (nowMin - openMin) / SLOT_MIN;
-      html += '<div class="nowLine" style="top:'+(offset * SLOT_HEIGHT)+'px"></div>';
+  if(isSameDay(selectedDate,today)){
+    const nowMin=today.getHours()*60+today.getMinutes();
+    const openMin=timeToMin(open);
+    if(nowMin>=openMin&&nowMin<timeToMin('24:00')){
+      const offset=(nowMin-openMin)/SLOT_MIN;
+      html+='<div class="nowLine" style="top:'+(offset*SLOT_HEIGHT)+'px"></div>';
     }
   }
+  grid.innerHTML=html;
+  // scroll to current time on initial paint (small delay for DOM layout)
+  setTimeout(scrollToNow,60);
+}
 
-  grid.innerHTML = html;
+/* ── Render: Month Grid ── */
+function renderMonthView(){
+  const year=selectedDate.getFullYear(), month=selectedDate.getMonth();
+  document.getElementById('monthViewLabel').textContent=year+' 年 '+MONTHS_TC[month];
+  const firstDay=new Date(year,month,1);
+  const lastDay=new Date(year,month+1,0);
+  const startDow=firstDay.getDay();
+  let html='<div class="monthGrid">';
+  DAYS_TC.forEach(d=>{ html+='<div class="monthDayHeader">'+d+'</div>'; });
+  for(let i=0;i<startDow;i++) html+='<div class="monthCell empty"></div>';
+  for(let d=1;d<=lastDay.getDate();d++){
+    const day=new Date(year,month,d);
+    const ds=formatDate(day);
+    const isT=isSameDay(day,today),isSel=isSameDay(day,selectedDate),isWe=isWeekend(day);
+    let cls='monthCell';
+    if(isT) cls+=' today';
+    if(isSel) cls+=' selected';
+    if(isWe) cls+=' weekend';
+    const dayBookings=MOCK_BOOKINGS.filter(b=>b.date===ds);
+    html+='<button class="'+cls+'" onclick="selectDate(\''+ds+'\');setView(\'week\',document.getElementById(\'btnWeek\'))">'
+      +'<span class="monthCellNum">'+d+'</span>';
+    if(dayBookings.length>0){
+      html+='<div class="monthDots">';
+      dayBookings.slice(0,3).forEach(b=>{
+        const isLock=b.mode==='event_lock';
+        const isCoach=b.mode==='coaching'||b.mode==='group_class';
+        const dotCls=isLock?'dot-event':(isCoach?'dot-coach':(COURT_SURFACE[b.court]==='clay'?'dot-clay':'dot-hard'));
+        html+='<span class="monthDot '+dotCls+'"></span>';
+      });
+      html+='</div>';
+    }
+    html+='</button>';
+  }
+  html+='</div>';
+  document.getElementById('monthGrid').innerHTML=html;
+}
+
+/* ── Render: Booking Records ── */
+function renderBookings(){
+  const todayStr=formatDate(today);
+  const source=myBookingsFirestore!==null?myBookingsFirestore:MOCK_MY_BOOKINGS;
+  const upcoming=source.filter(b=>b.status==='confirmed'&&b.date>=todayStr)
+    .sort((a,b)=>a.date.localeCompare(b.date));
+  const past=source.filter(b=>b.status==='completed'||(b.status==='confirmed'&&b.date<todayStr)||b.status==='cancelled')
+    .sort((a,b)=>b.date.localeCompare(a.date)).slice(0,10);
+
+  function courtDisplay(court){ return {hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[court]||court; }
+  function cardHtml(b,isUpcoming){
+    const d=new Date(b.date+'T00:00:00');
+    const courtLabel=b.courtLabel||courtDisplay(b.court);
+    const partners=b.partners?b.partners.join('、'):'';
+    return '<div class="bookingCard">'+
+      '<div class="bookingCardDate">'+
+        '<div class="bookingCardDateNum">'+d.getDate()+'</div>'+
+        '<div class="bookingCardDateMon">'+(d.getMonth()+1)+'月 '+DAYS_TC[d.getDay()]+'</div>'+
+      '</div>'+
+      '<div class="bookingCardBody">'+
+        '<div class="bookingCardTime">'+
+          b.startTime+' – '+b.endTime+' &nbsp;'+courtLabel+
+          '&nbsp;<span class="statusChip '+b.status+'">'+
+          (b.status==='confirmed'?'確認':(b.status==='cancelled'?'取消':'完成'))+
+          '</span></div>'+
+        '<div class="bookingCardMeta">'+MODE_LABELS[b.mode]+(partners?' · '+partners:'')+'</div>'+
+        (isUpcoming&&b.status==='confirmed'?
+          '<div class="bookingCardActions"><button class="cancelBtn" onclick="cancelBooking(\''+b.id+'\')">取消預約</button></div>':'')+
+      '</div>'+
+    '</div>';
+  }
+  const upEl=document.getElementById('bookUpcoming');
+  const paEl=document.getElementById('bookPast');
+  if(upEl) upEl.innerHTML=upcoming.length?upcoming.map(b=>cardHtml(b,true)).join(''):
+    '<div class="emptyState"><div class="emptyStateIcon">📅</div>暫無即將到來的預約</div>';
+  if(paEl) paEl.innerHTML=past.length?past.map(b=>cardHtml(b,false)).join(''):
+    '<div class="emptyState"><div class="emptyStateIcon">—</div>暫無歷史紀錄</div>';
+}
+
+/* ── Render: 管理 (三分頁) ── */
+function renderManage(){
+  const el=document.getElementById('manageContent');
+  if(!el) return;
+
+  // ── Tab bar ──
+  const TABS=[{key:'pending',label:'待審核'},{key:'schedule',label:'我的行程'},{key:'notices',label:'公告'}];
+  let html='<div style="display:flex;border-bottom:1px solid var(--color-border-soft);margin-bottom:16px">';
+  TABS.forEach(function(t){
+    const active=_manageTab===t.key;
+    html+='<button onclick="_manageTab=\''+t.key+'\';renderManage()" style="flex:1;padding:10px 0;font-size:13px;letter-spacing:0.04em;background:none;border:none;border-bottom:2px solid '+(active?'var(--color-text-primary)':'transparent')+';color:'+(active?'var(--color-text-primary)':'var(--color-text-muted)')+';cursor:pointer;transition:color 150ms">'+t.label+'</button>';
+  });
+  html+='</div>';
+  el.innerHTML=html;
+
+  // ── Tab content ──
+  if(_manageTab==='pending')  _renderPendingTab(el);
+  else if(_manageTab==='schedule') _renderScheduleTab(el);
+  else _renderNoticesTab(el);
+}
+
+/* ── 待審核 tab ── */
+function _renderPendingTab(el){
+  // prefer pendingUsersFirestore; fall back to usersCache with role==='pending'
+  const pending=pendingUsersFirestore.length>0
+    ? pendingUsersFirestore
+    : Object.values(usersCache).filter(function(m){return m.role==='pending';});
+
+  if(!pending.length){
+    el.innerHTML+='<div class="emptyState"><div class="emptyStateIcon">✓</div>目前沒有待審核申請</div>';
+    return;
+  }
+  let html='';
+  pending.forEach(function(m){
+    const initials=(m.displayName||'?').charAt(0);
+    const avatarHtml=m.lineAvatar
+      ?'<img src="'+m.lineAvatar+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'" alt="">'
+      :'<svg width="40" height="40" viewBox="0 0 40 40"><rect width="40" height="40" rx="20" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="16" font-family="serif">'+initials+'</text></svg>';
+    const dateStr=m.createdAt
+      ?(m.createdAt.toDate?m.createdAt.toDate().toLocaleDateString('zh-TW'):String(m.createdAt))
+      :'—';
+    html+='<div class="pendingCard">'+
+      '<div class="pendingCardTop">'+
+        '<div class="memberAvatar">'+avatarHtml+'</div>'+
+        '<div>'+
+          '<div class="pendingCardName">'+(m.displayName||'未知')+'</div>'+
+          '<div class="pendingCardMeta">申請日期：'+dateStr+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="pendingActions">'+
+        '<button class="approveBtn" onclick="approveMember(\''+m.userId+'\')">批准入會</button>'+
+        '<button class="rejectBtn"  onclick="rejectMember(\''+m.userId+'\')">拒絕申請</button>'+
+      '</div>'+
+    '</div>';
+  });
+  el.innerHTML+=html;
+}
+
+/* ── 我的行程 tab (原 renderManage 內容) ── */
+function _renderScheduleTab(el){
+  const source=myBookingsFirestore!==null?myBookingsFirestore:MOCK_MY_BOOKINGS;
+  const upcoming=source.filter(function(b){return b.status==='confirmed';})
+    .sort(function(a,b){return a.date.localeCompare(b.date);});
+  if(!upcoming.length){
+    el.innerHTML+='<div class="emptyState"><div class="emptyStateIcon">🎾</div>目前沒有排定的行程</div>';
+    return;
+  }
+  let html='<div class="screenSection">即將到來</div>';
+  upcoming.forEach(function(b){
+    const surface=COURT_SURFACE[b.court];
+    const barCls=surface==='clay'?'clay':(b.mode==='event_lock'?'lock':'');
+    const courtLabel=b.courtLabel||({hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[b.court]||b.court);
+    const partners=b.partners?b.partners.join('、'):'';
+    html+='<div class="scheduleItem">'+
+      '<div class="scheduleItemBar '+barCls+'"></div>'+
+      '<div class="scheduleItemBody">'+
+        '<div class="scheduleItemTime">'+shortDateStr(b.date)+'  '+b.startTime+' – '+b.endTime+'</div>'+
+        '<div class="scheduleItemName">'+courtLabel+'  ·  '+MODE_LABELS[b.mode]+'</div>'+
+        (partners?'<div class="scheduleItemMeta">'+partners+'</div>':'')+
+      '</div>'+
+    '</div>';
+  });
+  el.innerHTML+=html;
+}
+
+/* ── 公告 tab ── */
+function _renderNoticesTab(el){
+  el.innerHTML+=MOCK_NOTIFICATIONS.map(function(n){
+    return '<div class="notifItem'+(n.read?' read':'')+'" onclick="markRead(\''+n.id+'\',this)">'+
+      '<div class="notifDot"></div>'+
+      '<div class="notifBody">'+
+        '<div class="notifTitle">'+n.title+'</div>'+
+        '<div class="notifText">'+n.text+'</div>'+
+        '<div class="notifTime">'+n.time+'</div>'+
+      '</div></div>';
+  }).join('')||'<div class="emptyState">目前沒有公告</div>';
+}
+
+/* ── Approve Member ── */
+function approveMember(userId){
+  if(!db){showToast('無法連線，請稍後再試');return;}
+  db.collection('users').doc(userId).update({role:'annual_member',updatedAt:TS()})
+    .then(function(){
+      showToast('已批准入會');
+      pendingUsersFirestore=pendingUsersFirestore.filter(function(m){return m.userId!==userId;});
+      if(usersCache[userId]) usersCache[userId].role='annual_member';
+      renderManage();
+    })
+    .catch(function(e){
+      console.error('approveMember error:',e);
+      showToast('操作失敗，請稍後再試');
+    });
+}
+
+/* ── Reject Member ── */
+function rejectMember(userId){
+  if(!confirm('確認拒絕此申請？')) return;
+  if(!db){showToast('無法連線，請稍後再試');return;}
+  db.collection('users').doc(userId).update({role:'blocked',updatedAt:TS()})
+    .then(function(){
+      showToast('已拒絕申請');
+      pendingUsersFirestore=pendingUsersFirestore.filter(function(m){return m.userId!==userId;});
+      if(usersCache[userId]) usersCache[userId].role='blocked';
+      renderManage();
+    })
+    .catch(function(e){
+      console.error('rejectMember error:',e);
+      showToast('操作失敗，請稍後再試');
+    });
+}
+
+/* ── Finance: Render ── */
+const FIN_TYPE_LABEL = {annual:'年費',monthly:'月費',donate:'抖內',expense:'支出'};
+const FIN_TYPE_CLASS = {annual:'fin-annual',monthly:'fin-monthly',donate:'fin-donate',expense:'fin-expense'};
+
+/* ── Global Permission Helper ── */
+function isAdminLike(){
+  var role = currentUser ? currentUser.role : null;
+  return role === 'owner' || role === 'admin';
+}
+
+/* ── Finance: Permission helper ── */
+function _isFinanceAdmin(){
+  return isAdminLike();
+}
+
+function renderFinance(){
+  const el = document.getElementById('financeContent');
+  if(!el) return;
+  const allRecords = financeRecords.length > 0 ? financeRecords : MOCK_FINANCE_RECORDS;
+  const isAdmin = _isFinanceAdmin();
+
+  // ── Admin buttons: add always visible, export admin-only ──
+  const exportBtn = document.getElementById('finExportBtn');
+  if(exportBtn) exportBtn.style.display = isAdmin ? '' : 'none';
+
+  // ── Year picker (dropdown button) ──
+  const yearPickerHtml = '<div style="margin-bottom:18px">'
+    + '<button class="finYearPicker" onclick="toggleFinYearDropdown(event)">'
+    + _finYear
+    + ' <span class="finYearPickerCaret">▼</span>'
+    + '</button>'
+    + '</div>';
+
+  // ── Filter by active year ──
+  const source = allRecords.filter(function(r){
+    return (r.year || parseInt(r.date.slice(0,4),10)) === _finYear;
+  });
+
+  // ── Stats ──
+  const sum = function(type){ return source.filter(function(r){return r.type===type;}).reduce(function(a,r){return a+r.amount;},0); };
+  const annual  = sum('annual');
+  const monthly = sum('monthly');
+  const donate  = sum('donate');
+  const expense = sum('expense');
+  const income  = annual + monthly + donate;
+  const balance = income - expense;
+  const fmt = function(n){ return 'NT$ '+(n).toLocaleString(); };
+
+  let html = yearPickerHtml;
+
+  // Balance card — only balance, clean
+  html += '<div class="financeBalanceCard">';
+  html += '<div class="financeBalanceLabel">結餘</div>';
+  html += '<div class="financeBalanceAmt">'+fmt(balance)+'</div>';
+  html += '</div>';
+
+  // Stats grid (每格可點擊)
+  html += '<div class="financeStats">';
+  html += _statCard('年費','annual',annual,false);
+  html += _statCard('月費','monthly',monthly,false);
+  html += _statCard('抖內','donate',donate,false);
+  html += _statCard('支出','expense',expense,true);
+  html += '</div>';
+
+  // Detail list — apply search filter
+  const q = _finSearchQuery.toLowerCase().trim();
+  const filtered = q
+    ? source.filter(function(r){
+        return (r.member       || '').toLowerCase().includes(q)
+            || (r.note         || '').toLowerCase().includes(q)
+            || (r.createdByName|| '').toLowerCase().includes(q);
+      })
+    : source;
+
+  html += '<div class="screenSection">明細'+(q ? '（'+filtered.length+' 筆）' : '')+'</div>';
+  const sorted = filtered.slice().sort(function(a,b){ return b.date.localeCompare(a.date); });
+  if(!sorted.length){
+    html += '<div class="emptyState"><div class="emptyStateIcon">¥</div>尚無紀錄</div>';
+  } else {
+    html += '<div style="padding:0 2px">';
+    sorted.forEach(function(r){
+      const isOut = r.type==='expense';
+      // dateMeta: date · 登記 · 修改
+      const editedPart = r.updatedByName ? ' · 修改：'+r.updatedByName : '';
+      const dateMeta = r.date
+        + (r.createdByName ? ' · 登記：'+r.createdByName : '')
+        + editedPart;
+      const delIcon = isAdmin
+        ? '<button class="finDeleteIcon" onclick="event.stopPropagation();deleteFinanceRecord(\''+r.id+'\')" title="刪除">'
+          + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>'
+          + '</button>'
+        : '';
+      html += '<div class="financeRecord" style="align-items:flex-start">'
+        + '<div class="finRecordLeft financeRecordLeft" onclick="editFinanceRecord(\''+r.id+'\')">'
+          + '<div class="financeRecordName">'+(r.member||'—')+'</div>'
+          + (r.note ? '<div class="finRecordNote">'+r.note+'</div>' : '')
+          + '<div class="finRecordDateMeta">'+dateMeta+'</div>'
+        + '</div>'
+        + '<div class="finRecordRight">'
+          + '<div class="financeRecordAmt'+(isOut?' out':'')+'">'+fmt(r.amount)+'</div>'
+          + '<span class="finTypeBadge '+FIN_TYPE_CLASS[r.type]+'">'+FIN_TYPE_LABEL[r.type]+'</span>'
+          + delIcon
+        + '</div>'
+      + '</div>';
+    });
+    // 底部留白，避免最後一筆被固定 nav 遮住
+    html += '<div style="height:72px"></div>';
+    html += '</div>';
+  }
+
+  el.innerHTML = html;
+}
+
+/* ── Finance: Year Dropdown ── */
+function toggleFinYearDropdown(evt){
+  evt && evt.stopPropagation();
+  const dd = document.getElementById('finYearDropdown');
+  if(!dd) return;
+  if(dd.style.display !== 'none' && dd.style.display !== ''){
+    closeFinYearDropdown(); return;
+  }
+  // fixed year range 2026–2036
+  const years = [2026,2027,2028,2029,2030,2031,2032,2033,2034,2035,2036];
+  dd.innerHTML = years.map(function(y){
+    return '<button class="finYearDropItem'+(y===_finYear?' active':'')+'" onclick="switchFinYear('+y+')">'
+      + y + (y===_finYear ? ' ✓' : '') + '</button>';
+  }).join('');
+  // position near the picker button
+  const btn = evt && evt.currentTarget;
+  if(btn){
+    const r = btn.getBoundingClientRect();
+    dd.style.top  = (r.bottom + 6)+'px';
+    dd.style.left = r.left+'px';
+  } else {
+    dd.style.top = '120px'; dd.style.left = '20px';
+  }
+  dd.style.display = 'block';
+  setTimeout(function(){
+    document.addEventListener('click', _closeFinYearOnOutside, {once:true});
+  }, 0);
+}
+function _closeFinYearOnOutside(){
+  closeFinYearDropdown();
+}
+function closeFinYearDropdown(){
+  const dd = document.getElementById('finYearDropdown');
+  if(dd) dd.style.display = 'none';
+}
+
+/* ── Finance: Year Switcher ── */
+function switchFinYear(y){
+  _finYear = y;
+  _finSearchQuery = '';
+  closeFinYearDropdown();
+  const inp = document.getElementById('finSearchInput');
+  if(inp) inp.value = '';
+  renderFinance();
+}
+
+/* ── Finance: Search ── */
+function filterFinance(q){
+  _finSearchQuery = q || '';
+  renderFinance();
+  // restore focus & cursor after re-render
+  const inp = document.getElementById('finSearchInput');
+  if(inp){ inp.value = _finSearchQuery; inp.focus(); }
+}
+
+function _statCard(label, type, amt, isOut){
+  return '<div class="financeStatCard" onclick="openFinCategory(\''+type+'\')">'
+    + '<span class="finStatArrow">›</span>'
+    + '<div class="financeStatLabel">'+label+'</div>'
+    + '<div class="financeStatAmt'+(isOut?' out':'')+'">NT$ '+amt.toLocaleString()+'</div>'
+    + '</div>';
+}
+
+/* ── Finance: Category Sheet ── */
+function openFinCategory(type){
+  const allRecs = financeRecords.length > 0 ? financeRecords : MOCK_FINANCE_RECORDS;
+  const records = allRecs.filter(function(r){
+    return r.type === type
+        && (r.year || parseInt(r.date.slice(0,4),10)) === _finYear;
+  });
+  const fmt = function(n){ return 'NT$ '+(n).toLocaleString(); };
+  const total = records.reduce(function(a,r){ return a+r.amount; }, 0);
+
+  let html = '<div class="finCategorySummary">';
+  html += '<span style="font-size:11px;color:var(--color-text-muted);letter-spacing:0.06em">共 '+records.length+' 筆</span>';
+  html += '<span style="font-family:var(--font-body);font-size:19px;font-weight:600;letter-spacing:0">'+fmt(total)+'</span>';
+  html += '</div>';
+
+  if(!records.length){
+    html += '<div class="emptyState">此分類尚無紀錄</div>';
+  } else {
+    const sorted = records.slice().sort(function(a,b){ return b.date.localeCompare(a.date); });
+    sorted.forEach(function(r){
+      html += '<div class="finCategoryRecord">'
+        + '<div class="financeRecordLeft">'
+          + '<div class="financeRecordName">'+(r.member||'—')+'</div>'
+          + '<div class="financeRecordMeta">'+r.date+(r.note?' · '+r.note:'')+'</div>'
+          + (r.createdByName ? '<div class="financeRecordMeta" style="opacity:0.65">登記：'+r.createdByName+'</div>' : '')
+        + '</div>'
+        + '<div class="financeRecordAmt" style="font-size:16px">'+fmt(r.amount)+'</div>'
+      + '</div>';
+    });
+    // bottom padding inside sheet so last row not cut off
+    html += '<div style="height:40px"></div>';
+  }
+
+  document.getElementById('finCategoryContent').innerHTML = html;
+  document.getElementById('finCategoryTitle').textContent = (FIN_TYPE_LABEL[type]||type)+'明細';
+  document.getElementById('sheetBackdrop').classList.add('open');
+  document.getElementById('finCategorySheet').classList.add('open');
+}
+
+function closeFinCategory(){
+  document.getElementById('finCategorySheet').classList.remove('open');
+  document.getElementById('sheetBackdrop').classList.remove('open');
+}
+
+/* ── Finance: Delete ── */
+function deleteFinanceRecord(id){
+  if(!_isFinanceAdmin()){ showToast('僅管理員可刪除紀錄'); return; }
+  if(!confirm('確定刪除此筆財務紀錄？')) return;
+  // try local array first, then MOCK (const array is still mutable)
+  const fi = financeRecords.findIndex(function(r){ return r.id===id; });
+  if(fi > -1){
+    financeRecords.splice(fi, 1);
+  } else {
+    const mi = MOCK_FINANCE_RECORDS.findIndex(function(r){ return r.id===id; });
+    if(mi > -1) MOCK_FINANCE_RECORDS.splice(mi, 1);
+  }
+  renderFinance();
+  showToast('紀錄已刪除');
+}
+
+/* ── Finance: Export CSV ── */
+function exportFinanceCSV(){
+  if(!_isFinanceAdmin()){ showToast('僅管理員可匯出'); return; }
+  const allRecs = financeRecords.length > 0 ? financeRecords : MOCK_FINANCE_RECORDS;
+  const source = allRecs.filter(function(r){
+    return (r.year || parseInt(r.date.slice(0,4),10)) === _finYear;
+  });
+  if(!source.length){ showToast(_finYear+' 年沒有資料可匯出'); return; }
+
+  const sorted = source.slice().sort(function(a,b){ return a.date.localeCompare(b.date); });
+  const header = ['日期','會員','類型','金額','備註','登記人'];
+  const rows = sorted.map(function(r){
+    return [
+      r.date,
+      r.member  || '',
+      FIN_TYPE_LABEL[r.type] || r.type,
+      r.amount,
+      r.note    || '',
+      r.createdByName || '',
+    ].map(function(v){
+      // CSV escape: wrap in quotes if contains comma/newline/quote
+      const s = String(v).replace(/"/g, '""');
+      return /[,"\n]/.test(s) ? '"'+s+'"' : s;
+    }).join(',');
+  });
+
+  // BOM for Excel UTF-8 recognition
+  const bom = '﻿';
+  const csv = bom + [header.join(',')].concat(rows).join('\r\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url  = URL.createObjectURL(blob);
+
+  const filename = 'chingxin-finance-'+_finYear+'.csv';
+
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('已匯出 '+filename);
+}
+
+/* ── Finance: Form ── */
+function _finPopulateMemberSelect(selectedName){
+  const sel = document.getElementById('finFormMember');
+  sel.innerHTML = '<option value="">— 選擇會員 / 備註用 —</option>';
+  const cached = Object.values(usersCache);
+  const list = cached.length > 0
+    ? cached.filter(function(u){ return u.role !== 'blocked'; })
+    : MOCK_MEMBERS.map(function(m){ return {displayName:m.name}; });
+  list.forEach(function(u){
+    const name = u.displayName || u.name || '';
+    if(!name) return;
+    const opt = document.createElement('option');
+    opt.value = name; opt.textContent = name;
+    if(name === selectedName) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function openFinanceForm(){
+  if(!_isFinanceAdmin()){ showToast('僅管理員可新增紀錄'); return; }
+  _finEditId = null;
+  document.getElementById('financeFormTitle').textContent = '新增財務紀錄';
+  _finPopulateMemberSelect('');
+  document.getElementById('finFormType').value = 'annual';
+  document.getElementById('finFormDate').value = formatDate(today);
+  document.getElementById('finFormAmount').value = '';
+  document.getElementById('finFormNote').value = '';
+  document.getElementById('sheetBackdrop').classList.add('open');
+  document.getElementById('financeFormSheet').classList.add('open');
+}
+
+function closeFinanceForm(){
+  _finEditId = null;
+  document.getElementById('financeFormSheet').classList.remove('open');
+  document.getElementById('sheetBackdrop').classList.remove('open');
+}
+
+function submitFinanceRecord(){
+  const type   = document.getElementById('finFormType').value;
+  const member = document.getElementById('finFormMember').value;
+  const date   = document.getElementById('finFormDate').value;
+  const amount = parseInt(document.getElementById('finFormAmount').value, 10);
+  const note   = document.getElementById('finFormNote').value.trim();
+
+  if(!date){ showToast('請選擇日期'); return; }
+  if(!amount || amount <= 0){ showToast('請輸入金額'); return; }
+
+  if(_finEditId){
+    submitEditFinanceRecord(type, member, date, amount, note);
+  } else {
+    const creatorName = currentUser
+      ? (currentUser.displayName || currentUser.name || '')
+      : 'Maverick 小狸';
+    const rec = {
+      id: 'f'+(Date.now()),
+      year: _finYear,
+      type: type, member: member, date: date, amount: amount, note: note,
+      createdByName: creatorName,
+      updatedByName: null, updatedAt: null,
+    };
+    financeRecords.push(rec);
+    closeFinanceForm();
+    renderFinance();
+    showToast('紀錄已儲存');
+  }
+}
+
+function submitEditFinanceRecord(type, member, date, amount, note){
+  const editorName = currentUser
+    ? (currentUser.displayName || currentUser.name || '')
+    : 'Maverick 小狸';
+  const updatedAt = new Date().toISOString().slice(0,10);
+
+  // find in local financeRecords first, then MOCK
+  var rec = financeRecords.find(function(r){ return r.id===_finEditId; });
+  if(!rec) rec = MOCK_FINANCE_RECORDS.find(function(r){ return r.id===_finEditId; });
+  if(!rec){ showToast('找不到紀錄'); return; }
+
+  rec.type   = type;
+  rec.member = member;
+  rec.date   = date;
+  rec.amount = amount;
+  rec.note   = note;
+  rec.updatedByName = editorName;
+  rec.updatedAt     = updatedAt;
+
+  closeFinanceForm();
+  renderFinance();
+  showToast('已更新紀錄');
+}
+
+/* ── Finance: Edit ── */
+function editFinanceRecord(id){
+  if(!_isFinanceAdmin()){ showToast('僅管理員可編輯紀錄'); return; }
+  const allRecs = financeRecords.length > 0
+    ? financeRecords.concat(MOCK_FINANCE_RECORDS.filter(function(m){ return !financeRecords.find(function(f){return f.id===m.id;}); }))
+    : MOCK_FINANCE_RECORDS;
+  const rec = allRecs.find(function(r){ return r.id===id; });
+  if(!rec){ showToast('找不到紀錄'); return; }
+
+  _finEditId = id;
+  document.getElementById('financeFormTitle').textContent = '編輯財務紀錄';
+  document.getElementById('finFormType').value   = rec.type   || 'annual';
+  document.getElementById('finFormDate').value   = rec.date   || '';
+  document.getElementById('finFormAmount').value = rec.amount || '';
+  document.getElementById('finFormNote').value   = rec.note   || '';
+  _finPopulateMemberSelect(rec.member || '');
+  document.getElementById('sheetBackdrop').classList.add('open');
+  document.getElementById('financeFormSheet').classList.add('open');
+}
+
+/* ── Render: Member List ── */
+function renderMembers(filter){
+  const f=(filter||'').toLowerCase();
+  const ROLE_BADGE={owner:'擁有者',admin:'管理員',annual_member:'年費',monthly_member:'月費',coach:'教練',annual:'年費',monthly:'月費'};
+  const el=document.getElementById('memberList');
+  if(!el) return;
+  let list;
+  if(Object.keys(usersCache).length>0){
+    /* Use Firestore usersCache */
+    list=Object.values(usersCache)
+      .filter(m=>m.role&&m.role!=='pending'&&m.role!=='blocked')
+      .filter(m=>!f||(m.displayName||'').toLowerCase().includes(f)||String(m.ntrp||'').includes(f)||(m.preferredPosition||'').toLowerCase().includes(f))
+      .sort((a,b)=>{
+        if(a.role==='coach'&&b.role!=='coach') return -1;
+        if(b.role==='coach'&&a.role!=='coach') return 1;
+        return (a.displayName||'').localeCompare(b.displayName||'','zh');
+      });
+    el.innerHTML=list.map(m=>{
+      const initials=(m.displayName||'?').charAt(0);
+      const isCoach=m.role==='coach';
+      const isAdmin=m.role==='admin'||m.role==='owner';
+      const avatarHtml=m.lineAvatar
+        ?'<img src="'+m.lineAvatar+'" onerror="this.style.display=\'none\'" alt="'+m.displayName+'">'
+        :'<svg width="40" height="40" viewBox="0 0 40 40"><rect width="40" height="40" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="16" font-family="serif">'+initials+'</text></svg>';
+      return '<div class="memberCard" onclick="showMemberDetail(\''+m.userId+'\')" style="cursor:pointer">'+
+        '<div class="memberAvatar">'+avatarHtml+'</div>'+
+        '<div class="memberInfo">'+
+          '<div class="memberName">'+m.displayName+'</div>'+
+          '<div class="memberMeta">'+(m.ntrp?'NTRP '+m.ntrp+' · ':'')+( m.preferredPosition||'—')+'</div>'+
+        '</div>'+
+        '<span class="memberBadge'+(isCoach?' coach':'')+'">'+((ROLE_BADGE[m.role])||m.role||'—')+'</span>'+
+      '</div>';
+    }).join('')||'<div class="emptyState">找不到符合的會員</div>';
+  } else {
+    /* Mock fallback */
+    list=MOCK_MEMBERS.filter(m=>!f||m.name.toLowerCase().includes(f)||m.ntrp.includes(f)||m.position.toLowerCase().includes(f));
+    const typeLabel={annual:'年費會員',monthly:'月費會員',coach:'教練'};
+    el.innerHTML=list.map(m=>{
+      const initials=m.name.charAt(0);
+      const isCoach=m.type==='coach';
+      return '<div class="memberCard">'+
+        '<div class="memberAvatar"><svg width="40" height="40" viewBox="0 0 40 40"><rect width="40" height="40" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="16" font-family="serif">'+initials+'</text></svg></div>'+
+        '<div class="memberInfo"><div class="memberName">'+m.name+'</div><div class="memberMeta">NTRP '+m.ntrp+'  ·  '+m.position+'</div></div>'+
+        '<span class="memberBadge'+(isCoach?' coach':'')+'">'+typeLabel[m.type]+'</span>'+
+      '</div>';
+    }).join('')||'<div class="emptyState">找不到符合的會員</div>';
+  }
+}
+
+/* ── Render: Notifications ── */
+function renderNotifications(){
+  document.getElementById('notificationsList').innerHTML=MOCK_NOTIFICATIONS.map(n=>{
+    return '<div class="notifItem'+(n.read?' read':'')+'" onclick="markRead(\''+n.id+'\',this)">'+
+      '<div class="notifDot"></div>'+
+      '<div class="notifBody">'+
+        '<div class="notifTitle">'+n.title+'</div>'+
+        '<div class="notifText">'+n.text+'</div>'+
+        '<div class="notifTime">'+n.time+'</div>'+
+      '</div></div>';
+  }).join('');
+}
+function markRead(id, el){ el.classList.add('read'); }
+
+/* ── Navigation ── */
+function showTab(name, el){
+  document.querySelectorAll('.navTab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-'+name).classList.add('active');
+  closeAllSheets();
+  // logo alignment: left on finance tab, hidden on court tab (court has inline header)
+  document.querySelector('.header').classList.toggle('fin-header-left', name==='finance');
+  document.querySelector('.header').classList.toggle('court-header-hidden', name==='court');
+  // court tab: disable min-height:100dvh so weekday grid doesn't leave blank space
+  document.querySelector('.app').classList.toggle('court-active', name==='court');
+  if(name==='manage') renderManage();
+  if(name==='finance'){ renderFinance(); if(Object.keys(usersCache).length===0) loadUsersCache(); }
+}
+
+function setView(v, el){
+  currentView=v;
+  document.getElementById('view-week').style.display=v==='week'?'block':'none';
+  document.getElementById('view-month').style.display=v==='month'?'block':'none';
+  document.querySelectorAll('.switcherOption').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  if(v==='month') renderMonthView();
 }
 
 function selectDate(dateStr){
-  selectedDate = new Date(dateStr + 'T00:00:00');
+  selectedDate=new Date(dateStr+'T00:00:00');
   render();
 }
-
-function changeWeek(delta){
-  selectedDate = addDays(selectedDate, delta * 7);
-  render();
+function changeWeek(delta){ selectedDate=addDays(selectedDate,delta*7); render(); }
+function changeMonth(delta){
+  selectedDate=new Date(selectedDate.getFullYear(), selectedDate.getMonth()+delta, 1);
+  renderMonthView();
 }
+function filterMembers(v){ renderMembers(v); }
 
-function render(){
-  renderCourtHeader();
-  renderWeekStrip();
-  renderDayHeader();
-  renderGrid();
-}
-
-render();
-
-// ── Tab & Profile Sheet ──
-function setTab(el, name) {
-  document.querySelectorAll('.navTab').forEach(t => t.classList.remove('active'));
-  el.classList.add('active');
-}
-
-function openProfile() {
+/* ── Profile Sheet ── */
+function openProfile(){
   document.getElementById('tabProfile').classList.add('active');
   document.getElementById('sheetBackdrop').classList.add('open');
   document.getElementById('profileSheet').classList.add('open');
 }
-
-function closeProfile() {
-  document.getElementById('sheetBackdrop').classList.remove('open');
+function closeProfile(){
   document.getElementById('profileSheet').classList.remove('open');
-  // restore active state to court tab (default) unless another tab was active
+  document.getElementById('tabProfile').classList.remove('active');
+  document.getElementById('sheetBackdrop').classList.remove('open');
+}
+function closeAllSheets(){
+  ['profileSheet','settingsSheet','notificationsSheet','aboutSheet','bookingFormSheet','financeFormSheet','finCategorySheet'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.classList.remove('open');
+  });
+  document.getElementById('sheetBackdrop').classList.remove('open');
   document.getElementById('tabProfile').classList.remove('active');
 }
+
+/* ── Settings Sheet ── */
+function openSettings(){
+  document.getElementById('settingsSheet').classList.add('open');
+}
+function closeSettings(){
+  document.getElementById('settingsSheet').classList.remove('open');
+}
+function saveSettings(){
+  const name=document.getElementById('nameInput').value.trim()||MOCK_USER.name;
+  const ntrp=document.getElementById('ntrpSelect').value;
+  const position=document.getElementById('positionSelect').value;
+  MOCK_USER.name=name; MOCK_USER.ntrp=ntrp; MOCK_USER.position=position;
+  document.getElementById('profileDisplayName').textContent=name;
+  document.getElementById('profileNTRP').textContent=ntrp;
+  document.getElementById('profilePosition').textContent=position;
+  closeSettings();
+}
+
+/* ── Notifications Sheet ── */
+function openNotifications(){
+  renderNotifications();
+  document.getElementById('notificationsSheet').classList.add('open');
+}
+function closeNotifications(){
+  document.getElementById('notificationsSheet').classList.remove('open');
+}
+
+/* ── About Sheet ── */
+function openAbout(){
+  document.getElementById('aboutSheet').classList.add('open');
+}
+function closeAbout(){
+  document.getElementById('aboutSheet').classList.remove('open');
+}
+
+/* ── Toast ── */
+var toastTimer=null;
+function showToast(msg){
+  var t=document.getElementById('toast'); if(!t) return;
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(function(){ t.classList.remove('show'); },2600);
+}
+
+/* ── Booking Detail (tap event on court grid) ── */
+function showBookingDetail(id){
+  var source=courtBookingsFirestore!==null?courtBookingsFirestore:MOCK_BOOKINGS;
+  var b=source.find(function(x){ return x.id===id; });
+  if(!b) return;
+  var u=b.createdBy?usersCache[b.createdBy]:null;
+  var name=u?u.displayName:b.primaryName;
+  showToast(({hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[b.court]||b.court)+' · '+b.startTime+'–'+b.endTime+'  '+name);
+}
+
+/* ── Member Detail (tap member card) ── */
+function showMemberDetail(uid){
+  var m=usersCache[uid]; if(!m) return;
+  showToast(m.displayName+(m.ntrp?' · NTRP '+m.ntrp:'')+(m.preferredPosition?' · '+m.preferredPosition:''));
+}
+
+/* ── Load Users Cache from Firestore ── */
+function loadUsersCache(){
+  if(!db) return;
+  db.collection('users').get()
+    .then(function(snap){
+      snap.docs.forEach(function(d){ usersCache[d.id]=Object.assign({userId:d.id},d.data()); });
+      renderMembers('');
+      renderGrid(); // refresh avatars
+    })
+    .catch(function(e){ console.warn('loadUsersCache error:',e); });
+}
+
+/* ── Load Court Bookings from Firestore ── */
+function loadCourtBookings(dateStr){
+  if(!db){ renderGrid(); return; }
+  db.collection('bookings')
+    .where('date','==',dateStr)
+    .where('status','==','confirmed')
+    .get()
+    .then(function(snap){
+      courtBookingsFirestore=snap.docs.map(function(d){ return Object.assign({id:d.id},d.data()); });
+      renderGrid();
+    })
+    .catch(function(e){
+      console.warn('loadCourtBookings error, using mock:',e);
+      courtBookingsFirestore=null;
+      renderGrid();
+    });
+}
+
+/* ── Load My Bookings from Firestore ── */
+function loadMyBookings(){
+  if(!db||!currentUser){ renderBookings(); renderManage(); return; }
+  db.collection('bookings')
+    .where('createdBy','==',currentUser.userId||currentUser.id||'')
+    .orderBy('date','asc')
+    .get()
+    .then(function(snap){
+      myBookingsFirestore=snap.docs.map(function(d){ return Object.assign({id:d.id},d.data()); });
+      renderBookings();
+      renderManage();
+    })
+    .catch(function(e){
+      console.warn('loadMyBookings error, using mock:',e);
+      myBookingsFirestore=null;
+      renderBookings();
+      renderManage();
+    });
+}
+
+/* ── Cancel Booking ── */
+function cancelBooking(id){
+  if(!confirm('確認取消此預約？')) return;
+  if(!db){ showToast('無法連線，請稍後再試'); return; }
+  db.collection('bookings').doc(id).update({status:'cancelled',updatedAt:TS()})
+    .then(function(){
+      showToast('預約已取消');
+      loadMyBookings();
+    })
+    .catch(function(e){ console.error('cancelBooking error:',e); showToast('取消失敗，請稍後再試'); });
+}
+
+/* ── Booking Form ── */
+function openBookingForm(){
+  var startSel=document.getElementById('formStart');
+  var endSel=document.getElementById('formEnd');
+  if(!startSel||!endSel) return;
+  var times=[]; var cur=timeToMin('06:00');
+  while(cur<timeToMin('24:00')){ times.push(minToTime(cur)); cur+=30; }
+  startSel.innerHTML=times.map(function(t){ return '<option value="'+t+'">'+t+'</option>'; }).join('');
+  endSel.innerHTML=times.map(function(t){ return '<option value="'+t+'">'+t+'</option>'; }).join('');
+  startSel.value='19:00'; endSel.value='21:00';
+  var di=document.getElementById('formDate');
+  if(di){ di.value=formatDate(today); di.min=formatDate(today); }
+  var bfSel=document.getElementById('formBookFor');
+  if(bfSel){
+    var opts='<option value="">— 自己 —</option>';
+    Object.values(usersCache).forEach(function(m){
+      if(m.role&&m.role!=='pending'&&m.role!=='blocked')
+        opts+='<option value="'+m.userId+'">'+m.displayName+'</option>';
+    });
+    bfSel.innerHTML=opts;
+  }
+  // Clay court restriction: disable options for non-admins
+  var courtSel = document.getElementById('formCourt');
+  if(courtSel){
+    Array.from(courtSel.options).forEach(function(opt){
+      var isClay = opt.value==='clay_a' || opt.value==='clay_b';
+      if(isClay){
+        opt.disabled = !isAdminLike();
+        var label = opt.value==='clay_a' ? 'Clay A' : 'Clay B';
+        opt.text = label + ' — 紅土' + (!isAdminLike() ? '（管理員限定）' : '');
+      }
+    });
+    if(!isAdminLike() && (courtSel.value==='clay_a' || courtSel.value==='clay_b')){
+      courtSel.value = 'hard_a';
+    }
+  }
+  document.getElementById('bookingFormSheet').classList.add('open');
+  document.getElementById('sheetBackdrop').classList.add('open');
+}
+function closeBookingForm(){
+  document.getElementById('bookingFormSheet').classList.remove('open');
+  document.getElementById('sheetBackdrop').classList.remove('open');
+}
+function submitBooking(){
+  if(!db){ showToast('無法連線，請稍後再試'); return; }
+  var court=document.getElementById('formCourt').value;
+  var date=document.getElementById('formDate').value;
+  var start=document.getElementById('formStart').value;
+  var end=document.getElementById('formEnd').value;
+  var mode=document.getElementById('formMode').value;
+  var bookFor=document.getElementById('formBookFor').value;
+  if(!date||!start||!end){ showToast('請填寫完整資料'); return; }
+  if((court==='clay_a'||court==='clay_b')&&!isAdminLike()){ showToast('紅土場地僅管理員可預約'); return; }
+  if(timeToMin(end)<=timeToMin(start)){ showToast('結束時間需晚於開始時間'); return; }
+  var displayName=currentUser?currentUser.displayName:(MOCK_USER.name||'—');
+  var creatorId=currentUser?(currentUser.userId||currentUser.id||''):'';
+  if(bookFor&&usersCache[bookFor]){ displayName=usersCache[bookFor].displayName; }
+  var courtDisplay={hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'};
+  var btn=document.getElementById('submitBookingBtn');
+  if(btn){ btn.disabled=true; btn.textContent='送出中…'; }
+  db.collection('bookings').add({
+    date:date, startTime:start, endTime:end,
+    court:court, mode:mode,
+    primaryName:displayName,
+    participantCount:1,
+    createdBy:creatorId,
+    status:'confirmed',
+    createdAt:TS(), updatedAt:TS()
+  }).then(function(){
+    showToast('預約成功 · '+(courtDisplay[court]||court)+' '+start);
+    closeBookingForm();
+    if(date===formatDate(selectedDate)) loadCourtBookings(date);
+    loadMyBookings();
+  }).catch(function(e){
+    console.error('submitBooking error:',e);
+    showToast('預約失敗：'+e.message);
+  }).finally(function(){
+    if(btn){ btn.disabled=false; btn.textContent='確認預約'; }
+  });
+}
+
+/* ── Main Render ── */
+function render(){
+  renderCourtHeader();
+  renderWeekStrip();
+  renderDayHeader();
+  loadCourtBookings(formatDate(selectedDate));
+}
+
+render();
+startNowLineTicker();
+renderBookings();
+renderManage();
+renderFinance();
 </script>
 </body>
 </html>

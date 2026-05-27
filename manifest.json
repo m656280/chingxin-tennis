@@ -1,0 +1,27 @@
+{
+  "name": "清心網球協會",
+  "short_name": "清心",
+  "description": "CHING XIN Tennis Society — 私人會員制網球預約系統",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f1210",
+  "theme_color": "#0f1210",
+  "lang": "zh-Hant",
+  "icons": [
+    {
+      "src": "/public/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/public/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": ["sports", "lifestyle"],
+  "scope": "/"
+}
