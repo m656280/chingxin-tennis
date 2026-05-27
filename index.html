@@ -1056,6 +1056,8 @@ button {
     <div class="authStateIcon">⏳</div>
     <div class="authStateTitle">等待管理員審核</div>
     <p class="authStateDesc">您的帳號已建立完成，<br>管理員核准後即可使用全部功能。</p>
+    <pre id="authDebugPanel" style="margin:16px 0 0;padding:12px;background:#1a1a1a;color:#06C755;font-size:11px;line-height:1.6;border-radius:8px;text-align:left;width:100%;max-width:320px;white-space:pre-wrap;word-break:break-all;">(等待 auth...)</pre>
+    <button style="margin-top:10px;padding:8px 20px;background:#333;color:#06C755;border:none;border-radius:8px;font-size:12px;cursor:pointer" onclick="document.getElementById('authGate').style.display='none'">強制進入（診斷用）</button>
     <button class="authLogoutBtn" onclick="_doLogout()">登出</button>
   </div>
   <!-- Resigned -->
@@ -1523,6 +1525,13 @@ function _showAuthGate(state){
 function _showMainApp(){
   var gate = document.getElementById('authGate');
   if(gate) gate.style.display = 'none';
+  // Log confirmation to debug panel so we can verify _showMainApp ran
+  try {
+    var dbgEl = document.getElementById('authDebugPanel');
+    if(dbgEl){
+      dbgEl.textContent += '\n---\n_showMainApp() 已執行\ngate hidden: ' + (!gate || gate.style.display === 'none') + '\n時間: ' + new Date().toLocaleTimeString();
+    }
+  } catch(e){}
   // Sync nav avatar from Firebase Auth photoURL
   if(currentUser && currentUser.photoURL){
     var navImg = document.getElementById('navAvatarImg');
@@ -1719,11 +1728,7 @@ async function _tryResumeSession(){
     }
     var d = snap.data();
     console.log('[AUTH] resume uid:', uid, '| data:', JSON.stringify({role:d.role, status:d.status, approved:d.approved}));
-    if(!_canEnter(d)){
-      console.log('[AUTH] resume: canEnter=false, falling back to LIFF');
-      return false;
-    }
-    // Valid session — restore without LIFF init
+    // Always route through _routeByStatus — it handles canEnter check and shows debug panel
     var profile = { userId: uid, displayName: d.displayName || '', pictureUrl: d.photoURL || '' };
     _routeByStatus(d, profile);
     return true;
@@ -1888,9 +1893,34 @@ async function _upsertAndRoute(profile){
 /// profile: { userId, displayName, pictureUrl }
 function _routeByStatus(d, profile){
   var canEnter = _canEnter(d);
+  var s = d.status || '';
+  var destination = canEnter ? 'mainApp'
+    : (s === 'resigned' ? 'resigned'
+    : (s === 'blocked'  ? 'blocked'
+    : 'pending'));
+
   console.log('[AUTH] _routeByStatus uid:', profile.userId,
     '| role:', d.role, '| status:', d.status, '| approved:', d.approved,
-    '| canEnter:', canEnter);
+    '| canEnter:', canEnter, '| → ', destination);
+
+  // Write debug info to pending screen panel (always, so it's ready if needed)
+  try {
+    var dbgEl = document.getElementById('authDebugPanel');
+    if(dbgEl){
+      dbgEl.textContent = [
+        'uid:      ' + (profile.userId || '—'),
+        'doc存在:  ' + (d ? 'YES' : 'NO'),
+        'role:     ' + (d.role     !== undefined ? d.role     : '—'),
+        'status:   ' + (d.status   !== undefined ? d.status   : '—'),
+        'approved: ' + (d.approved !== undefined ? String(d.approved) : '—'),
+        'canEnter: ' + canEnter,
+        '導向:     ' + destination,
+        '時間:     ' + new Date().toLocaleTimeString(),
+      ].join('\n');
+      dbgEl.style.display = 'block'; // always visible for diagnosis
+    }
+  } catch(e){}
+
   currentUser = {
     uid:         profile.userId,
     userId:      profile.userId,
@@ -1903,7 +1933,6 @@ function _routeByStatus(d, profile){
     status:      d.status || 'pending',
   };
   if(canEnter){ _showMainApp(); return; }
-  var s = d.status || '';
   if(s === 'resigned'){ _showAuthGate('resigned'); return; }
   if(s === 'blocked'){  _showAuthGate('blocked');  return; }
   _showAuthGate('pending');
