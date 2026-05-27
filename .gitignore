@@ -20,6 +20,8 @@ build
 .env
 .env.local
 .env.*.local
+lineauth/.env
+functions/.env
 
 # Editor
 .vscode/*

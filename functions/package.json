@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Firebase Functions — Deta / 清心網球協會",
   "main": "index.js",
-  "engines": { "node": "18" },
+  "engines": { "node": "20" },
   "scripts": {
     "lint": "eslint .",
     "serve": "firebase emulators:start --only functions",

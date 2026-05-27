@@ -1042,7 +1042,7 @@ button {
       <svg width="20" height="20" viewBox="0 0 24 24" fill="white" aria-hidden="true">
         <path d="M19.365 9.89c.50 0 .75.34.75.72 0 .38-.25.72-.75.72h-1.96v1.04h1.96c.50 0 .75.34.75.72 0 .38-.25.72-.75.72h-2.68c-.50 0-.75-.34-.75-.72V8.45c0-.38.25-.72.75-.72h2.68c.50 0 .75.34.75.72 0 .38-.25.72-.75.72h-1.96v1.44h1.96zM13.88 12.2c0 .44-.30.96-.84.96-.28 0-.56-.12-.76-.40l-2.32-3.10v2.54c0 .54-.36.96-.88.96s-.88-.42-.88-.96V8.45c0-.54.36-.96.88-.96.28 0 .56.14.78.44l2.30 3.08V8.45c0-.54.36-.96.88-.96s.84.42.84.96v3.75zM7.06 12.2c0 .54-.38.96-.90.96s-.90-.42-.90-.96V8.45c0-.54.38-.96.90-.96s.90.42.90.96v3.75zM2.50 12.2c0 .38-.25.72-.75.72H-.93c-.50 0-.75-.34-.75-.72V8.45c0-.38.25-.72.75-.72s.75.34.75.72v3.03h1.18c.50 0 .75.34.75.72z"/>
       </svg>
-      使用 LINE 登入
+      LINE Login
     </button>
     <p class="authNote">登入即視為同意本系統使用條款<br>僅供清心網球協會會員使用</p>
   </div>
@@ -1496,43 +1496,49 @@ button {
 <!-- ── Toast ── -->
 <div class="toast" id="toast"></div>
 
-<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script>
 /* ── Firebase Init ── */
+// ⚠ Replace with your chingxin-tennis project config from Firebase Console
+//   Project settings → General → Your apps → Firebase SDK snippet → Config
 const FB_CONFIG = {
-  apiKey:"AIzaSyBrqZAvkN57jGx5LNOMtquWzK3YQ1QLFQ",
-  authDomain:"court-board-c1e29.firebaseapp.com",
-  projectId:"court-board-c1e29",
-  storageBucket:"court-board-c1e29.firebasestorage.app",
-  messagingSenderId:"337148491014",
-  appId:"1:337148491014:web:33cab9162b64afad045a87"
+  apiKey:            "REPLACE_WITH_CHINGXIN_TENNIS_API_KEY",
+  authDomain:        "chingxin-tennis.firebaseapp.com",
+  projectId:         "chingxin-tennis",
+  storageBucket:     "chingxin-tennis.firebasestorage.app",
+  messagingSenderId: "REPLACE_WITH_SENDER_ID",
+  appId:             "REPLACE_WITH_APP_ID",
 };
-const LIFF_ID = '2009941241-ymtu2MdM';
-var db, auth, functions;
+
+var db, auth;
 try {
   firebase.initializeApp(FB_CONFIG);
-  db = firebase.firestore();
+  db   = firebase.firestore();
   auth = firebase.auth();
-  functions = firebase.app().functions('asia-east1');
 } catch(e){ console.warn('Firebase init failed:', e); }
 const TS = () => db ? firebase.firestore.FieldValue.serverTimestamp() : new Date();
 const ROLE_LABELS = {owner:'擁有者',admin:'管理員',annual_member:'年費會員',monthly_member:'月費會員',coach:'教練',pending:'待審核'};
 
 /* ══════════════════════════════════════════════
-   AUTH FLOW — LINE Login + Firebase Custom Token
+   AUTH FLOW — Firebase Auth + OIDC (oidc.line)
    ══════════════════════════════════════════════
-   Flow:
-   1. liff.init() → liff.login() if not logged in
-   2. liff.getIDToken() → send to Firebase Function
-   3. Function verifies with LINE, writes Firestore member, returns customToken
-   4. auth.signInWithCustomToken() → onAuthStateChanged
-   5. Read members/{uid} → route by status
+   Prerequisite: Firebase Console → Authentication → Sign-in providers
+                 → Add new provider → OpenID Connect → provider ID: oidc.line
+                 Set LINE Login channel ID + secret there.
 
-   DEV bypass: if DEV_ROLE is set, skip all auth and use mock currentUser.
+   Flow (page load):
+     initAuth() → auth.onAuthStateChanged
+       → user exists  → _loadMemberAndRoute(fbUser)
+       → user absent  → show login screen
+
+   Flow (button click):
+     _doLineLogin() → signInWithPopup(oidc.line)
+       → success  → _upsertAndRoute(fbUser)  [write member first, then route]
+       → error    → show login screen
+
+   DEV bypass: DEV_ROLE set → skip auth gate entirely.
    ══════════════════════════════════════════════ */
 
 function _showAuthGate(state){
@@ -1550,7 +1556,6 @@ function _showAuthGate(state){
 function _showMainApp(){
   var gate = document.getElementById('authGate');
   if(gate) gate.style.display = 'none';
-  // Fire all initial renders
   render();
   renderDayView();
   startNowLineTicker();
@@ -1559,96 +1564,129 @@ function _showMainApp(){
   renderFinance();
 }
 
-async function initAuth(){
-  // ── DEV bypass ──────────────────────────────
+function initAuth(){
+  // ── DEV bypass ─────────────────────────────────────────────────────
   if(DEV_ROLE){
-    // Keep currentUser null; isAdminLike() falls back to DEV_ROLE automatically
     _showMainApp();
     return;
   }
-  // ─────────────────────────────────────────────
+  // ───────────────────────────────────────────────────────────────────
+  if(!auth){ _showAuthGate('login'); return; }
   _showAuthGate('loading');
 
-  // Initialise LIFF
-  try {
-    await liff.init({ liffId: LIFF_ID });
-  } catch(e){
-    console.error('[Auth] LIFF init failed:', e);
-    _showAuthGate('login');
-    return;
-  }
-
-  // Watch Firebase Auth state
-  if(!auth){ _showAuthGate('login'); return; }
+  // Observe persistent Firebase Auth state (handles page refresh / re-open)
   auth.onAuthStateChanged(function(fbUser){
     if(fbUser){
-      _loadMemberAndRoute(fbUser.uid);
+      _loadMemberAndRoute(fbUser);
     } else {
-      if(typeof liff !== 'undefined' && liff.isLoggedIn && liff.isLoggedIn()){
-        _liffExchangeToken();
-      } else {
-        _showAuthGate('login');
-      }
+      _showAuthGate('login');
     }
   });
 }
 
-async function _liffExchangeToken(){
+// Called on page load when Firebase Auth already has a logged-in user.
+// Reads the existing member doc and routes by status — does NOT re-write.
+async function _loadMemberAndRoute(fbUser){
+  if(!db){ _showMainApp(); return; }
   try {
-    var idToken = liff.getIDToken();
-    if(!idToken){ _showAuthGate('login'); return; }
-    if(!functions){ throw new Error('Firebase Functions not initialised'); }
-    var createFirebaseToken = functions.httpsCallable('createFirebaseToken');
-    var result = await createFirebaseToken({ idToken: idToken });
-    var customToken = result.data.customToken;
-    await auth.signInWithCustomToken(customToken);
-    // onAuthStateChanged fires → _loadMemberAndRoute()
+    var snap = await db.collection('members').doc(fbUser.uid).get();
+    if(!snap.exists){
+      // Member doc missing — treat as first-time (edge case)
+      await _upsertAndRoute(fbUser);
+      return;
+    }
+    _routeByStatus(snap.data(), fbUser);
   } catch(e){
-    console.error('[Auth] Token exchange failed:', e);
+    console.error('[Auth] Member load failed:', e);
+    _showMainApp(); // graceful fallback — mock data active
+  }
+}
+
+// Called after signInWithPopup succeeds.
+// Writes / updates the member doc first, then routes.
+async function _upsertAndRoute(fbUser){
+  if(!db){ _showMainApp(); return; }
+  try {
+    var memberRef = db.collection('members').doc(fbUser.uid);
+    var snap = await memberRef.get();
+    var now  = firebase.firestore.FieldValue.serverTimestamp();
+
+    if(!snap.exists){
+      // First login — pending until admin approves
+      await memberRef.set({
+        uid:         fbUser.uid,
+        displayName: fbUser.displayName || '',
+        photoURL:    fbUser.photoURL    || '',
+        status:      'pending',
+        role:        'member',
+        createdAt:   now,
+        approvedAt:  null,
+        approvedBy:  null,
+        lastLoginAt: now,
+      });
+      console.info('[Auth] New member created:', fbUser.uid, fbUser.displayName);
+      // Re-read to get the written data
+      snap = await memberRef.get();
+    } else {
+      // Returning user — refresh display info only; never overwrite status/role
+      await memberRef.update({
+        displayName: fbUser.displayName || '',
+        photoURL:    fbUser.photoURL    || '',
+        lastLoginAt: now,
+      });
+      snap = await memberRef.get();
+    }
+    _routeByStatus(snap.data(), fbUser);
+  } catch(e){
+    console.error('[Auth] Upsert failed:', e);
     _showAuthGate('login');
   }
 }
 
-async function _loadMemberAndRoute(uid){
-  if(!db){ _showMainApp(); return; }
-  try {
-    var snap = await db.collection('members').doc(uid).get();
-    if(!snap.exists){ _showAuthGate('login'); return; }
-    var d = snap.data();
-    currentUser = {
-      uid: d.uid,
-      lineUserId: d.lineUserId,
-      displayName: d.displayName,
-      pictureUrl: d.pictureUrl || '',
-      role: d.role || 'member',
-      status: d.status,
-    };
-    switch(d.status){
-      case 'active':   _showMainApp(); break;
-      case 'pending':  _showAuthGate('pending'); break;
-      case 'resigned': _showAuthGate('resigned'); break;
-      case 'blocked':  _showAuthGate('blocked'); break;
-      default:         _showAuthGate('login');
-    }
-  } catch(e){
-    console.error('[Auth] Member load failed:', e);
-    _showMainApp(); // graceful fallback — mock data will be used
+// Shared routing logic used by both load and upsert paths.
+function _routeByStatus(d, fbUser){
+  currentUser = {
+    uid:         fbUser.uid,
+    userId:      fbUser.uid,      // backward-compat alias
+    id:          fbUser.uid,      // backward-compat alias
+    displayName: d.displayName || fbUser.displayName || '',
+    name:        d.displayName || fbUser.displayName || '', // backward-compat
+    photoURL:    d.photoURL    || fbUser.photoURL    || '',
+    pictureUrl:  d.photoURL    || fbUser.photoURL    || '', // backward-compat
+    role:        d.role   || 'member',
+    status:      d.status || 'pending',
+  };
+  switch(d.status){
+    case 'active':   _showMainApp(); break;
+    case 'pending':  _showAuthGate('pending'); break;
+    case 'resigned': _showAuthGate('resigned'); break;
+    case 'blocked':  _showAuthGate('blocked'); break;
+    default:         _showAuthGate('pending');
   }
 }
 
 function _doLineLogin(){
-  if(typeof liff !== 'undefined' && liff.login){
-    liff.login();
-  }
+  if(!auth){ return; }
+  var provider = new firebase.auth.OAuthProvider('oidc.line');
+  // Request LINE scopes — these must be enabled in the OIDC provider config
+  provider.addScope('profile');
+  provider.addScope('openid');
+  auth.signInWithPopup(provider)
+    .then(function(result){
+      return _upsertAndRoute(result.user);
+    })
+    .catch(function(err){
+      // popup_closed_by_user is normal (user closed popup) — don't show error
+      if(err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request'){
+        console.error('[Auth] signInWithPopup failed:', err.code, err.message);
+      }
+      _showAuthGate('login');
+    });
 }
 
 function _doLogout(){
   currentUser = null;
   if(auth) auth.signOut().catch(function(){});
-  if(typeof liff !== 'undefined' && liff.isLoggedIn && liff.isLoggedIn()){
-    liff.logout(); // redirects page — no further code runs after this
-    return;
-  }
   _showAuthGate('login');
 }
 /* ══ end auth flow ══ */
