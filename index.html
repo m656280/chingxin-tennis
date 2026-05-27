@@ -1498,25 +1498,42 @@ button {
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script type="module">
+/* ── Firebase Auth (modular SDK) ─────────────────────────────────────
+   Imported as ES module; exposes helpers to window so the classic
+   script block below can call them without a build step.
+   getAuth() reuses the default app already initialised by
+   firebase-app-compat.js above.
+   ──────────────────────────────────────────────────────────────────── */
+import { getAuth, signInWithPopup, OAuthProvider,
+         onAuthStateChanged, signOut }
+  from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js';
+
+const auth = getAuth();
+window._firebaseAuth       = auth;
+window._signInWithPopup    = signInWithPopup;
+window._OAuthProvider      = OAuthProvider;
+window._onAuthStateChanged = onAuthStateChanged;
+window._signOut            = signOut;
+window.dispatchEvent(new Event('firebaseAuthReady'));
+</script>
 <script>
 /* ── Firebase Init ── */
 // ⚠ Replace with your chingxin-tennis project config from Firebase Console
 //   Project settings → General → Your apps → Firebase SDK snippet → Config
 const FB_CONFIG = {
-  apiKey:            "REPLACE_WITH_CHINGXIN_TENNIS_API_KEY",
+  apiKey:            "AIzaSyC9EE8rQN-hiJUYBthcvumf-DKerfMwRYg",
   authDomain:        "chingxin-tennis.firebaseapp.com",
   projectId:         "chingxin-tennis",
   storageBucket:     "chingxin-tennis.firebasestorage.app",
-  messagingSenderId: "REPLACE_WITH_SENDER_ID",
-  appId:             "REPLACE_WITH_APP_ID",
+  messagingSenderId: "631543657695",
+  appId:             "1:631543657695:web:348bdcc19bace490c6256a",
 };
 
-var db, auth;
+var db;
 try {
   firebase.initializeApp(FB_CONFIG);
-  db   = firebase.firestore();
-  auth = firebase.auth();
+  db = firebase.firestore();
 } catch(e){ console.warn('Firebase init failed:', e); }
 const TS = () => db ? firebase.firestore.FieldValue.serverTimestamp() : new Date();
 const ROLE_LABELS = {owner:'擁有者',admin:'管理員',annual_member:'年費會員',monthly_member:'月費會員',coach:'教練',pending:'待審核'};
@@ -1570,12 +1587,16 @@ function initAuth(){
     _showMainApp();
     return;
   }
+  // ── Wait for modular auth module to finish loading ──────────────────
+  if(!window._firebaseAuth){
+    window.addEventListener('firebaseAuthReady', initAuth, {once:true});
+    return;
+  }
   // ───────────────────────────────────────────────────────────────────
-  if(!auth){ _showAuthGate('login'); return; }
   _showAuthGate('loading');
 
   // Observe persistent Firebase Auth state (handles page refresh / re-open)
-  auth.onAuthStateChanged(function(fbUser){
+  window._onAuthStateChanged(window._firebaseAuth, function(fbUser){
     if(fbUser){
       _loadMemberAndRoute(fbUser);
     } else {
@@ -1666,12 +1687,12 @@ function _routeByStatus(d, fbUser){
 }
 
 function _doLineLogin(){
-  if(!auth){ return; }
-  var provider = new firebase.auth.OAuthProvider('oidc.line');
+  if(!window._firebaseAuth){ return; }
+  var provider = new window._OAuthProvider('oidc.line');
   // Request LINE scopes — these must be enabled in the OIDC provider config
   provider.addScope('profile');
   provider.addScope('openid');
-  auth.signInWithPopup(provider)
+  window._signInWithPopup(window._firebaseAuth, provider)
     .then(function(result){
       return _upsertAndRoute(result.user);
     })
@@ -1686,7 +1707,7 @@ function _doLineLogin(){
 
 function _doLogout(){
   currentUser = null;
-  if(auth) auth.signOut().catch(function(){});
+  if(window._firebaseAuth) window._signOut(window._firebaseAuth).catch(function(){});
   _showAuthGate('login');
 }
 /* ══ end auth flow ══ */
