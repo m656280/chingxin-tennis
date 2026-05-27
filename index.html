@@ -1006,8 +1006,6 @@ button {
 .authBrandSub { font-size:10px; letter-spacing:0.14em; color:var(--color-text-muted); text-transform:uppercase; }
 .authLineBtn { display:inline-flex; align-items:center; gap:10px; padding:14px 28px; border-radius:12px; background:#06C755; color:#fff; border:none; font-size:15px; letter-spacing:0.04em; cursor:pointer; font-family:var(--font-body); box-shadow:0 2px 16px rgba(6,199,85,0.25); transition:opacity 150ms; margin-top:40px; }
 .authLineBtn:active { opacity:0.8; }
-.authSafariBtn { display:inline-block; padding:13px 32px; border-radius:12px; background:var(--color-text-primary); color:var(--color-bg); border:none; font-size:15px; letter-spacing:0.06em; cursor:pointer; font-family:var(--font-body); box-shadow:0 2px 12px rgba(0,0,0,0.14); transition:opacity 150ms; }
-.authSafariBtn:active { opacity:0.75; }
 .authStateIcon { font-size:38px; margin-bottom:20px; }
 .authStateTitle { font-family:var(--font-display); font-size:21px; color:var(--color-text-primary); margin-bottom:10px; letter-spacing:0.03em; }
 .authStateDesc { font-size:13px; color:var(--color-text-muted); line-height:1.85; }
@@ -1052,25 +1050,6 @@ button {
       <p class="authNote">登入即視為同意本系統使用條款<br>僅供清心網球協會會員使用</p>
     </div>
 
-    <!-- LINE in-app browser (sessionStorage isolated — OAuth cannot complete) -->
-    <div id="authLoginLineWebview" style="display:none;text-align:center">
-      <p style="font-size:13px;color:var(--color-text-secondary);line-height:1.85;margin-bottom:8px">
-        LINE 內建瀏覽器不支援 OAuth 登入
-      </p>
-      <p style="font-size:13px;color:var(--color-text-primary);font-weight:600;margin-bottom:28px">
-        請在外部瀏覽器（Safari）開啟後登入
-      </p>
-      <!-- Primary: x-safari: scheme auto-opens Safari on iOS -->
-      <button class="authSafariBtn" onclick="_openInSafari()">
-        在 Safari 開啟
-      </button>
-      <!-- Fallback instructions if the button doesn't work -->
-      <p style="font-size:11.5px;color:var(--color-text-muted);margin-top:24px;line-height:2">
-        若按鈕無效，請點右上角<br>
-        <strong style="color:var(--color-text-primary)">···</strong>
-        →「在瀏覽器中開啟」
-      </p>
-    </div>
   </div>
   <!-- Pending -->
   <div id="authPendingScreen" class="authCenter" style="display:none">
@@ -1482,70 +1461,49 @@ button {
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script>
 /* ── Firebase Init ── */
-// ⚠ Replace with your chingxin-tennis project config from Firebase Console
-//   Project settings → General → Your apps → Firebase SDK snippet → Config
 const FB_CONFIG = {
   apiKey:            "AIzaSyC9EE8rQN-hiJUYBthcvumf-DKerfMwRYg",
-  // Use the .web.app hosting domain so the entire OAuth callback stays
-  // on the same origin — prevents sessionStorage loss in LINE WebView.
-  authDomain:        "chingxin-tennis.web.app",
   projectId:         "chingxin-tennis",
   storageBucket:     "chingxin-tennis.firebasestorage.app",
   messagingSenderId: "631543657695",
   appId:             "1:631543657695:web:348bdcc19bace490c6256a",
 };
 
-var db, auth;
+// ⚠ 填入你在 LINE Developers Console 建立的 LIFF App ID
+// Messaging API channel → LIFF → 新增 LIFF 應用程式
+const LIFF_ID = '2010122854-usyGQhHI';
+
+var db;
 try {
   firebase.initializeApp(FB_CONFIG);
-  db   = firebase.firestore();
-  auth = firebase.auth();
+  db = firebase.firestore();
 } catch(e){
   console.error('[Firebase] Init failed:', e);
 }
 const TS = () => db ? firebase.firestore.FieldValue.serverTimestamp() : new Date();
 const ROLE_LABELS = {owner:'擁有者',admin:'管理員',annual_member:'年費會員',monthly_member:'月費會員',coach:'教練',pending:'待審核'};
 
-/* ── Browser / UA detection ──────────────────────────────────────────
-   In-app browsers (LINE, Facebook, Instagram, Claude, WeChat, etc.) cannot
-   complete Firebase OAuth redirect reliably — sessionStorage is isolated or
-   cleared between origins.  These users are shown "Open in Safari" instead.
-   Safari / Chrome on iOS and desktop browsers use signInWithRedirect normally.
-   ─────────────────────────────────────────────────────────────────── */
-var _isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-// Detect common in-app browsers that break OAuth redirect
-var _isInAppBrowser = (function(){
-  var ua = navigator.userAgent;
-  return /Line\//i.test(ua)        // LINE
-      || /FBAN|FBAV|FB_IAB/i.test(ua)  // Facebook
-      || /Instagram/i.test(ua)     // Instagram
-      || /MicroMessenger/i.test(ua)// WeChat
-      || /Claude/i.test(ua)        // Claude app
-      || /GSA\//i.test(ua);        // Google Search App (iOS)
-})();
-var _isLine   = _isInAppBrowser;   // alias kept for existing _showAuthGate logic
-var _usePopup = false;             // always signInWithRedirect; popup not used
+// LIFF handles its own auth — no manual UA detection needed
 
 /* ══════════════════════════════════════════════
-   AUTH FLOW — Firebase Auth + OIDC (oidc.line)
+   AUTH FLOW — LIFF SDK
    ══════════════════════════════════════════════
-   Prerequisite: Firebase Console → Authentication → Sign-in providers
-                 → Add new provider → OpenID Connect → provider ID: oidc.line
-                 Set LINE Login channel ID + secret there.
-
    Flow (page load):
-     initAuth() → auth.onAuthStateChanged
-       → user exists  → _loadMemberAndRoute(fbUser)
-       → user absent  → show login screen
+     initAuth()
+       DEV_ROLE set          → skip to main app
+       liff.init()
+         liff.isLoggedIn()   → liff.getProfile() → _upsertAndRoute(profile)
+         not logged in       → show login screen
 
    Flow (button click):
-     _doLineLogin() → signInWithPopup  (iOS / LINE browser)
-                  → signInWithRedirect (desktop / Android)
-       → success  → _upsertAndRoute(fbUser)  [write member first, then route]
-       → error    → show login screen
+     _doLineLogin() → liff.login()  (redirects to LINE, returns to this page)
+     On return      → initAuth() runs again, liff.isLoggedIn() is true
+
+   Logout:
+     _doLogout() → liff.logout() → show login screen
 
    DEV bypass: DEV_ROLE set → skip auth gate entirely.
    ══════════════════════════════════════════════ */
@@ -1560,38 +1518,6 @@ function _showAuthGate(state){
   });
   var target = document.getElementById('auth' + state.charAt(0).toUpperCase() + state.slice(1) + 'Screen');
   if(target) target.style.display = 'flex';
-
-  // On login screen: show LINE WebView fallback if in LINE's in-app browser,
-  // otherwise show normal login button.
-  if(state === 'login'){
-    var normal  = document.getElementById('authLoginNormal');
-    var lineWV  = document.getElementById('authLoginLineWebview');
-    if(normal && lineWV){
-      var inLineWebview = _isLine; // covers both iOS and Android LINE
-      normal.style.display = inLineWebview ? 'none'  : 'block';
-      lineWV.style.display = inLineWebview ? 'block' : 'none';
-    }
-  }
-}
-
-function _openInSafari() {
-  const url = 'https://chingxin-tennis.web.app/';
-
-  const isIOS     = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-  const isAndroid = /Android/i.test(navigator.userAgent);
-
-  if (isIOS) {
-    window.location.href = 'x-safari-' + url;
-    return;
-  }
-
-  if (isAndroid) {
-    window.location.href =
-      'intent://chingxin-tennis.web.app/#Intent;scheme=https;package=com.android.chrome;end';
-    return;
-  }
-
-  window.open(url, '_blank');
 }
 
 function _showMainApp(){
@@ -1734,232 +1660,154 @@ function _dbg(label, detail){
 }
 function _setDebug(msg){ _dbg('NOTE', msg); }
 
+/* ── LIFF auth flow ──────────────────────────────────────────────── */
+
 function initAuth(){
-  // ── DEV bypass ─────────────────────────────────────────────────────
   if(DEV_ROLE){ _showMainApp(); return; }
-
   _showAuthGate('loading');
-  _dbg('initAuth start');
-  _dbg('UA', navigator.userAgent.slice(0, 120));
-  _dbg('isIOS', _isIOS);
-  _dbg('isLine', _isLine);
-  _dbg('usePopup', _usePopup);
-  _dbg('auth obj', !!auth);
+  _dbg('initAuth LIFF start');
 
-  // ── Guard: Firebase init failed ─────────────────────────────────────
-  if(!auth){
-    _dbg('ERROR auth null — Firebase init failed');
+  if(!LIFF_ID || LIFF_ID === 'YOUR_LIFF_ID'){
+    _dbg('ERROR LIFF_ID not set');
     _showAuthGate('login');
     return;
   }
 
-  /* ── _settle: first resolution wins ──────────────────────────────── */
-  var _done   = false;
-  var _authTO = setTimeout(function(){
-    _dbg('TIMEOUT 10s — forcing login screen');
-    _settle(function(){ _showAuthGate('login'); });
-  }, 10000);
-
-  function _settle(fn){
-    if(_done){ _dbg('_settle skipped (already done)'); return; }
-    _done = true;
-    clearTimeout(_authTO);
-    _dbg('_settle → executing');
-    fn();
-  }
-
-  // ── Step 1: getRedirectResult ───────────────────────────────────────
-  _dbg('getRedirectResult calling…');
-  auth.getRedirectResult()
-    .then(function(result){
-      _dbg('getRedirectResult resolved', result && result.user ? ('uid:'+result.user.uid) : 'null');
-      if(result && result.user){
-        _settle(function(){ _upsertAndRoute(result.user); });
+  liff.init({ liffId: LIFF_ID })
+    .then(function(){
+      _dbg('liff.init OK, isLoggedIn:' + liff.isLoggedIn());
+      if(liff.isLoggedIn()){
+        return liff.getProfile();
+      } else {
+        _showAuthGate('login');
+        return null;
       }
-      // null result → onAuthStateChanged handles it
+    })
+    .then(function(profile){
+      if(!profile) return;
+      _dbg('liff.getProfile OK uid:' + profile.userId);
+      _upsertAndRoute(profile);
     })
     .catch(function(err){
-      _dbg('getRedirectResult ERROR', err.code + ' ' + err.message);
-      // non-fatal: let onAuthStateChanged still run
+      _dbg('LIFF error', String(err.message || err));
+      _showAuthGate('login');
     });
-
-  // ── Step 2: onAuthStateChanged ─────────────────────────────────────
-  _dbg('onAuthStateChanged registering…');
-  auth.onAuthStateChanged(function(fbUser){
-    _dbg('onAuthStateChanged fired', fbUser ? ('uid:'+fbUser.uid) : 'null (signed out)');
-    if(fbUser){
-      _settle(function(){ _loadMemberAndRoute(fbUser); });
-    } else {
-      _settle(function(){ _showAuthGate('login'); });
-    }
-  }, function(err){
-    _dbg('onAuthStateChanged ERROR', err.code + ' ' + err.message);
-    _settle(function(){ _showAuthGate('login'); });
-  });
 }
 
-// Called on page load when Firebase Auth already has a logged-in user.
-// Reads the existing member doc and routes by status — does NOT re-write.
-async function _loadMemberAndRoute(fbUser){
-  _dbg('_loadMemberAndRoute start', 'uid:'+fbUser.uid);
-  if(!db){
-    _dbg('_loadMemberAndRoute no db — _showMainApp fallback');
-    _showMainApp(); return;
-  }
+// profile: { userId, displayName, pictureUrl }
+// Writes / updates members/{userId} then routes by status.
+async function _upsertAndRoute(profile){
+  var uid = profile.userId;
+  _dbg('_upsertAndRoute start uid:' + uid);
+  if(!db){ _showMainApp(); return; }
   try {
-    var snap = await db.collection('members').doc(fbUser.uid).get();
-    _dbg('_loadMemberAndRoute Firestore read', snap.exists ? 'exists status:'+snap.data().status : 'NOT FOUND');
-    if(!snap.exists){
-      _dbg('_loadMemberAndRoute → _upsertAndRoute (doc missing)');
-      await _upsertAndRoute(fbUser);
-      return;
-    }
-    _routeByStatus(snap.data(), fbUser);
-  } catch(e){
-    _dbg('_loadMemberAndRoute ERROR', e.message || String(e));
-    _showMainApp(); // graceful fallback
-  }
-}
-
-// Called after sign-in succeeds (popup or redirect).
-// Writes / updates the member doc first, then routes.
-async function _upsertAndRoute(fbUser){
-  _dbg('_upsertAndRoute start', 'uid:'+fbUser.uid+' name:'+(fbUser.displayName||'—'));
-  if(!db){
-    _dbg('_upsertAndRoute no db — _showMainApp fallback');
-    _showMainApp(); return;
-  }
-  try {
-    var memberRef = db.collection('members').doc(fbUser.uid);
-    _dbg('_upsertAndRoute Firestore read…');
+    var memberRef = db.collection('members').doc(uid);
     var snap = await memberRef.get();
     var now  = firebase.firestore.FieldValue.serverTimestamp();
-    _dbg('_upsertAndRoute Firestore read done', snap.exists ? 'exists status:'+snap.data().status : 'NOT FOUND');
 
     if(!snap.exists){
-      _dbg('_upsertAndRoute creating new member');
-      // Check if any admin/owner already exists; if not, bootstrap as admin
+      // Bootstrap: first user with no active admin becomes admin
       var isFirstAdmin = false;
       try {
         var adminQ = await db.collection('members')
-          .where('role', 'in', ['admin', 'owner'])
+          .where('role', 'in', ['admin','owner'])
           .where('status', '==', 'active')
           .limit(1).get();
         isFirstAdmin = adminQ.empty;
-      } catch(qe){ _dbg('bootstrap query error', qe.message); }
+      } catch(qe){ _dbg('bootstrap query err', qe.message); }
 
       await memberRef.set({
-        uid:         fbUser.uid,
-        displayName: fbUser.displayName || '',
-        photoURL:    fbUser.photoURL    || '',
-        status:      isFirstAdmin ? 'active'  : 'pending',
-        role:        isFirstAdmin ? 'admin'   : 'member',
+        uid:         uid,
+        displayName: profile.displayName || '',
+        photoURL:    profile.pictureUrl  || '',
+        status:      isFirstAdmin ? 'active' : 'pending',
+        role:        isFirstAdmin ? 'admin'  : 'member',
         createdAt:   now,
         approvedAt:  isFirstAdmin ? now : null,
         approvedBy:  isFirstAdmin ? 'bootstrap' : null,
         lastLoginAt: now,
       });
-      _dbg('_upsertAndRoute member created', isFirstAdmin ? 'admin/active (bootstrap)' : 'pending');
+      _dbg('created', isFirstAdmin ? 'admin/active' : 'pending');
       snap = await memberRef.get();
+
     } else {
-      _dbg('_upsertAndRoute updating existing member');
-      var existingData = snap.data();
-      // Bootstrap: if still pending and no active admin exists, promote this account
-      if(existingData.status === 'pending'){
+      var d0 = snap.data();
+      if(d0.status === 'pending'){
+        // Bootstrap: promote to admin if still no active admin
         try {
           var adminQ2 = await db.collection('members')
-            .where('role', 'in', ['admin', 'owner'])
+            .where('role', 'in', ['admin','owner'])
             .where('status', '==', 'active')
             .limit(1).get();
           if(adminQ2.empty){
             await memberRef.update({
-              status:     'active',
-              role:       'admin',
-              approvedAt: now,
-              approvedBy: 'bootstrap',
-              displayName: fbUser.displayName || '',
-              photoURL:    fbUser.photoURL    || '',
+              status: 'active', role: 'admin',
+              approvedAt: now, approvedBy: 'bootstrap',
+              displayName: profile.displayName || '',
+              photoURL:    profile.pictureUrl  || '',
               lastLoginAt: now,
             });
-            _dbg('_upsertAndRoute bootstrap promoted existing pending → admin/active');
-            snap = await memberRef.get();
+            _dbg('bootstrap promoted pending → admin/active');
           } else {
             await memberRef.update({
-              displayName: fbUser.displayName || '',
-              photoURL:    fbUser.photoURL    || '',
+              displayName: profile.displayName || '',
+              photoURL:    profile.pictureUrl  || '',
               lastLoginAt: now,
             });
-            snap = await memberRef.get();
           }
         } catch(qe2){
-          _dbg('bootstrap promote error', qe2.message);
-          await memberRef.update({ displayName: fbUser.displayName || '', photoURL: fbUser.photoURL || '', lastLoginAt: now });
-          snap = await memberRef.get();
+          await memberRef.update({ displayName: profile.displayName || '', photoURL: profile.pictureUrl || '', lastLoginAt: now });
         }
       } else {
         await memberRef.update({
-          displayName: fbUser.displayName || '',
-          photoURL:    fbUser.photoURL    || '',
+          displayName: profile.displayName || '',
+          photoURL:    profile.pictureUrl  || '',
           lastLoginAt: now,
         });
-        snap = await memberRef.get();
       }
+      snap = await memberRef.get();
     }
-    _dbg('_upsertAndRoute final status', snap.data().status + ' role:' + snap.data().role);
-    _routeByStatus(snap.data(), fbUser);
+
+    _routeByStatus(snap.data(), profile);
   } catch(e){
-    _dbg('_upsertAndRoute ERROR', e.code + ' ' + e.message);
+    _dbg('_upsertAndRoute ERROR', e.message || String(e));
     _showAuthGate('login');
   }
 }
 
-// Shared routing logic.
-function _routeByStatus(d, fbUser){
-  _dbg('_routeByStatus', 'status:'+d.status+' role:'+d.role);
+// profile: { userId, displayName, pictureUrl }
+function _routeByStatus(d, profile){
+  _dbg('_routeByStatus status:' + d.status + ' role:' + d.role);
   currentUser = {
-    uid:         fbUser.uid,
-    userId:      fbUser.uid,
-    id:          fbUser.uid,
-    displayName: d.displayName || fbUser.displayName || '',
-    name:        d.displayName || fbUser.displayName || '',
-    photoURL:    d.photoURL    || fbUser.photoURL    || '',
-    pictureUrl:  d.photoURL    || fbUser.photoURL    || '',
+    uid:         profile.userId,
+    userId:      profile.userId,
+    id:          profile.userId,
+    displayName: d.displayName || profile.displayName || '',
+    name:        d.displayName || profile.displayName || '',
+    photoURL:    d.photoURL    || profile.pictureUrl  || '',
+    pictureUrl:  d.photoURL    || profile.pictureUrl  || '',
     role:        d.role   || 'member',
     status:      d.status || 'pending',
   };
-  _dbg('_routeByStatus → case', d.status);
   switch(d.status){
     case 'active':   _showMainApp(); break;
     case 'pending':  _showAuthGate('pending'); break;
     case 'resigned': _showAuthGate('resigned'); break;
     case 'blocked':  _showAuthGate('blocked'); break;
-    default:         _dbg('_routeByStatus unknown status → pending'); _showAuthGate('pending');
+    default:         _showAuthGate('pending');
   }
 }
 
+// Called by LINE Login button — triggers LIFF login redirect
 function _doLineLogin(){
-  if(!auth){ _dbg('ERROR auth null on _doLineLogin'); return; }
-  // Guard: should never be called from in-app browsers, but double-check
-  if(_isInAppBrowser){ _showAuthGate('login'); return; }
-  _dbg('_doLineLogin called');
-
-  var provider = new firebase.auth.OAuthProvider('oidc.line');
-  provider.addScope('profile');
-  provider.addScope('openid');
-  _showAuthGate('loading');
-
-  _dbg('signInWithRedirect starting…');
-  auth.signInWithRedirect(provider)
-    .catch(function(err){
-      _dbg('signInWithRedirect ERROR', err.code + ' ' + err.message);
-      _showAuthGate('login');
-    });
+  _dbg('_doLineLogin → liff.login()');
+  liff.login();
 }
 
 function _doLogout(){
-  _dbg('_doLogout called');
+  _dbg('_doLogout → liff.logout()');
   currentUser = null;
-  if(auth) auth.signOut().catch(function(){});
+  try { liff.logout(); } catch(e){}
   _showAuthGate('login');
 }
 /* ══ end auth flow ══ */
