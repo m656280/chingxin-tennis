@@ -1662,43 +1662,163 @@ function _setDebug(msg){ _dbg('NOTE', msg); }
 
 /* ── LIFF auth flow ──────────────────────────────────────────────── */
 
-function initAuth(){
+/* ── Temporary debug panel — remove after auth is confirmed working ── */
+var _liffDebugLines = [];
+function _liffDbg(label, val){
+  var line = label + ': ' + String(val !== undefined ? val : '—');
+  console.log('[LIFF]', line);
+  _liffDebugLines.push(line);
+}
+function _showLiffDebug(){
+  _showAuthGate('login');
+  var existing = document.getElementById('liffDebugPanel');
+  if(existing) existing.remove();
+  var pre = document.createElement('pre');
+  pre.id = 'liffDebugPanel';
+  pre.style.cssText = [
+    'margin:20px 24px 0','padding:12px 14px',
+    'background:rgba(0,0,0,0.05)','border-radius:10px',
+    'font-size:10.5px','line-height:1.65','font-family:monospace',
+    'color:#333','white-space:pre-wrap','word-break:break-all',
+    'text-align:left','max-height:50vh','overflow-y:auto',
+  ].join(';');
+  pre.textContent = _liffDebugLines.join('\n');
+  var loginScreen = document.getElementById('authLoginScreen');
+  if(loginScreen) loginScreen.appendChild(pre);
+}
+/* ── end debug ── */
+
+const LS_UID_KEY = 'cxts_uid'; // localStorage: cached LINE userId for fast session resume
+
+// Fast path: if localStorage has a known UID and Firestore says status=active,
+// skip LIFF init entirely and go straight to main app.
+async function _tryResumeSession(){
+  var uid = '';
+  try { uid = localStorage.getItem(LS_UID_KEY) || ''; } catch(e){ return false; }
+  if(!uid || !db) return false;
+  try {
+    var snap = await db.collection('members').doc(uid).get();
+    if(!snap.exists){ return false; }
+    var d = snap.data();
+    if(d.status !== 'active') return false; // pending/blocked must go through full LIFF flow
+    // Restore session from Firestore — no LIFF needed
+    var profile = { userId: uid, displayName: d.displayName || '', pictureUrl: d.photoURL || '' };
+    _routeByStatus(d, profile);
+    return true;
+  } catch(e){
+    return false; // network error → fall through to LIFF init
+  }
+}
+
+async function initAuth(){
   if(DEV_ROLE){ _showMainApp(); return; }
   _showAuthGate('loading');
-  _dbg('initAuth LIFF start');
+  _liffDebugLines = [];
+
+  // ── Fast path ───────────────────────────────────────────────────────
+  var resumed = await _tryResumeSession();
+  if(resumed) return;
+
+  // ── Slow path: full LIFF init ───────────────────────────────────────
+  _liffDbg('LIFF_ID', LIFF_ID);
+  _liffDbg('href (pre-init)', location.href);
+  _liffDbg('search', location.search || '(empty)');
+  _liffDbg('hash',   location.hash   || '(empty)');
+  _liffDbg('time',   new Date().toISOString().slice(11,23));
 
   if(!LIFF_ID || LIFF_ID === 'YOUR_LIFF_ID'){
-    _dbg('ERROR LIFF_ID not set');
-    _showAuthGate('login');
+    _liffDbg('ERROR', 'LIFF_ID not set');
+    _showLiffDebug(); return;
+  }
+
+  // Step 1: init LIFF
+  try {
+    await liff.init({ liffId: LIFF_ID });
+    _liffDbg('liff.init', 'OK');
+  } catch(e){
+    _liffDbg('liff.init ERROR', e.message || String(e));
+    _showLiffDebug(); return;
+  }
+
+  var _inClient = liff.isInClient();
+  var _loggedIn = liff.isLoggedIn();
+  _liffDbg('isInClient()', _inClient);
+  _liffDbg('isLoggedIn()', _loggedIn);
+  _liffDbg('href (post-init)', location.href);
+  _liffDbg('search (post)',    location.search || '(empty)');
+  _liffDbg('hash (post)',      location.hash   || '(empty)');
+
+  // Permanent link — LIFF canonical URL that opens inside LINE
+  var _permLink = 'https://liff.line.me/' + LIFF_ID;
+  try {
+    _permLink = liff.permanentLink.createUrl();
+    _liffDbg('permanentLink', _permLink);
+  } catch(e){
+    _liffDbg('permanentLink', _permLink + ' (fallback, err:' + (e.message||e) + ')');
+  }
+
+  // Step 2: not logged in
+  if(!_loggedIn){
+    if(!_inClient){
+      // External browser (Safari): LIFF OAuth unreliable → guide to open via LINE
+      _showLiffDebug();
+      _showOpenInLineGuide(_permLink);
+    } else {
+      // Inside LINE but not yet authorized → show login button
+      _showLiffDebug();
+    }
     return;
   }
 
-  liff.init({ liffId: LIFF_ID })
-    .then(function(){
-      _dbg('liff.init OK, isLoggedIn:' + liff.isLoggedIn());
-      if(liff.isLoggedIn()){
-        return liff.getProfile();
-      } else {
-        _showAuthGate('login');
-        return null;
-      }
-    })
-    .then(function(profile){
-      if(!profile) return;
-      _dbg('liff.getProfile OK uid:' + profile.userId);
-      _upsertAndRoute(profile);
-    })
-    .catch(function(err){
-      _dbg('LIFF error', String(err.message || err));
-      _showAuthGate('login');
-    });
+  // Step 3: get profile
+  var profile;
+  try {
+    profile = await liff.getProfile();
+    _liffDbg('getProfile uid', profile.userId);
+  } catch(e){
+    _liffDbg('getProfile ERROR', e.message || String(e));
+    _showLiffDebug(); return;
+  }
+
+  // Step 4: upsert Firestore + route
+  await _upsertAndRoute(profile);
+}
+
+// Show "open via LINE" guidance when user is in external browser
+function _showOpenInLineGuide(permLink){
+  var normal = document.getElementById('authLoginNormal');
+  if(!normal) return;
+  normal.innerHTML =
+    '<p style="font-size:13px;color:var(--color-text-secondary);text-align:center;line-height:1.9;margin-bottom:24px">' +
+      '請在 <strong style="color:var(--color-text-primary)">LINE</strong> 中開啟此系統<br>' +
+      '<span style="font-size:11px;color:var(--color-text-muted)">外部瀏覽器不支援 LIFF 登入</span>' +
+    '</p>' +
+    '<a href="' + permLink + '" class="authLineBtn" ' +
+       'style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px">' +
+      '用 LINE 開啟' +
+    '</a>' +
+    '<p class="authNote" style="margin-top:16px">' +
+      '或複製此網址在 LINE 中貼上：<br>' +
+      '<span style="font-size:10px;word-break:break-all;color:var(--color-text-muted)">' + permLink + '</span>' +
+    '</p>';
+}
+
+// Shows an error message on the login screen (non-debug path)
+function _showAuthGateError(msg){
+  _showAuthGate('login');
+  var note = document.createElement('p');
+  note.style.cssText = 'margin-top:20px;font-size:12px;color:#c0392b;text-align:center;padding:0 24px;line-height:1.6';
+  note.textContent = msg;
+  var loginScreen = document.getElementById('authLoginScreen');
+  if(loginScreen) loginScreen.appendChild(note);
 }
 
 // profile: { userId, displayName, pictureUrl }
-// Writes / updates members/{userId} then routes by status.
+// Rule: NEVER overwrite role/status of existing members.
+// New members only: role=member, status=pending.
 async function _upsertAndRoute(profile){
   var uid = profile.userId;
-  _dbg('_upsertAndRoute start uid:' + uid);
+  _liffDbg('upsert uid', uid);
   if(!db){ _showMainApp(); return; }
   try {
     var memberRef = db.collection('members').doc(uid);
@@ -1706,71 +1826,38 @@ async function _upsertAndRoute(profile){
     var now  = firebase.firestore.FieldValue.serverTimestamp();
 
     if(!snap.exists){
-      // Bootstrap: first user with no active admin becomes admin
-      var isFirstAdmin = false;
-      try {
-        var adminQ = await db.collection('members')
-          .where('role', 'in', ['admin','owner'])
-          .where('status', '==', 'active')
-          .limit(1).get();
-        isFirstAdmin = adminQ.empty;
-      } catch(qe){ _dbg('bootstrap query err', qe.message); }
-
+      // First login — create doc with safe defaults only
       await memberRef.set({
         uid:         uid,
         displayName: profile.displayName || '',
         photoURL:    profile.pictureUrl  || '',
-        status:      isFirstAdmin ? 'active' : 'pending',
-        role:        isFirstAdmin ? 'admin'  : 'member',
+        status:      'pending',
+        role:        'member',
         createdAt:   now,
-        approvedAt:  isFirstAdmin ? now : null,
-        approvedBy:  isFirstAdmin ? 'bootstrap' : null,
+        approvedAt:  null,
+        approvedBy:  null,
         lastLoginAt: now,
       });
-      _dbg('created', isFirstAdmin ? 'admin/active' : 'pending');
+      _liffDbg('created', 'pending/member');
       snap = await memberRef.get();
 
     } else {
-      var d0 = snap.data();
-      if(d0.status === 'pending'){
-        // Bootstrap: promote to admin if still no active admin
-        try {
-          var adminQ2 = await db.collection('members')
-            .where('role', 'in', ['admin','owner'])
-            .where('status', '==', 'active')
-            .limit(1).get();
-          if(adminQ2.empty){
-            await memberRef.update({
-              status: 'active', role: 'admin',
-              approvedAt: now, approvedBy: 'bootstrap',
-              displayName: profile.displayName || '',
-              photoURL:    profile.pictureUrl  || '',
-              lastLoginAt: now,
-            });
-            _dbg('bootstrap promoted pending → admin/active');
-          } else {
-            await memberRef.update({
-              displayName: profile.displayName || '',
-              photoURL:    profile.pictureUrl  || '',
-              lastLoginAt: now,
-            });
-          }
-        } catch(qe2){
-          await memberRef.update({ displayName: profile.displayName || '', photoURL: profile.pictureUrl || '', lastLoginAt: now });
-        }
-      } else {
-        await memberRef.update({
-          displayName: profile.displayName || '',
-          photoURL:    profile.pictureUrl  || '',
-          lastLoginAt: now,
-        });
-      }
+      // Existing member — only update display fields, NEVER touch role/status
+      await memberRef.update({
+        displayName: profile.displayName || '',
+        photoURL:    profile.pictureUrl  || '',
+        lastLoginAt: now,
+      });
       snap = await memberRef.get();
+      _liffDbg('updated', 'role:' + snap.data().role + ' status:' + snap.data().status);
     }
 
-    _routeByStatus(snap.data(), profile);
+    var finalData = snap.data();
+    // Cache UID for fast resume on next page load
+    try { localStorage.setItem(LS_UID_KEY, uid); } catch(e){}
+    _routeByStatus(finalData, profile);
   } catch(e){
-    _dbg('_upsertAndRoute ERROR', e.message || String(e));
+    _liffDbg('upsert ERROR', e.message || String(e));
     _showAuthGate('login');
   }
 }
@@ -1801,12 +1888,13 @@ function _routeByStatus(d, profile){
 // Called by LINE Login button — triggers LIFF login redirect
 function _doLineLogin(){
   _dbg('_doLineLogin → liff.login()');
-  liff.login();
+  // Fixed redirectUri prevents LIFF receiving unexpected query/hash params on return
+  liff.login({ redirectUri: 'https://chingxin-tennis.web.app' });
 }
 
 function _doLogout(){
-  _dbg('_doLogout → liff.logout()');
   currentUser = null;
+  try { localStorage.removeItem(LS_UID_KEY); } catch(e){}
   try { liff.logout(); } catch(e){}
   _showAuthGate('login');
 }
