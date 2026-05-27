@@ -2187,10 +2187,7 @@ function renderManage(){
 
 /* ── 待審核 tab ── */
 function _renderPendingTab(el){
-  // prefer pendingUsersFirestore; fall back to usersCache with role==='pending'
-  const pending=pendingUsersFirestore.length>0
-    ? pendingUsersFirestore
-    : Object.values(usersCache).filter(function(m){return m.role==='pending';});
+  const pending = Object.values(usersCache).filter(function(m){ return m.status==='pending'; });
 
   if(!pending.length){
     el.innerHTML+='<div class="emptyState"><div class="emptyStateIcon">✓</div>目前沒有待審核申請</div>';
@@ -2199,8 +2196,8 @@ function _renderPendingTab(el){
   let html='';
   pending.forEach(function(m){
     const initials=(m.displayName||'?').charAt(0);
-    const avatarHtml=m.lineAvatar
-      ?'<img src="'+m.lineAvatar+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'" alt="">'
+    const avatarHtml=m.photoURL
+      ?'<img src="'+m.photoURL+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'" alt="">'
       :'<svg width="40" height="40" viewBox="0 0 40 40"><rect width="40" height="40" rx="20" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="16" font-family="serif">'+initials+'</text></svg>';
     const dateStr=m.createdAt
       ?(m.createdAt.toDate?m.createdAt.toDate().toLocaleDateString('zh-TW'):String(m.createdAt))
@@ -2318,36 +2315,90 @@ function _renderCoachTab(el){
 
 /* ── 管理員設定 tab ── */
 function _renderAdminSettingsTab(el){
-  var myRole=_currentRole();
-  var isOwner=myRole==='owner';
-  var ROLE_LABEL={owner:'創辦人',admin:'管理員',coach:'教練',annual_member:'年費會員',monthly_member:'月費會員',member:'會員'};
-  var members=Object.values(usersCache).filter(function(m){
-    return m.role&&m.role!=='pending'&&m.role!=='blocked';
-  }).sort(function(a,b){
-    var ord={owner:0,admin:1,coach:2};
-    var oa=ord[a.role]!==undefined?ord[a.role]:9;
-    var ob=ord[b.role]!==undefined?ord[b.role]:9;
-    return oa!==ob?oa-ob:(a.displayName||'').localeCompare(b.displayName||'','zh-Hant');
-  });
-  if(!members.length){
-    el.innerHTML+='<div class="emptyState"><div class="emptyStateIcon">—</div>尚無資料</div>';
-    return;
+  var myRole  = _currentRole();
+  var isOwner = myRole === 'owner';
+  var MAX_ADMIN = 8;
+  var all       = Object.values(usersCache);
+  var ownerList = all.filter(function(m){ return m.role==='owner'; });
+  var adminList = all.filter(function(m){ return m.role==='admin'; })
+    .sort(function(a,b){ return (a.displayName||'').localeCompare(b.displayName||'','zh-Hant'); });
+  var promotable = isOwner
+    ? all.filter(function(m){ return m.status==='active' && m.role!=='owner' && m.role!=='admin'; })
+        .sort(function(a,b){ return (a.displayName||'').localeCompare(b.displayName||'','zh-Hant'); })
+    : [];
+  var adminCount  = adminList.length;
+  var adminRemain = MAX_ADMIN - adminCount;
+
+  function _av(m){
+    if(m.photoURL) return '<img src="'+m.photoURL+'" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display=\'none\'" alt="">';
+    var i=(m.displayName||'?').charAt(0);
+    return '<svg width="36" height="36" viewBox="0 0 36 36" style="flex-shrink:0"><rect width="36" height="36" rx="18" fill="#d4c9b5"/><text x="18" y="24" text-anchor="middle" fill="#8a7f6e" font-size="14" font-family="serif">'+i+'</text></svg>';
   }
+
   var html='<div style="padding:0 2px">';
-  members.forEach(function(m){
-    var roleLabel=ROLE_LABEL[m.role]||m.role;
-    var badgeCls='adminRoleBadge'+(m.role==='owner'?' owner':(m.role==='admin'?' admin':''));
-    var canToggle=isOwner&&m.role!=='owner';
-    var isCurAdmin=m.role==='admin';
-    var btnLabel=isCurAdmin?'撤銷管理員':'設為管理員';
-    html+='<div class="adminSettingsRow">'+
-      '<div style="flex:1;font-size:14px;color:var(--color-text-primary);font-weight:500">'+_esc(m.displayName||'未知')+'</div>'+
-      '<span class="'+badgeCls+'">'+roleLabel+'</span>'+
-      (canToggle?'<button class="adminToggleBtn" onclick="setAdminRole(\''+m.userId+'\','+(isCurAdmin?'false':'true')+')">'+btnLabel+'</button>':'')+
-    '</div>';
-  });
+
+  // ── OWNER
+  html+='<div style="font-size:11px;font-weight:600;letter-spacing:0.08em;color:var(--color-text-muted);text-transform:uppercase;margin:16px 0 8px;padding:0 4px">創辦人</div>';
+  if(!ownerList.length){
+    html+='<div style="font-size:13px;color:var(--color-text-muted);padding:8px 4px">—</div>';
+  } else {
+    ownerList.forEach(function(m){
+      html+='<div class="adminSettingsRow">'+
+        _av(m)+
+        '<div style="flex:1;font-size:14px;color:var(--color-text-primary);font-weight:500;margin-left:10px">'+_esc(m.displayName||'未知')+'</div>'+
+        '<span class="adminRoleBadge owner">創辦人</span>'+
+      '</div>';
+    });
+  }
+
+  // ── ADMIN
+  html+='<div style="display:flex;align-items:baseline;gap:8px;margin:20px 0 8px;padding:0 4px">'+
+    '<span style="font-size:11px;font-weight:600;letter-spacing:0.08em;color:var(--color-text-muted);text-transform:uppercase">管理員</span>'+
+    '<span style="font-size:11px;color:var(--color-text-muted)">'+adminCount+' / '+MAX_ADMIN+'　剩餘 '+adminRemain+' 名</span>'+
+  '</div>';
+  if(!adminList.length){
+    html+='<div style="font-size:13px;color:var(--color-text-muted);padding:8px 4px">目前無管理員</div>';
+  } else {
+    adminList.forEach(function(m){
+      html+='<div class="adminSettingsRow">'+
+        _av(m)+
+        '<div style="flex:1;font-size:14px;color:var(--color-text-primary);font-weight:500;margin-left:10px">'+_esc(m.displayName||'未知')+'</div>'+
+        '<span class="adminRoleBadge admin">管理員</span>'+
+        (isOwner?'<button class="adminToggleBtn" onclick="setAdminRole(\''+m.userId+'\',false)">撤銷</button>':'')+
+      '</div>';
+    });
+  }
+
+  // ── Promote (owner only)
+  if(isOwner){
+    html+='<div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--color-border-soft)">'+
+      '<div style="font-size:12px;font-weight:600;color:var(--color-text-secondary);margin-bottom:10px">升級為管理員</div>';
+    if(adminRemain<=0){
+      html+='<div style="font-size:13px;color:var(--color-text-muted)">管理員已達上限（'+MAX_ADMIN+'位）</div>';
+    } else if(!promotable.length){
+      html+='<div style="font-size:13px;color:var(--color-text-muted)">目前沒有可升級的活躍會員</div>';
+    } else {
+      html+='<div style="display:flex;gap:8px;align-items:center">'+
+        '<select id="promoteSelectUid" style="flex:1;padding:9px 10px;border:1px solid var(--color-border);border-radius:8px;font-size:13px;background:var(--color-bg);color:var(--color-text-primary)">'+
+        '<option value="">— 選擇會員 —</option>';
+      promotable.forEach(function(m){
+        html+='<option value="'+m.userId+'">'+_esc(m.displayName||m.userId)+'</option>';
+      });
+      html+='</select>'+
+        '<button class="adminToggleBtn" style="flex-shrink:0" onclick="_promoteToAdmin()">升級</button>'+
+      '</div>';
+    }
+    html+='</div>';
+  }
+
   html+='</div>';
   el.innerHTML+=html;
+}
+
+function _promoteToAdmin(){
+  var sel=document.getElementById('promoteSelectUid');
+  if(!sel||!sel.value){ showToast('請選擇會員'); return; }
+  setAdminRole(sel.value,true);
 }
 
 /* ── 公告 tab (Firestore-backed) ── */
@@ -2384,34 +2435,29 @@ function _renderAnnouncementsTab(el){
 /* ── Approve Member ── */
 function approveMember(userId){
   if(!db){showToast('無法連線，請稍後再試');return;}
-  db.collection('users').doc(userId).update({role:'annual_member',updatedAt:TS()})
+  db.collection('members').doc(userId).update({
+    status:'active', role:'member', approvedAt:TS(),
+    approvedBy: currentUser ? (currentUser.displayName||currentUser.userId) : 'admin',
+  })
     .then(function(){
       showToast('已批准入會');
-      pendingUsersFirestore=pendingUsersFirestore.filter(function(m){return m.userId!==userId;});
-      if(usersCache[userId]) usersCache[userId].role='annual_member';
+      if(usersCache[userId]){ usersCache[userId].status='active'; usersCache[userId].role='member'; }
       renderManage();
     })
-    .catch(function(e){
-      console.error('approveMember error:',e);
-      showToast('操作失敗，請稍後再試');
-    });
+    .catch(function(e){ console.error('approveMember error:',e); showToast('操作失敗，請稍後再試'); });
 }
 
 /* ── Reject Member ── */
 function rejectMember(userId){
   if(!confirm('確認拒絕此申請？')) return;
   if(!db){showToast('無法連線，請稍後再試');return;}
-  db.collection('users').doc(userId).update({role:'blocked',updatedAt:TS()})
+  db.collection('members').doc(userId).update({ status:'blocked' })
     .then(function(){
       showToast('已拒絕申請');
-      pendingUsersFirestore=pendingUsersFirestore.filter(function(m){return m.userId!==userId;});
-      if(usersCache[userId]) usersCache[userId].role='blocked';
+      if(usersCache[userId]) usersCache[userId].status='blocked';
       renderManage();
     })
-    .catch(function(e){
-      console.error('rejectMember error:',e);
-      showToast('操作失敗，請稍後再試');
-    });
+    .catch(function(e){ console.error('rejectMember error:',e); showToast('操作失敗，請稍後再試'); });
 }
 
 /* ── Announcements: Load ── */
@@ -2508,7 +2554,7 @@ function assignStudentToCoach(coachId){
   if(!studentId){showToast('請選擇會員');return;}
   var update={'updatedAt':TS()};
   update['coachStudents.'+studentId]={attendanceDate:'',paymentDate:'',coachNote:''};
-  db.collection('users').doc(coachId).update(update)
+  db.collection('members').doc(coachId).update(update)
     .then(function(){
       showToast('已指派');
       if(!usersCache[coachId]) usersCache[coachId]={};
@@ -2550,7 +2596,7 @@ function saveCoachStudentRecord(coachId, studentId){
   var note=(document.getElementById('csNote')||{}).value||'';
   var update={'updatedAt':TS()};
   update['coachStudents.'+studentId]={attendanceDate:atd,paymentDate:pay,coachNote:note};
-  db.collection('users').doc(coachId).update(update)
+  db.collection('members').doc(coachId).update(update)
     .then(function(){
       showToast('已儲存');
       if(usersCache[coachId]){
@@ -2566,15 +2612,20 @@ function saveCoachStudentRecord(coachId, studentId){
 /* ── Admin Settings: Set / revoke admin role ── */
 function setAdminRole(userId, makeAdmin){
   var myRole=_currentRole();
-  if(myRole!=='owner'){showToast('僅 owner 可變更權限');return;}
+  if(myRole!=='owner'){showToast('僅創辦人可變更管理員');return;}
   var target=usersCache[userId];
-  if(!target){showToast('找不到使用者');return;}
-  if(target.role==='owner'){showToast('不可變更 owner 權限');return;}
-  var newRole=makeAdmin?'admin':'annual_member';
-  var name=_esc(target.displayName||'此會員');
-  if(!confirm(makeAdmin?'設 '+name+' 為管理員？':'撤銷 '+name+' 的管理員？')) return;
+  if(!target){showToast('找不到此會員');return;}
+  if(target.role==='owner'){showToast('不可變更創辦人權限');return;}
+  // Admin cap check
+  if(makeAdmin){
+    var curAdminCount=Object.values(usersCache).filter(function(m){return m.role==='admin';}).length;
+    if(curAdminCount>=8){showToast('管理員已達上限（8位）');return;}
+  }
+  var newRole=makeAdmin?'admin':'member';
+  var name=target.displayName||'此會員';
+  if(!confirm(makeAdmin?'設 '+name+' 為管理員？':'撤銷 '+name+' 的管理員身份？')) return;
   if(!db){showToast('無法連線');return;}
-  db.collection('users').doc(userId).update({role:newRole,updatedAt:TS()})
+  db.collection('members').doc(userId).update({role:newRole,updatedAt:TS()})
     .then(function(){
       showToast(makeAdmin?'已設為管理員':'已撤銷管理員');
       if(usersCache[userId]) usersCache[userId].role=newRole;
@@ -3701,16 +3752,19 @@ function showMemberDetail(uid){
   showToast(m.displayName+(m.ntrp?' · NTRP '+m.ntrp:'')+(m.preferredPosition?' · '+m.preferredPosition:''));
 }
 
-/* ── Load Users Cache from Firestore ── */
+/* ── Load Users Cache from Firestore (real-time) ── */
 function loadUsersCache(){
   if(!db) return;
-  db.collection('users').get()
-    .then(function(snap){
-      snap.docs.forEach(function(d){ usersCache[d.id]=Object.assign({userId:d.id},d.data()); });
-      renderMembers('');
-      renderGrid(); // refresh avatars
-    })
-    .catch(function(e){ console.warn('loadUsersCache error:',e); });
+  db.collection('members').onSnapshot(function(snap){
+    snap.docs.forEach(function(d){ usersCache[d.id]=Object.assign({userId:d.id},d.data()); });
+    renderMembers('');
+    renderGrid();
+    // re-render manage tab if it's currently open
+    if(document.getElementById('screen-manage') &&
+       document.getElementById('screen-manage').classList.contains('active')){
+      renderManage();
+    }
+  }, function(e){ console.warn('loadUsersCache error:',e); });
 }
 
 /* ── Load Court Bookings from Firestore ── */
