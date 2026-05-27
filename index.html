@@ -1690,22 +1690,45 @@ function _showLiffDebug(){
 
 const LS_UID_KEY = 'cxts_uid'; // localStorage: cached LINE userId for fast session resume
 
-// Fast path: if localStorage has a known UID and Firestore says status=active,
-// skip LIFF init entirely and go straight to main app.
+// ── Permission gate ────────────────────────────────────────────────────
+// Returns true if this member doc should be allowed into the main app.
+// Accepts all equivalent "approved" states across different schema versions.
+function _canEnter(d){
+  if(!d) return false;
+  var role   = d.role   || '';
+  var status = d.status || '';
+  // role-based: owner / admin always enter regardless of status field
+  if(role === 'owner' || role === 'admin') return true;
+  // status-based: active OR approved (both mean "cleared by admin")
+  if(status === 'active' || status === 'approved') return true;
+  // approved field: boolean flag sometimes used alongside status
+  if(d.approved === true) return true;
+  return false;
+}
+
+// Fast path: if localStorage has a known UID, read Firestore and enter directly.
 async function _tryResumeSession(){
   var uid = '';
   try { uid = localStorage.getItem(LS_UID_KEY) || ''; } catch(e){ return false; }
   if(!uid || !db) return false;
   try {
     var snap = await db.collection('members').doc(uid).get();
-    if(!snap.exists){ return false; }
+    if(!snap.exists){
+      console.log('[AUTH] resume: doc not found for uid', uid);
+      return false;
+    }
     var d = snap.data();
-    if(d.status !== 'active') return false; // pending/blocked must go through full LIFF flow
-    // Restore session from Firestore — no LIFF needed
+    console.log('[AUTH] resume uid:', uid, '| data:', JSON.stringify({role:d.role, status:d.status, approved:d.approved}));
+    if(!_canEnter(d)){
+      console.log('[AUTH] resume: canEnter=false, falling back to LIFF');
+      return false;
+    }
+    // Valid session — restore without LIFF init
     var profile = { userId: uid, displayName: d.displayName || '', pictureUrl: d.photoURL || '' };
     _routeByStatus(d, profile);
     return true;
   } catch(e){
+    console.warn('[AUTH] resume error:', e.message || e);
     return false; // network error → fall through to LIFF init
   }
 }
@@ -1862,9 +1885,12 @@ async function _upsertAndRoute(profile){
   }
 }
 
-// profile: { userId, displayName, pictureUrl }
+/// profile: { userId, displayName, pictureUrl }
 function _routeByStatus(d, profile){
-  _dbg('_routeByStatus status:' + d.status + ' role:' + d.role);
+  var canEnter = _canEnter(d);
+  console.log('[AUTH] _routeByStatus uid:', profile.userId,
+    '| role:', d.role, '| status:', d.status, '| approved:', d.approved,
+    '| canEnter:', canEnter);
   currentUser = {
     uid:         profile.userId,
     userId:      profile.userId,
@@ -1876,13 +1902,11 @@ function _routeByStatus(d, profile){
     role:        d.role   || 'member',
     status:      d.status || 'pending',
   };
-  switch(d.status){
-    case 'active':   _showMainApp(); break;
-    case 'pending':  _showAuthGate('pending'); break;
-    case 'resigned': _showAuthGate('resigned'); break;
-    case 'blocked':  _showAuthGate('blocked'); break;
-    default:         _showAuthGate('pending');
-  }
+  if(canEnter){ _showMainApp(); return; }
+  var s = d.status || '';
+  if(s === 'resigned'){ _showAuthGate('resigned'); return; }
+  if(s === 'blocked'){  _showAuthGate('blocked');  return; }
+  _showAuthGate('pending');
 }
 
 // Called by LINE Login button — triggers LIFF login redirect
@@ -1895,6 +1919,7 @@ function _doLineLogin(){
 function _doLogout(){
   currentUser = null;
   try { localStorage.removeItem(LS_UID_KEY); } catch(e){}
+  try { sessionStorage.clear(); } catch(e){}
   try { liff.logout(); } catch(e){}
   _showAuthGate('login');
 }
