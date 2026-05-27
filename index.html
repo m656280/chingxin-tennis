@@ -1579,22 +1579,24 @@ function _showAuthGate(state){
   }
 }
 
-// Escapes the LINE WebView and opens the app in an external browser.
-// iOS  → x-safari: URL scheme relaunches the URL in Safari.
-// Android → intent: URI opens the URL in Chrome (or default browser).
-// If neither works the user sees the "··· → 在瀏覽器中開啟" text already
-// visible on screen.
-function _openInSafari(){
-  var base = 'https://chingxin-tennis.web.app/';
-  if(_isIOS){
-    _dbg('_openInSafari iOS → x-safari');
-    window.location.href = 'x-safari-' + base;
-  } else {
-    _dbg('_openInSafari Android → intent');
-    window.location.href =
-      'intent://' + 'chingxin-tennis.web.app/' +
-      '#Intent;scheme=https;package=com.android.chrome;end';
+function _openInSafari() {
+  const url = 'https://chingxin-tennis.web.app/';
+
+  const isIOS     = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const isAndroid = /Android/i.test(navigator.userAgent);
+
+  if (isIOS) {
+    window.location.href = 'x-safari-' + url;
+    return;
   }
+
+  if (isAndroid) {
+    window.location.href =
+      'intent://chingxin-tennis.web.app/#Intent;scheme=https;package=com.android.chrome;end';
+    return;
+  }
+
+  window.open(url, '_blank');
 }
 
 function _showMainApp(){
