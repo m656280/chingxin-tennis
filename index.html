@@ -7,7 +7,7 @@
 <title>清心網球協會</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=Noto+Sans+TC:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=Noto+Sans+TC:wght@400;500&family=Noto+Serif+TC:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
   --color-bg: #faf9f5;
@@ -31,7 +31,7 @@
   --color-now: #6b8a6b;
   --grid-line: #e9e7e0;
   --grid-line-soft: #f1efe9;
-  --font-display: 'Cormorant Garamond','Noto Serif TC',Georgia,serif;
+  --font-display: 'Cormorant Garamond','Noto Serif TC','Times New Roman',Georgia,serif;
   --font-body: -apple-system,BlinkMacSystemFont,'Inter','Noto Sans TC','PingFang TC',sans-serif;
 }
 *,*::before,*::after { box-sizing: border-box; }
@@ -65,17 +65,19 @@ button {
 
 /* ── Header / Brand ── */
 .header { display:flex; justify-content:flex-start; align-items:center; margin:28px 0 32px; }
-.brand { display:flex; flex-direction:column; align-items:flex-start; gap:4px; }
+.brand { display:flex; flex-direction:column; align-items:flex-start; gap:0px; }
 .brandRow { display:flex; align-items:center; gap:12px; }
 .brandName {
-  font-family:var(--font-display); font-size:18px;
-  letter-spacing:0.20em; text-transform:uppercase;
+  font-family:var(--font-display); font-size:26px;
+  letter-spacing:0.18em; text-transform:uppercase;
   color:var(--color-text-primary); font-weight:500;
+  line-height:40px;
 }
 .brandSub {
   font-family:var(--font-display); font-style:italic;
-  font-size:9.5px; letter-spacing:0.26em; color:var(--color-text-muted);
-  line-height:1.5; white-space:nowrap;
+  font-size:9px; letter-spacing:0.38em; color:var(--color-text-muted);
+  line-height:1.2; white-space:nowrap; padding-left:52px;
+  margin-top:-8px;
 }
 
 /* ── Screens ── */
@@ -91,6 +93,63 @@ button {
 .courtSwitcherWrap .switcherGroup { padding:2px; }
 .courtSwitcherWrap .switcherOption { padding:5px 13px; font-size:11px; letter-spacing:0.07em; }
 .header.court-header-hidden { display:none; }
+
+/* ── Day View ── */
+.dayViewDateNav { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+.dayViewDateLabel { font-family:var(--font-display); font-size:17px; letter-spacing:0.06em; color:var(--color-text-primary); font-variant-numeric:lining-nums; font-weight:600; flex:1; text-align:center; }
+.dayViewSurfaceTabs { display:flex; gap:8px; margin-bottom:8px; }
+.dayViewSurfaceBtn { padding:5px 16px; border-radius:99px; font-size:11px; letter-spacing:0.08em; border:1px solid var(--color-border); color:var(--color-text-muted); background:transparent; cursor:pointer; transition:all 150ms; }
+.dayViewSurfaceBtn.active { background:var(--color-text-primary); color:var(--color-bg); border-color:var(--color-text-primary); }
+/* scroll container */
+.dvScrollOuter { overflow-x:auto; -webkit-overflow-scrolling:touch; margin:0 -16px; padding:0 16px; scrollbar-width:none; -webkit-transform:translateZ(0); transform:translateZ(0); }
+.dvScrollOuter::-webkit-scrollbar { display:none; }
+.dvScrollInner { display:block; position:relative; -webkit-transform:translateZ(0); transform:translateZ(0); }
+/* time axis */
+.dvTimeAxis { position:relative; height:36px; margin-bottom:8px; }
+.dvTimeTick { position:absolute; font-size:14px; color:var(--color-text-secondary); letter-spacing:0.04em; top:12px; white-space:nowrap; font-weight:400; transform:translateX(-50%); font-family:Georgia,'Cormorant Garamond','Times New Roman',serif; font-variant-numeric:lining-nums; }
+.dvTimeTick.tick-first { transform:translateX(0); }
+.dvTimeTick.tick-last  { transform:translateX(-100%); }
+.dvTimeNowWrap { position:absolute; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; top:2px; z-index:2; pointer-events:none; }
+.dvTimeNowDot { width:9px; height:9px; border-radius:50%; background:#cc3333; box-shadow:0 0 0 2px rgba(204,51,51,0.22); }
+.dvTimeNowTick { width:2px; height:16px; background:#cc3333; margin-top:3px; border-radius:2px; }
+/* court blocks */
+.dvCourtWrap { position:relative; height:clamp(150px,calc((100dvh - 318px) / 2),260px); border-radius:12px; overflow:hidden; margin-bottom:42px; border:1px solid rgba(0,0,0,0.05); box-shadow:0 1px 12px rgba(0,0,0,0.07),0 1px 3px rgba(0,0,0,0.04); }
+.dvCourtWrap:last-child { margin-bottom:0; }
+.dvCourtWrap svg { position:absolute; inset:0; width:100%; height:100%; display:block; }
+.dvOverlayLayer { position:absolute; inset:0; overflow:hidden; }
+/* booking avatars — float on court surface */
+.dvAvatar { position:absolute; width:28px; height:28px; border-radius:50%; background:rgba(255,255,255,0.92); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); border:2.5px solid var(--color-hard); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; color:var(--color-text-primary); box-shadow:0 1px 8px rgba(0,0,0,0.22); transform:translate(-50%,-50%); z-index:2; letter-spacing:0; cursor:pointer; transition:transform 120ms; }
+.dvAvatar:active { transform:translate(-50%,-50%) scale(0.88); }
+.dvAvatar.is-coaching { border-color:var(--color-clay); }
+.dvAvatar.is-lock { border-color:var(--color-text-primary); background:rgba(26,31,28,0.82); color:rgba(255,255,255,0.88); }
+/* clay note — warm clay palette */
+.dayViewClayNote { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:260px; gap:14px; text-align:center; background:linear-gradient(160deg,rgba(240,206,180,0.18),rgba(217,160,111,0.10)); border-radius:14px; padding:32px 24px; }
+.dayViewClayNoteTitle { font-family:var(--font-display); font-size:19px; color:#A9573D; letter-spacing:0.05em; font-weight:500; }
+.dayViewClayNoteSub { font-size:12px; color:#B79B8B; letter-spacing:0.06em; }
+/* clay theme overrides — active on .surface-clay wrapper */
+.surface-clay .dayViewSurfaceBtn.active { background:#C97948; color:#FFF8EF; border-color:#C97948; }
+.surface-clay .dayViewSurfaceBtn:not(.active) { color:#B79B8B; border-color:#DFC5B0; }
+.surface-clay .dvTimeNowDot { background:#C97948; box-shadow:0 0 0 2px rgba(201,121,72,0.24); }
+.surface-clay .dvTimeNowTick { background:#C97948; }
+/* clay court avatar borders */
+.court-clay .dvAvatar { border-color:#A9573D; }
+.court-clay .dvAvatar.is-coaching { border-color:#7A3020; }
+/* detail panel (bottom sheet) */
+.dvDetailBackdrop { position:fixed; inset:0; background:rgba(0,0,0,0); z-index:180; transition:background 220ms; pointer-events:none; }
+.dvDetailBackdrop.open { background:rgba(0,0,0,0.28); pointer-events:auto; }
+.dvDetailPanel { position:fixed; bottom:0; left:0; right:0; background:var(--color-surface); border-radius:18px 18px 0 0; padding:0 0 env(safe-area-inset-bottom,16px); z-index:181; transform:translateY(100%); transition:transform 280ms cubic-bezier(0.32,0.72,0,1); box-shadow:0 -4px 32px rgba(0,0,0,0.14); }
+.dvDetailPanel.open { transform:translateY(0); }
+.dvDetailHandle { width:36px; height:4px; border-radius:2px; background:var(--color-border); margin:10px auto 0; }
+.dvDetailTop { display:flex; align-items:center; gap:14px; padding:16px 20px 12px; }
+.dvDetailAvatar { width:48px; height:48px; border-radius:50%; background:var(--color-surface-alt); border:2.5px solid var(--color-hard); display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:700; color:var(--color-text-primary); flex-shrink:0; }
+.dvDetailAvatar.is-coaching { border-color:var(--color-clay); }
+.dvDetailName { font-family:var(--font-display); font-size:20px; letter-spacing:0.03em; color:var(--color-text-primary); }
+.dvDetailMode { font-size:11px; letter-spacing:0.08em; color:var(--color-text-muted); margin-top:2px; text-transform:uppercase; }
+.dvDetailRows { display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--color-border-soft); border-top:1px solid var(--color-border-soft); border-bottom:1px solid var(--color-border-soft); }
+.dvDetailCell { background:var(--color-surface); padding:14px 20px; }
+.dvDetailCellLabel { font-size:10px; letter-spacing:0.08em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:4px; }
+.dvDetailCellValue { font-size:15px; font-weight:600; color:var(--color-text-primary); }
+.dvDetailClose { display:block; width:calc(100% - 40px); margin:14px 20px; padding:13px; text-align:center; border-radius:10px; background:var(--color-surface-alt); font-size:13px; letter-spacing:0.06em; color:var(--color-text-secondary); border:none; cursor:pointer; }
 
 /* ── View Switcher ── */
 .viewSwitcher { display:flex; justify-content:center; margin-bottom:24px; }
@@ -113,8 +172,9 @@ button {
 .weekStrip { margin-bottom:24px; display:flex; flex-direction:column; gap:8px; }
 .weekHeader { display:flex; align-items:center; justify-content:space-between; padding:0 4px; }
 .monthLabel {
-  font-family:var(--font-body); font-size:16px;
-  letter-spacing:0.01em; color:var(--color-text-primary); font-weight:500;
+  font-family:Georgia,'Cormorant Garamond','Times New Roman',serif; font-size:19px;
+  letter-spacing:0.01em; color:var(--color-text-primary); font-weight:400;
+  font-variant-numeric:lining-nums;
 }
 .navButton {
   width:32px; height:32px; display:flex; align-items:center; justify-content:center;
@@ -127,11 +187,13 @@ button {
   padding:8px 0; border-radius:8px; transition:background 200ms ease;
 }
 .chip:hover { background:var(--color-surface-alt); }
-.chipDayLabel { font-size:10px; letter-spacing:0.08em; color:var(--color-text-muted); text-transform:uppercase; }
+.chipDayLabel { font-size:12px; letter-spacing:0.04em; color:var(--color-text-muted); }
 .chipDateNum {
-  font-size:15px; color:var(--color-text-secondary);
-  width:32px; height:32px; display:flex; align-items:center; justify-content:center;
+  font-family:Georgia,'Cormorant Garamond','Times New Roman',serif;
+  font-size:18px; color:var(--color-text-secondary);
+  width:36px; height:36px; display:flex; align-items:center; justify-content:center;
   border-radius:9999px; transition:all 200ms ease;
+  font-variant-numeric:lining-nums; letter-spacing:0.01em;
 }
 .chip.today .chipDateNum { color:var(--color-text-primary); font-weight:500; }
 .chip.selected .chipDateNum { background:var(--color-text-primary); color:var(--color-bg); font-weight:500; }
@@ -139,7 +201,7 @@ button {
 
 /* ── Day Header ── */
 .dayHeader { display:flex; align-items:baseline; gap:8px; margin-bottom:16px; padding:0 4px; }
-.dayLabelMain { font-family:var(--font-body); font-size:18px; color:var(--color-text-primary); font-weight:500; letter-spacing:0; }
+.dayLabelMain { font-family:Georgia,'Cormorant Garamond','Times New Roman',serif; font-size:22px; color:var(--color-text-primary); font-weight:400; letter-spacing:0.01em; font-variant-numeric:lining-nums; }
 .dayMeta { font-size:11px; letter-spacing:0.08em; color:var(--color-text-muted); text-transform:uppercase; }
 
 /* ── Time Grid ── */
@@ -167,7 +229,7 @@ button {
 }
 .slotRow.fullHour { border-top-color:var(--grid-line); }
 .slotRow.firstRow { border-top:none; }
-.timeLabel { width:44px; padding-left:6px; font-size:12px; letter-spacing:0.02em; color:var(--color-text-muted); line-height:1.5; }
+.timeLabel { width:50px; padding-left:6px; font-size:16px; letter-spacing:0.01em; color:var(--color-text-muted); line-height:1.5; font-family:Georgia,'Cormorant Garamond','Times New Roman',serif; font-variant-numeric:tabular-nums lining-nums; }
 .courtDividers {
   grid-column:1 / -1; grid-row:1 / -1; pointer-events:none;
   display:grid; grid-template-columns:44px repeat(4,1fr); z-index:0;
@@ -203,10 +265,12 @@ button {
 }
 .monthCell:not(.empty):hover { background:var(--color-surface-alt); }
 .monthCellNum {
-  font-size:13px; color:var(--color-text-secondary);
-  width:26px; height:26px;
+  font-family:Georgia,'Cormorant Garamond','Times New Roman',serif;
+  font-size:16px; color:var(--color-text-secondary);
+  width:30px; height:30px;
   display:flex; align-items:center; justify-content:center;
   border-radius:50%; transition:all 180ms ease;
+  font-variant-numeric:lining-nums;
 }
 .monthCell.today .monthCellNum { background:var(--color-text-primary); color:var(--color-bg); font-weight:500; }
 .monthCell.selected:not(.today) .monthCellNum { background:var(--color-surface-alt); color:var(--color-text-primary); font-weight:500; box-shadow:inset 0 0 0 1px var(--color-border); }
@@ -524,6 +588,81 @@ button {
 }
 .rejectBtn:hover { background:rgba(184,92,74,0.20); }
 
+/* ── Manage Tab Bar ── */
+.manageTabs {
+  display:flex; overflow-x:auto; -webkit-overflow-scrolling:touch;
+  border-bottom:1px solid var(--color-border-soft); margin-bottom:16px;
+  scrollbar-width:none;
+}
+.manageTabs::-webkit-scrollbar { display:none; }
+.manageTabBtn {
+  flex-shrink:0; padding:10px 14px; font-size:12px; letter-spacing:0.05em;
+  background:none; border:none; border-bottom:2px solid transparent;
+  color:var(--color-text-muted); cursor:pointer; white-space:nowrap;
+  transition:color 150ms;
+}
+.manageTabBtn.active {
+  border-bottom-color:var(--color-text-primary); color:var(--color-text-primary);
+}
+
+/* ── Announcement Card ── */
+.announcCard {
+  background:var(--color-surface); border:1px solid var(--color-border-soft);
+  border-radius:12px; padding:14px 16px; margin-bottom:10px;
+}
+.announcTitle { font-size:14px; font-weight:500; color:var(--color-text-primary); margin-bottom:6px; }
+.announcBody { font-size:13px; color:var(--color-text-secondary); line-height:1.7; white-space:pre-wrap; }
+.announcMeta { font-size:10px; color:var(--color-text-muted); letter-spacing:0.04em; margin-top:8px; }
+.announcActions { display:flex; gap:8px; margin-top:10px; }
+.announcEditBtn {
+  font-size:11px; padding:4px 12px; border-radius:99px;
+  border:1px solid var(--color-border); color:var(--color-text-muted);
+  cursor:pointer; letter-spacing:0.05em; transition:all 150ms ease;
+}
+.announcEditBtn:hover { border-color:var(--color-text-primary); color:var(--color-text-primary); }
+.announcDelBtn {
+  font-size:11px; padding:4px 12px; border-radius:99px;
+  border:1px solid var(--color-border); color:var(--color-text-muted);
+  cursor:pointer; letter-spacing:0.05em; transition:all 150ms ease;
+}
+.announcDelBtn:hover { border-color:var(--color-clay); color:var(--color-clay); }
+
+/* ── Coach Student Row ── */
+.coachStudentRow {
+  display:flex; align-items:flex-start; gap:12px;
+  padding:12px 0; border-bottom:1px solid var(--color-border-soft);
+}
+.coachStudentRow:last-child { border-bottom:none; }
+.coachStudentInfo { flex:1; min-width:0; }
+.coachStudentName { font-size:14px; color:var(--color-text-primary); font-weight:500; }
+.coachStudentMeta { font-size:11px; color:var(--color-text-muted); margin-top:3px; line-height:1.5; }
+.coachStudentEdit {
+  font-size:11px; padding:4px 10px; border-radius:99px;
+  border:1px solid var(--color-border); color:var(--color-text-muted);
+  cursor:pointer; flex-shrink:0; transition:all 150ms;
+}
+.coachStudentEdit:hover { border-color:var(--color-text-primary); color:var(--color-text-primary); }
+
+/* ── Admin Settings Row ── */
+.adminSettingsRow {
+  display:flex; align-items:center; gap:12px;
+  padding:12px 0; border-bottom:1px solid var(--color-border-soft);
+}
+.adminSettingsRow:last-child { border-bottom:none; }
+.adminRoleBadge {
+  font-size:10px; padding:2px 8px; border-radius:99px;
+  border:1px solid var(--color-border); color:var(--color-text-muted);
+  white-space:nowrap; flex-shrink:0;
+}
+.adminRoleBadge.owner { border-color:var(--dot-coach); color:var(--dot-coach); }
+.adminRoleBadge.admin { border-color:var(--color-hard); color:var(--color-hard); }
+.adminToggleBtn {
+  margin-left:auto; font-size:11px; padding:4px 12px; border-radius:99px;
+  border:1px solid var(--color-border); color:var(--color-text-muted);
+  cursor:pointer; flex-shrink:0; transition:all 150ms;
+}
+.adminToggleBtn:hover { border-color:var(--color-text-primary); color:var(--color-text-primary); }
+
 /* ── Finance Screen Header ── */
 .finScreenHeader {
   display:flex; align-items:center; justify-content:space-between;
@@ -735,6 +874,129 @@ button {
   gap:4px; flex-shrink:0;
 }
 
+/* ── Finance View Tabs ── */
+.finViewTabs {
+  display:flex; border-bottom:1px solid var(--color-border-soft);
+  margin:0 0 18px;
+}
+.finViewTabBtn {
+  flex:1; padding:10px 0; font-size:12px; letter-spacing:0.05em;
+  background:none; border:none; border-bottom:2px solid transparent;
+  color:var(--color-text-muted); cursor:pointer; transition:color 150ms;
+  font-family:var(--font-body);
+}
+.finViewTabBtn.active {
+  border-bottom-color:var(--color-text-primary); color:var(--color-text-primary);
+}
+
+/* ── Finance Chart ── */
+.finChartModeSwitcher {
+  display:flex; justify-content:center; margin-bottom:20px;
+  gap:6px;
+}
+.finChartModeBtn {
+  padding:7px 14px; border-radius:99px; font-size:11px; letter-spacing:0.05em;
+  border:1px solid var(--color-border); color:var(--color-text-muted);
+  background:transparent; cursor:pointer; transition:all 150ms; font-family:var(--font-body);
+}
+.finChartModeBtn.active {
+  background:var(--color-text-primary); color:var(--color-bg);
+  border-color:var(--color-text-primary);
+}
+.finChartDonutWrap {
+  display:flex; flex-direction:column; align-items:center; margin-bottom:18px;
+}
+.finChartDonut { position:relative; display:flex; align-items:center; justify-content:center; }
+.finChartCenter {
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  text-align:center; pointer-events:none;
+}
+.finChartCenterLabel {
+  font-size:9px; letter-spacing:0.09em; color:var(--color-text-muted);
+  text-transform:uppercase;
+}
+.finChartCenterAmt {
+  font-family:var(--font-body); font-size:14px; font-weight:600;
+  color:var(--color-text-primary); line-height:1.2; margin-top:3px;
+}
+.finChartLegend {
+  display:flex; flex-wrap:wrap; gap:6px 14px; justify-content:center;
+  margin-top:14px;
+}
+.finChartLegendItem {
+  display:flex; align-items:center; gap:5px;
+  font-size:11px; color:var(--color-text-secondary); letter-spacing:0.02em;
+}
+.finChartLegendDot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+.finChartRanking {
+  border-radius:12px; overflow:hidden;
+  border:1px solid var(--color-border-soft); margin-bottom:4px;
+}
+.finChartRankRow {
+  display:flex; align-items:center; gap:8px;
+  padding:11px 14px; border-bottom:1px solid var(--color-border-soft);
+  background:var(--color-surface);
+}
+.finChartRankRow:last-child { border-bottom:none; }
+.finChartRankNum {
+  font-size:11px; color:var(--color-text-muted); width:14px;
+  flex-shrink:0; text-align:center;
+}
+.finChartRankName {
+  font-size:13px; color:var(--color-text-primary); flex:1; min-width:0;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.finChartRankAmt {
+  font-family:var(--font-body); font-size:13px; font-weight:500;
+  color:var(--color-text-primary); flex-shrink:0;
+}
+.finChartRankPct {
+  font-size:11px; color:var(--color-text-muted); flex-shrink:0;
+  width:30px; text-align:right;
+}
+.finChartSummaryRow {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:11px 14px; background:var(--color-surface-alt);
+  border-radius:10px; margin-top:10px;
+}
+.finChartSummaryLabel { font-size:11px; color:var(--color-text-muted); letter-spacing:0.04em; }
+.finChartSummaryVal {
+  font-family:var(--font-body); font-size:13px; font-weight:500;
+  color:var(--color-text-primary);
+}
+
+/* ── Finance: Expiring Members ── */
+.finExpireBlock { margin-top:18px; }
+.finExpireBlockTitle { font-size:10.5px; letter-spacing:0.08em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:10px; padding-left:2px; }
+.finExpireMemberRow { display:flex; align-items:center; gap:12px; padding:11px 14px; background:var(--color-surface); border-radius:12px; margin-bottom:7px; cursor:pointer; border:1px solid var(--color-border-soft); transition:border-color 140ms ease; }
+.finExpireMemberRow:active { opacity:0.72; }
+.finExpireMemberRow:last-child { margin-bottom:0; }
+.finExpireAvatar { width:36px; height:36px; border-radius:50%; background:var(--color-surface-alt); display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; color:var(--color-text-primary); flex-shrink:0; font-family:var(--font-display); }
+.finExpireName { font-size:14px; font-weight:500; color:var(--color-text-primary); }
+.finExpireDate { font-size:11.5px; color:var(--color-text-muted); margin-top:2px; letter-spacing:0.02em; }
+.finExpireTag { font-size:10px; letter-spacing:0.05em; padding:3px 9px; border-radius:99px; font-weight:600; flex-shrink:0; white-space:nowrap; }
+.finExpireTag.soon  { background:rgba(185,118,60,0.12); color:#A3622A; }
+.finExpireTag.today { background:rgba(180,105,45,0.18); color:#8E4E1A; }
+.finExpireTag.overdue { background:rgba(130,65,52,0.11); color:#8C4637; }
+/* Member action sheet */
+.finMemberBackdrop { position:fixed; inset:0; background:rgba(0,0,0,0); z-index:180; transition:background 220ms; pointer-events:none; }
+.finMemberBackdrop.open { background:rgba(0,0,0,0.28); pointer-events:auto; }
+.finMemberSheet { position:fixed; bottom:0; left:0; right:0; background:var(--color-surface); border-radius:18px 18px 0 0; padding:0 0 env(safe-area-inset-bottom,16px); z-index:181; transform:translateY(100%); transition:transform 280ms cubic-bezier(0.32,0.72,0,1); box-shadow:0 -4px 32px rgba(0,0,0,0.14); }
+.finMemberSheet.open { transform:translateY(0); }
+.fmsHandle { width:36px; height:4px; border-radius:2px; background:var(--color-border); margin:10px auto 0; }
+.fmsTop { padding:16px 20px 14px; border-bottom:1px solid var(--color-border-soft); }
+.fmsName { font-family:var(--font-display); font-size:19px; letter-spacing:0.03em; color:var(--color-text-primary); }
+.fmsMeta { font-size:12px; color:var(--color-text-muted); margin-top:3px; letter-spacing:0.03em; }
+.fmsActions { padding:14px 20px; display:flex; flex-direction:column; gap:9px; }
+.fmsActionRow { display:flex; align-items:center; gap:10px; padding:12px 14px; border-radius:12px; background:var(--color-surface-alt); border:1px solid var(--color-border-soft); cursor:pointer; transition:border-color 140ms; }
+.fmsActionRow:active { opacity:0.68; }
+.fmsActionLabel { font-size:14px; color:var(--color-text-primary); flex:1; }
+.fmsActionSub { font-size:12px; color:var(--color-text-muted); flex:1; }
+.fmsExpiryRow { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:12px; background:var(--color-surface-alt); border:1px solid var(--color-border-soft); }
+.fmsExpiryInput { flex:1; border:none; background:transparent; font:inherit; font-size:14px; color:var(--color-text-primary); outline:none; }
+.fmsExpiryBtn { padding:6px 14px; border-radius:99px; font-size:12px; letter-spacing:0.04em; background:var(--color-text-primary); color:var(--color-bg); border:none; cursor:pointer; font-family:var(--font-body); }
+.fmsResignBtn { width:calc(100% - 40px); margin:0 20px 4px; padding:12px; text-align:center; border-radius:10px; background:rgba(130,65,52,0.08); font-size:13px; letter-spacing:0.05em; color:#8C4637; border:none; cursor:pointer; font-family:var(--font-body); }
+
 /* ── Toast ── */
 .toast {
   position:fixed; bottom:76px; left:50%;
@@ -786,14 +1048,18 @@ button {
       </div>
       <div class="courtSwitcherWrap">
         <div class="switcherGroup">
-          <button class="switcherOption active" id="btnWeek" onclick="setView('week',this)">Week</button>
-          <button class="switcherOption" id="btnMonth" onclick="setView('month',this)">Month</button>
+          <button class="switcherOption active" id="btnDay" onclick="setView('day',this)">日</button>
+          <button class="switcherOption" id="btnWeek" onclick="setView('week',this)">週</button>
+          <button class="switcherOption" id="btnMonth" onclick="setView('month',this)">月</button>
         </div>
       </div>
     </div>
 
+    <!-- Day view -->
+    <div id="view-day"></div>
+
     <!-- Week view -->
-    <div id="view-week">
+    <div id="view-week" style="display:none">
       <div class="weekStrip">
         <div class="weekHeader">
           <button class="navButton" onclick="changeWeek(-1)" aria-label="上一週">‹</button>
@@ -827,15 +1093,12 @@ button {
 
   <!-- ── Screen: 預約 ── -->
   <div class="screen" id="screen-book">
-    <div class="screenTitle">預約紀錄</div>
+    <div class="screenTitle">我的預約</div>
     <button class="addBookingBtn" onclick="openBookingForm()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       新增預約
     </button>
-    <div class="screenSection">即將到來</div>
     <div id="bookUpcoming"></div>
-    <div class="screenSection">過往紀錄</div>
-    <div id="bookPast"></div>
   </div>
 
   <!-- ── Screen: 管理 ── -->
@@ -1143,6 +1406,35 @@ button {
   <div id="finCategoryContent"></div>
 </div>
 
+<!-- ── Finance Member Action Sheet ── -->
+<div class="finMemberBackdrop" id="finMemberBackdrop" onclick="_finCloseMemberSheet()"></div>
+<div class="finMemberSheet" id="finMemberSheet">
+  <div class="fmsHandle"></div>
+  <div class="fmsTop">
+    <div class="fmsName" id="fmsName"></div>
+    <div class="fmsMeta" id="fmsMeta"></div>
+  </div>
+  <div class="fmsActions">
+    <!-- Mark paid -->
+    <div class="fmsActionRow" onclick="_finMarkPaid()">
+      <span style="font-size:18px">✓</span>
+      <div style="flex:1">
+        <div class="fmsActionLabel">標記已收費</div>
+        <div class="fmsActionSub">從提醒清單移除</div>
+      </div>
+    </div>
+    <!-- Update expiry -->
+    <div class="fmsExpiryRow">
+      <span style="font-size:16px;opacity:0.55">📅</span>
+      <div class="fmsActionLabel" style="flex:none;margin-right:8px">更新到期日</div>
+      <input class="fmsExpiryInput" id="fmsExpireInput" type="date">
+      <button class="fmsExpiryBtn" onclick="_finUpdateExpiry()">更新</button>
+    </div>
+  </div>
+  <!-- Resign — separated, danger tone -->
+  <button class="fmsResignBtn" onclick="_finMarkResigned()">標記退會（保留財務紀錄）</button>
+</div>
+
 <!-- ── Toast ── -->
 <div class="toast" id="toast"></div>
 
@@ -1184,7 +1476,8 @@ const SLOT_MIN = 30;
 /* ── State ── */
 const today = new Date();
 let selectedDate = new Date(today);
-let currentView = 'week';
+let currentView = 'day';
+let _courtSurfaceFilter = 'hard'; // 'hard' | 'clay'
 /* Firebase state — null = use mock data fallback */
 let currentUser = null;
 let usersCache = {};          // uid → user doc
@@ -1192,11 +1485,24 @@ let courtBookingsFirestore = null;  // array when loaded, null = use mock
 let myBookingsFirestore = null;     // array when loaded, null = use mock
 let pendingUsersFirestore = [];
 let unsubMyBookings = null;
-let _manageTab = 'pending';   // 'pending' | 'schedule' | 'notices'
+let _manageTab = 'pending';   // 'pending' | 'members' | 'coach' | 'adminSettings' | 'announcements'
+let _coachTabSelected = null; // manage: currently viewed coach uid
+let announcementsCache = [];  // manage: announcements from Firestore
 let financeRecords = [];      // local array; Firestore layer can be added later
 let _finSearchQuery = '';     // finance search filter state
 let _finYear = 2026;    // active year ledger (fixed range 2026–2036)
 let _finEditId = null; // null = add mode; string = edit mode
+let _finViewTab = 'overview'; // 'overview' | 'detail' | 'chart'
+let _finChartMode = 'income'; // 'income' | 'expense' | 'member'
+
+/* ── Finance Chart Colors (club palette, low-saturation) ── */
+const FIN_CHART_COLORS = {
+  annual:  '#6b8a6b',  // moss green
+  monthly: '#3d5a80',  // slate
+  donate:  '#c9a96e',  // gold
+  expense: '#b85c4a',  // terracotta
+};
+const FIN_MEMBER_PALETTE = ['#6b8a6b','#3d5a80','#c9a96e','#9b8b7a','#8a9e8a','#7d8fa8','#b8a090','#a09b8a'];
 var _nowTickInterval = null; // court: live nowLine ticker
 
 /* ── Date Utilities ── */
@@ -1265,16 +1571,16 @@ const MOCK_MY_BOOKINGS = [
 ];
 
 const MOCK_MEMBERS = [
-  {id:'c1',name:'Coach Lin',type:'coach',ntrp:'5.0',position:'全場',joined:'2020'},
-  {id:'c2',name:'Coach 王',type:'coach',ntrp:'4.5',position:'全場',joined:'2021'},
-  {id:'m1',name:'Maverick 小狸',type:'annual',ntrp:'3.5',position:'底線型 / 後場',joined:'2024'},
-  {id:'m2',name:'陳志明',type:'annual',ntrp:'4.0',position:'網前型',joined:'2023'},
-  {id:'m3',name:'林雅琳',type:'annual',ntrp:'3.0',position:'雙打後場',joined:'2024'},
-  {id:'m4',name:'王大明',type:'monthly',ntrp:'3.5',position:'底線型',joined:'2025'},
-  {id:'m5',name:'張芷晴',type:'annual',ntrp:'3.5',position:'全場',joined:'2022'},
-  {id:'m6',name:'李建宏',type:'monthly',ntrp:'4.0',position:'網前型',joined:'2025'},
-  {id:'m7',name:'吳美玲',type:'annual',ntrp:'3.0',position:'雙打後場',joined:'2023'},
-  {id:'m8',name:'黃俊傑',type:'annual',ntrp:'4.5',position:'底線型',joined:'2021'},
+  {id:'c1',name:'Coach Lin', type:'coach', ntrp:'5.0',position:'全場',      joined:'2020'},
+  {id:'c2',name:'Coach 王',  type:'coach', ntrp:'4.5',position:'全場',      joined:'2021'},
+  {id:'m1',name:'Maverick 小狸',type:'annual', ntrp:'3.5',position:'底線型 / 後場',joined:'2024', expireDate:'2026/12/31', status:'active', expirePaid:false},
+  {id:'m2',name:'陳志明',   type:'annual', ntrp:'4.0',position:'網前型',    joined:'2023', expireDate:'2026/06/10', status:'active', expirePaid:false},
+  {id:'m3',name:'林雅琳',   type:'annual', ntrp:'3.0',position:'雙打後場',  joined:'2024', expireDate:'2026/06/25', status:'active', expirePaid:false},
+  {id:'m4',name:'王大明',   type:'monthly',ntrp:'3.5',position:'底線型',    joined:'2025', expireDate:'2026/05/15', status:'active', expirePaid:false},
+  {id:'m5',name:'張芷晴',   type:'annual', ntrp:'3.5',position:'全場',      joined:'2022', expireDate:'2026/12/31', status:'active', expirePaid:false},
+  {id:'m6',name:'李建宏',   type:'monthly',ntrp:'4.0',position:'網前型',    joined:'2025', expireDate:'2026/05/27', status:'active', expirePaid:false},
+  {id:'m7',name:'吳美玲',   type:'annual', ntrp:'3.0',position:'雙打後場',  joined:'2023', expireDate:'2026/04/20', status:'active', expirePaid:false},
+  {id:'m8',name:'黃俊傑',   type:'annual', ntrp:'4.5',position:'底線型',    joined:'2021', expireDate:'2026/06/01', status:'active', expirePaid:false},
 ];
 
 const MOCK_FINANCE_RECORDS = [
@@ -1357,7 +1663,7 @@ function renderWeekStrip(){
     const sel=isSameDay(d,selectedDate),tod=isSameDay(d,today),we=isWeekend(d);
     const cls=['chip',sel?'selected':'',tod?'today':'',we?'weekend':''].filter(Boolean).join(' ');
     return '<button class="'+cls+'" onclick="selectDate(\''+formatDate(d)+'\')">'+
-      '<span class="chipDayLabel">'+DAYS_TC[d.getDay()]+'</span>'+
+      '<span class="chipDayLabel">（'+DAYS_TC[d.getDay()]+'）</span>'+
       '<span class="chipDateNum">'+d.getDate()+'</span></button>';
   }).join('');
 }
@@ -1426,7 +1732,7 @@ function renderMonthView(){
   const lastDay=new Date(year,month+1,0);
   const startDow=firstDay.getDay();
   let html='<div class="monthGrid">';
-  DAYS_TC.forEach(d=>{ html+='<div class="monthDayHeader">'+d+'</div>'; });
+  DAYS_TC.forEach(d=>{ html+='<div class="monthDayHeader">（'+d+'）</div>'; });
   for(let i=0;i<startDow;i++) html+='<div class="monthCell empty"></div>';
   for(let d=1;d<=lastDay.getDate();d++){
     const day=new Date(year,month,d);
@@ -1459,13 +1765,12 @@ function renderMonthView(){
 function renderBookings(){
   const todayStr=formatDate(today);
   const source=myBookingsFirestore!==null?myBookingsFirestore:MOCK_MY_BOOKINGS;
+  // 只顯示 currentUser 自己的有效預約（confirmed 且日期 >= 今天）
   const upcoming=source.filter(b=>b.status==='confirmed'&&b.date>=todayStr)
     .sort((a,b)=>a.date.localeCompare(b.date));
-  const past=source.filter(b=>b.status==='completed'||(b.status==='confirmed'&&b.date<todayStr)||b.status==='cancelled')
-    .sort((a,b)=>b.date.localeCompare(a.date)).slice(0,10);
 
   function courtDisplay(court){ return {hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[court]||court; }
-  function cardHtml(b,isUpcoming){
+  function cardHtml(b){
     const d=new Date(b.date+'T00:00:00');
     const courtLabel=b.courtLabel||courtDisplay(b.court);
     const partners=b.partners?b.partners.join('、'):'';
@@ -1477,42 +1782,55 @@ function renderBookings(){
       '<div class="bookingCardBody">'+
         '<div class="bookingCardTime">'+
           b.startTime+' – '+b.endTime+' &nbsp;'+courtLabel+
-          '&nbsp;<span class="statusChip '+b.status+'">'+
-          (b.status==='confirmed'?'確認':(b.status==='cancelled'?'取消':'完成'))+
-          '</span></div>'+
+          '&nbsp;<span class="statusChip '+b.status+'">確認</span></div>'+
         '<div class="bookingCardMeta">'+MODE_LABELS[b.mode]+(partners?' · '+partners:'')+'</div>'+
-        (isUpcoming&&b.status==='confirmed'?
-          '<div class="bookingCardActions"><button class="cancelBtn" onclick="cancelBooking(\''+b.id+'\')">取消預約</button></div>':'')+
+        '<div class="bookingCardActions"><button class="cancelBtn" onclick="cancelBooking(\''+b.id+'\')">取消預約</button></div>'+
       '</div>'+
     '</div>';
   }
   const upEl=document.getElementById('bookUpcoming');
-  const paEl=document.getElementById('bookPast');
-  if(upEl) upEl.innerHTML=upcoming.length?upcoming.map(b=>cardHtml(b,true)).join(''):
-    '<div class="emptyState"><div class="emptyStateIcon">📅</div>暫無即將到來的預約</div>';
-  if(paEl) paEl.innerHTML=past.length?past.map(b=>cardHtml(b,false)).join(''):
-    '<div class="emptyState"><div class="emptyStateIcon">—</div>暫無歷史紀錄</div>';
+  if(upEl) upEl.innerHTML=upcoming.length
+    ? upcoming.map(b=>cardHtml(b)).join('')
+    : '<div class="emptyState"><div class="emptyStateIcon">—</div>目前沒有預約</div>';
 }
 
-/* ── Render: 管理 (三分頁) ── */
+/* ── Render: 管理 (5 tabs) ── */
 function renderManage(){
-  const el=document.getElementById('manageContent');
+  var el=document.getElementById('manageContent');
   if(!el) return;
+  var adminLike=isAdminLike();
+  var role=_currentRole();
+  var isCoach=role==='coach';
+
+  var ALL_TABS=[
+    {key:'pending',       label:'待審核',   show:adminLike},
+    {key:'members',       label:'會員管理', show:adminLike},
+    {key:'coach',         label:'教練管理', show:isCoach||adminLike},
+    {key:'adminSettings', label:'管理員設定',show:adminLike},
+    {key:'announcements', label:'公告',     show:true},
+  ];
+  var TABS=ALL_TABS.filter(function(t){return t.show;});
+
+  // Guard: if current tab is not visible for this role, reset to first visible
+  if(!TABS.some(function(t){return t.key===_manageTab;})){
+    _manageTab=TABS.length?TABS[0].key:'announcements';
+  }
 
   // ── Tab bar ──
-  const TABS=[{key:'pending',label:'待審核'},{key:'schedule',label:'我的行程'},{key:'notices',label:'公告'}];
-  let html='<div style="display:flex;border-bottom:1px solid var(--color-border-soft);margin-bottom:16px">';
+  var html='<div class="manageTabs">';
   TABS.forEach(function(t){
-    const active=_manageTab===t.key;
-    html+='<button onclick="_manageTab=\''+t.key+'\';renderManage()" style="flex:1;padding:10px 0;font-size:13px;letter-spacing:0.04em;background:none;border:none;border-bottom:2px solid '+(active?'var(--color-text-primary)':'transparent')+';color:'+(active?'var(--color-text-primary)':'var(--color-text-muted)')+';cursor:pointer;transition:color 150ms">'+t.label+'</button>';
+    var active=_manageTab===t.key;
+    html+='<button class="manageTabBtn'+(active?' active':'')+'" onclick="_manageTab=\''+t.key+'\';renderManage()">'+t.label+'</button>';
   });
   html+='</div>';
   el.innerHTML=html;
 
   // ── Tab content ──
-  if(_manageTab==='pending')  _renderPendingTab(el);
-  else if(_manageTab==='schedule') _renderScheduleTab(el);
-  else _renderNoticesTab(el);
+  if(_manageTab==='pending')           _renderPendingTab(el);
+  else if(_manageTab==='members')      _renderMembersTab(el);
+  else if(_manageTab==='coach')        _renderCoachTab(el);
+  else if(_manageTab==='adminSettings')_renderAdminSettingsTab(el);
+  else                                  _renderAnnouncementsTab(el);
 }
 
 /* ── 待審核 tab ── */
@@ -1552,44 +1870,163 @@ function _renderPendingTab(el){
   el.innerHTML+=html;
 }
 
-/* ── 我的行程 tab (原 renderManage 內容) ── */
-function _renderScheduleTab(el){
-  const source=myBookingsFirestore!==null?myBookingsFirestore:MOCK_MY_BOOKINGS;
-  const upcoming=source.filter(function(b){return b.status==='confirmed';})
-    .sort(function(a,b){return a.date.localeCompare(b.date);});
-  if(!upcoming.length){
-    el.innerHTML+='<div class="emptyState"><div class="emptyStateIcon">🎾</div>目前沒有排定的行程</div>';
+/* ── Helper: HTML escape ── */
+function _esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+/* ── 會員管理 tab ── */
+function _renderMembersTab(el){
+  var ROLE_LABEL={owner:'創辦人',admin:'管理員',coach:'教練',annual_member:'年費會員',monthly_member:'月費會員',member:'會員'};
+  var members=Object.values(usersCache).filter(function(m){
+    return m.role&&m.role!=='pending'&&m.role!=='blocked';
+  }).sort(function(a,b){
+    return (a.displayName||'').localeCompare(b.displayName||'','zh-Hant');
+  });
+  if(!members.length){
+    el.innerHTML+='<div class="emptyState"><div class="emptyStateIcon">—</div>尚無會員資料</div>';
     return;
   }
-  let html='<div class="screenSection">即將到來</div>';
-  upcoming.forEach(function(b){
-    const surface=COURT_SURFACE[b.court];
-    const barCls=surface==='clay'?'clay':(b.mode==='event_lock'?'lock':'');
-    const courtLabel=b.courtLabel||({hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[b.court]||b.court);
-    const partners=b.partners?b.partners.join('、'):'';
-    html+='<div class="scheduleItem">'+
-      '<div class="scheduleItemBar '+barCls+'"></div>'+
-      '<div class="scheduleItemBody">'+
-        '<div class="scheduleItemTime">'+shortDateStr(b.date)+'  '+b.startTime+' – '+b.endTime+'</div>'+
-        '<div class="scheduleItemName">'+courtLabel+'  ·  '+MODE_LABELS[b.mode]+'</div>'+
-        (partners?'<div class="scheduleItemMeta">'+partners+'</div>':'')+
+  var html='<div style="padding:0 2px">';
+  members.forEach(function(m){
+    var initials=(m.displayName||'?').charAt(0);
+    var avatarHtml=m.lineAvatar
+      ?'<img src="'+m.lineAvatar+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'" alt="">'
+      :'<svg width="40" height="40" viewBox="0 0 40 40"><rect width="40" height="40" rx="20" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="16" font-family="serif">'+initials+'</text></svg>';
+    var roleLabel=ROLE_LABEL[m.role]||m.role||'會員';
+    html+='<div class="memberCard">'+
+      '<div class="memberAvatar">'+avatarHtml+'</div>'+
+      '<div class="memberInfo">'+
+        '<div class="memberName">'+_esc(m.displayName||'未知')+'</div>'+
+        '<div class="memberMeta">'+(m.ntrp?'NTRP '+m.ntrp+' · ':'')+(m.preferredPosition?_esc(m.preferredPosition):'')+'</div>'+
       '</div>'+
+      '<div class="memberBadge'+(m.role==='coach'?' coach':'')+'">'+roleLabel+'</div>'+
     '</div>';
   });
+  html+='</div>';
   el.innerHTML+=html;
 }
 
-/* ── 公告 tab ── */
-function _renderNoticesTab(el){
-  el.innerHTML+=MOCK_NOTIFICATIONS.map(function(n){
-    return '<div class="notifItem'+(n.read?' read':'')+'" onclick="markRead(\''+n.id+'\',this)">'+
-      '<div class="notifDot"></div>'+
-      '<div class="notifBody">'+
-        '<div class="notifTitle">'+n.title+'</div>'+
-        '<div class="notifText">'+n.text+'</div>'+
-        '<div class="notifTime">'+n.time+'</div>'+
-      '</div></div>';
-  }).join('')||'<div class="emptyState">目前沒有公告</div>';
+/* ── 教練管理 tab ── */
+function _renderCoachTab(el){
+  var adminLike=isAdminLike();
+  var uid=currentUser?currentUser.userId||currentUser.id||'':null;
+  var coaches=adminLike
+    ? Object.values(usersCache).filter(function(m){return m.role==='coach';})
+    : (uid?[usersCache[uid]]:[] ).filter(Boolean);
+
+  if(!coaches.length){
+    el.innerHTML+='<div class="emptyState"><div class="emptyStateIcon">—</div>尚無教練資料</div>';
+    return;
+  }
+
+  if(!coaches.find(function(c){return c&&c.userId===_coachTabSelected;})){
+    _coachTabSelected=coaches[0]?coaches[0].userId:null;
+  }
+  var selId=_coachTabSelected;
+
+  var html='';
+  if(adminLike&&coaches.length>1){
+    html+='<div style="margin-bottom:14px"><select class="formSelect" style="margin:0" onchange="_coachTabSelected=this.value;renderManage()">';
+    coaches.forEach(function(c){
+      html+='<option value="'+c.userId+'"'+(c.userId===selId?' selected':'')+'>'+_esc(c.displayName||c.userId)+'</option>';
+    });
+    html+='</select></div>';
+  } else {
+    html+='<div class="screenSection">'+_esc(coaches[0]?coaches[0].displayName||'—':'—')+'</div>';
+  }
+
+  var coach=usersCache[selId]||{};
+  var studs=coach.coachStudents&&typeof coach.coachStudents==='object'&&!Array.isArray(coach.coachStudents)
+    ?Object.keys(coach.coachStudents):[];
+
+  html+='<button class="addBookingBtn" onclick="openCoachAssign(\''+selId+'\')">＋ 指派會員</button>';
+
+  if(!studs.length){
+    html+='<div class="emptyState" style="padding:20px 0"><div class="emptyStateIcon" style="font-size:20px">—</div>尚無學生</div>';
+    el.innerHTML+=html; return;
+  }
+  html+='<div>';
+  studs.forEach(function(sid){
+    var s=usersCache[sid];
+    var name=s?_esc(s.displayName||sid):sid;
+    var rec=(coach.coachStudents&&coach.coachStudents[sid])||{};
+    var atd=rec.attendanceDate||'—';
+    var pay=rec.paymentDate||'—';
+    var note=rec.coachNote?'  ' +_esc(rec.coachNote):'';
+    html+='<div class="coachStudentRow">'+
+      '<div class="coachStudentInfo">'+
+        '<div class="coachStudentName">'+name+'</div>'+
+        '<div class="coachStudentMeta">出席：'+atd+'　繳費：'+pay+note+'</div>'+
+      '</div>'+
+      '<button class="coachStudentEdit" onclick="openCoachStudentEditor(\''+selId+'\',\''+sid+'\')">編輯</button>'+
+    '</div>';
+  });
+  html+='</div>';
+  el.innerHTML+=html;
+}
+
+/* ── 管理員設定 tab ── */
+function _renderAdminSettingsTab(el){
+  var myRole=_currentRole();
+  var isOwner=myRole==='owner';
+  var ROLE_LABEL={owner:'創辦人',admin:'管理員',coach:'教練',annual_member:'年費會員',monthly_member:'月費會員',member:'會員'};
+  var members=Object.values(usersCache).filter(function(m){
+    return m.role&&m.role!=='pending'&&m.role!=='blocked';
+  }).sort(function(a,b){
+    var ord={owner:0,admin:1,coach:2};
+    var oa=ord[a.role]!==undefined?ord[a.role]:9;
+    var ob=ord[b.role]!==undefined?ord[b.role]:9;
+    return oa!==ob?oa-ob:(a.displayName||'').localeCompare(b.displayName||'','zh-Hant');
+  });
+  if(!members.length){
+    el.innerHTML+='<div class="emptyState"><div class="emptyStateIcon">—</div>尚無資料</div>';
+    return;
+  }
+  var html='<div style="padding:0 2px">';
+  members.forEach(function(m){
+    var roleLabel=ROLE_LABEL[m.role]||m.role;
+    var badgeCls='adminRoleBadge'+(m.role==='owner'?' owner':(m.role==='admin'?' admin':''));
+    var canToggle=isOwner&&m.role!=='owner';
+    var isCurAdmin=m.role==='admin';
+    var btnLabel=isCurAdmin?'撤銷管理員':'設為管理員';
+    html+='<div class="adminSettingsRow">'+
+      '<div style="flex:1;font-size:14px;color:var(--color-text-primary);font-weight:500">'+_esc(m.displayName||'未知')+'</div>'+
+      '<span class="'+badgeCls+'">'+roleLabel+'</span>'+
+      (canToggle?'<button class="adminToggleBtn" onclick="setAdminRole(\''+m.userId+'\','+(isCurAdmin?'false':'true')+')">'+btnLabel+'</button>':'')+
+    '</div>';
+  });
+  html+='</div>';
+  el.innerHTML+=html;
+}
+
+/* ── 公告 tab (Firestore-backed) ── */
+function _renderAnnouncementsTab(el){
+  var canEdit=isAdminLike();
+  if(canEdit){
+    el.innerHTML+='<button class="addBookingBtn" onclick="openAnnouncementEditor(null)">＋ 新增公告</button>';
+  }
+  if(!announcementsCache.length){
+    el.innerHTML+='<div class="emptyState"><div class="emptyStateIcon">—</div>目前沒有公告</div>';
+    return;
+  }
+  var html='<div>';
+  announcementsCache.forEach(function(a){
+    var timeStr='';
+    if(a.updatedAt){
+      timeStr=a.updatedAt.toDate?a.updatedAt.toDate().toLocaleDateString('zh-TW'):String(a.updatedAt);
+    }
+    var byStr=a.updatedBy?' · '+_esc(a.updatedBy):'';
+    html+='<div class="announcCard">'+
+      '<div class="announcTitle">'+_esc(a.title||'')+'</div>'+
+      '<div class="announcBody">'+_esc(a.content||'')+'</div>'+
+      (timeStr?'<div class="announcMeta">'+timeStr+byStr+'</div>':'')+
+      (canEdit?'<div class="announcActions">'+
+        '<button class="announcEditBtn" onclick="openAnnouncementEditor(\''+a.id+'\')">編輯</button>'+
+        '<button class="announcDelBtn" onclick="deleteAnnouncement(\''+a.id+'\')">刪除</button>'+
+      '</div>':'')+
+    '</div>';
+  });
+  html+='</div>';
+  el.innerHTML+=html;
 }
 
 /* ── Approve Member ── */
@@ -1625,14 +2062,190 @@ function rejectMember(userId){
     });
 }
 
+/* ── Announcements: Load ── */
+function loadAnnouncements(){
+  if(!db) return;
+  db.collection('announcements').orderBy('updatedAt','desc').get()
+    .then(function(snap){
+      announcementsCache=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());});
+      if(_manageTab==='announcements') renderManage();
+    })
+    .catch(function(e){ console.warn('loadAnnouncements error:',e); });
+}
+
+/* ── Announcements: Open editor (inline) ── */
+function openAnnouncementEditor(id){
+  var ann=id?announcementsCache.find(function(a){return a.id===id;}):null;
+  var titleVal=ann?_esc(ann.title):'';
+  var contentVal=ann?_esc(ann.content):'';
+  var el=document.getElementById('manageContent');
+  if(!el) return;
+  el.innerHTML=
+    '<div style="padding:0 4px">'+
+    '<button onclick="_manageTab=\'announcements\';renderManage()" style="font-size:12px;letter-spacing:0.06em;color:var(--color-text-muted);margin-bottom:16px;display:flex;align-items:center;gap:4px">← 返回</button>'+
+    '<div class="formRow"><label class="formLabel">標題</label>'+
+    '<input class="formInput" id="annTitle" value="'+titleVal+'" placeholder="公告標題"></div>'+
+    '<div class="formRow"><label class="formLabel">內容</label>'+
+    '<textarea class="formInput" id="annContent" rows="6" style="resize:vertical">'+contentVal+'</textarea></div>'+
+    '<button class="saveBtn" onclick="saveAnnouncement(\''+(id||'')+'\')">儲存公告</button>'+
+    '</div>';
+}
+
+/* ── Announcements: Save ── */
+function saveAnnouncement(id){
+  if(!db){showToast('無法連線');return;}
+  var titleEl=document.getElementById('annTitle');
+  var contentEl=document.getElementById('annContent');
+  var title=titleEl?titleEl.value.trim():'';
+  var content=contentEl?contentEl.value.trim():'';
+  if(!title){showToast('請輸入標題');return;}
+  var updatedBy=currentUser?currentUser.displayName||'管理員':'管理員';
+  var data={title:title,content:content,updatedAt:TS(),updatedBy:updatedBy};
+  var ref=id?db.collection('announcements').doc(id):db.collection('announcements').doc();
+  ref.set(data,{merge:true})
+    .then(function(){
+      showToast('公告已儲存');
+      _manageTab='announcements';
+      loadAnnouncements();
+    })
+    .catch(function(e){console.error('saveAnnouncement error:',e);showToast('儲存失敗');});
+}
+
+/* ── Announcements: Delete ── */
+function deleteAnnouncement(id){
+  if(!confirm('確認刪除此公告？')) return;
+  if(!db){showToast('無法連線');return;}
+  db.collection('announcements').doc(id).delete()
+    .then(function(){
+      showToast('公告已刪除');
+      announcementsCache=announcementsCache.filter(function(a){return a.id!==id;});
+      renderManage();
+    })
+    .catch(function(e){console.error('deleteAnnouncement error:',e);showToast('刪除失敗');});
+}
+
+/* ── Coach: Assign member (inline) ── */
+function openCoachAssign(coachId){
+  var coach=usersCache[coachId]||{};
+  var existingStudents=coach.coachStudents&&typeof coach.coachStudents==='object'&&!Array.isArray(coach.coachStudents)
+    ?Object.keys(coach.coachStudents):[];
+  var available=Object.values(usersCache).filter(function(m){
+    return m.role&&m.role!=='pending'&&m.role!=='blocked'&&existingStudents.indexOf(m.userId)<0&&m.userId!==coachId;
+  });
+  if(!available.length){showToast('沒有可指派的會員');return;}
+  var el=document.getElementById('manageContent');
+  if(!el) return;
+  var opts=available.map(function(m){
+    return '<option value="'+m.userId+'">'+_esc(m.displayName||m.userId)+'</option>';
+  }).join('');
+  el.innerHTML=
+    '<div style="padding:0 4px">'+
+    '<button onclick="_manageTab=\'coach\';renderManage()" style="font-size:12px;letter-spacing:0.06em;color:var(--color-text-muted);margin-bottom:16px">← 返回</button>'+
+    '<div class="screenSection">指派學生至 '+_esc(coach.displayName||coachId)+'</div>'+
+    '<div class="formRow"><label class="formLabel">選擇會員</label>'+
+    '<select class="formSelect" id="assignStudentSel">'+opts+'</select></div>'+
+    '<button class="saveBtn" onclick="assignStudentToCoach(\''+coachId+'\')">指派</button>'+
+    '</div>';
+}
+
+/* ── Coach: Assign student to Firestore ── */
+function assignStudentToCoach(coachId){
+  if(!db){showToast('無法連線');return;}
+  var sel=document.getElementById('assignStudentSel');
+  var studentId=sel?sel.value:'';
+  if(!studentId){showToast('請選擇會員');return;}
+  var update={'updatedAt':TS()};
+  update['coachStudents.'+studentId]={attendanceDate:'',paymentDate:'',coachNote:''};
+  db.collection('users').doc(coachId).update(update)
+    .then(function(){
+      showToast('已指派');
+      if(!usersCache[coachId]) usersCache[coachId]={};
+      if(!usersCache[coachId].coachStudents||typeof usersCache[coachId].coachStudents!=='object'||Array.isArray(usersCache[coachId].coachStudents))
+        usersCache[coachId].coachStudents={};
+      usersCache[coachId].coachStudents[studentId]={attendanceDate:'',paymentDate:'',coachNote:''};
+      _manageTab='coach';
+      renderManage();
+    })
+    .catch(function(e){console.error('assignStudentToCoach error:',e);showToast('指派失敗');});
+}
+
+/* ── Coach: Open student editor (inline) ── */
+function openCoachStudentEditor(coachId, studentId){
+  var coach=usersCache[coachId]||{};
+  var student=usersCache[studentId];
+  var rec=(coach.coachStudents&&coach.coachStudents[studentId])||{};
+  var el=document.getElementById('manageContent');
+  if(!el) return;
+  el.innerHTML=
+    '<div style="padding:0 4px">'+
+    '<button onclick="_manageTab=\'coach\';renderManage()" style="font-size:12px;letter-spacing:0.06em;color:var(--color-text-muted);margin-bottom:16px">← 返回</button>'+
+    '<div class="screenSection">'+_esc(student?student.displayName||studentId:studentId)+'</div>'+
+    '<div class="formRow"><label class="formLabel">最近出席日</label>'+
+    '<input class="formInput" id="csAtd" type="date" value="'+(rec.attendanceDate||'')+'"></div>'+
+    '<div class="formRow"><label class="formLabel">最近繳費日</label>'+
+    '<input class="formInput" id="csPay" type="date" value="'+(rec.paymentDate||'')+'"></div>'+
+    '<div class="formRow"><label class="formLabel">備註</label>'+
+    '<input class="formInput" id="csNote" value="'+_esc(rec.coachNote||'')+'" placeholder="備註"></div>'+
+    '<button class="saveBtn" onclick="saveCoachStudentRecord(\''+coachId+'\',\''+studentId+'\')">儲存</button>'+
+    '</div>';
+}
+
+/* ── Coach: Save student record ── */
+function saveCoachStudentRecord(coachId, studentId){
+  if(!db){showToast('無法連線');return;}
+  var atd=(document.getElementById('csAtd')||{}).value||'';
+  var pay=(document.getElementById('csPay')||{}).value||'';
+  var note=(document.getElementById('csNote')||{}).value||'';
+  var update={'updatedAt':TS()};
+  update['coachStudents.'+studentId]={attendanceDate:atd,paymentDate:pay,coachNote:note};
+  db.collection('users').doc(coachId).update(update)
+    .then(function(){
+      showToast('已儲存');
+      if(usersCache[coachId]){
+        if(!usersCache[coachId].coachStudents) usersCache[coachId].coachStudents={};
+        usersCache[coachId].coachStudents[studentId]={attendanceDate:atd,paymentDate:pay,coachNote:note};
+      }
+      _manageTab='coach';
+      renderManage();
+    })
+    .catch(function(e){console.error('saveCoachStudentRecord error:',e);showToast('儲存失敗');});
+}
+
+/* ── Admin Settings: Set / revoke admin role ── */
+function setAdminRole(userId, makeAdmin){
+  var myRole=_currentRole();
+  if(myRole!=='owner'){showToast('僅 owner 可變更權限');return;}
+  var target=usersCache[userId];
+  if(!target){showToast('找不到使用者');return;}
+  if(target.role==='owner'){showToast('不可變更 owner 權限');return;}
+  var newRole=makeAdmin?'admin':'annual_member';
+  var name=_esc(target.displayName||'此會員');
+  if(!confirm(makeAdmin?'設 '+name+' 為管理員？':'撤銷 '+name+' 的管理員？')) return;
+  if(!db){showToast('無法連線');return;}
+  db.collection('users').doc(userId).update({role:newRole,updatedAt:TS()})
+    .then(function(){
+      showToast(makeAdmin?'已設為管理員':'已撤銷管理員');
+      if(usersCache[userId]) usersCache[userId].role=newRole;
+      renderManage();
+    })
+    .catch(function(e){console.error('setAdminRole error:',e);showToast('操作失敗');});
+}
+
 /* ── Finance: Render ── */
 const FIN_TYPE_LABEL = {annual:'年費',monthly:'月費',donate:'抖內',expense:'支出'};
 const FIN_TYPE_CLASS = {annual:'fin-annual',monthly:'fin-monthly',donate:'fin-donate',expense:'fin-expense'};
 
+/* ── Dev/Test Override ── */
+// 本地測試用：設定 role 繞過 LIFF auth。上線後改為 null。
+const DEV_ROLE = 'owner'; // 'owner' | 'admin' | 'coach' | null
+
 /* ── Global Permission Helper ── */
 function isAdminLike(){
-  var role = currentUser ? currentUser.role : null;
+  var role = currentUser ? currentUser.role : (DEV_ROLE || null);
   return role === 'owner' || role === 'admin';
+}
+function _currentRole(){
+  return currentUser ? currentUser.role : (DEV_ROLE || null);
 }
 
 /* ── Finance: Permission helper ── */
@@ -1646,96 +2259,374 @@ function renderFinance(){
   const allRecords = financeRecords.length > 0 ? financeRecords : MOCK_FINANCE_RECORDS;
   const isAdmin = _isFinanceAdmin();
 
-  // ── Admin buttons: add always visible, export admin-only ──
+  // Admin button visibility
   const exportBtn = document.getElementById('finExportBtn');
   if(exportBtn) exportBtn.style.display = isAdmin ? '' : 'none';
 
-  // ── Year picker (dropdown button) ──
-  const yearPickerHtml = '<div style="margin-bottom:18px">'
-    + '<button class="finYearPicker" onclick="toggleFinYearDropdown(event)">'
-    + _finYear
-    + ' <span class="finYearPickerCaret">▼</span>'
-    + '</button>'
-    + '</div>';
+  // Search bar: only on detail tab
+  const searchBar = document.getElementById('finSearchInput');
+  if(searchBar) searchBar.style.display = _finViewTab === 'detail' ? '' : 'none';
 
-  // ── Filter by active year ──
+  // Filter by active year
   const source = allRecords.filter(function(r){
     return (r.year || parseInt(r.date.slice(0,4),10)) === _finYear;
   });
 
-  // ── Stats ──
-  const sum = function(type){ return source.filter(function(r){return r.type===type;}).reduce(function(a,r){return a+r.amount;},0); };
-  const annual  = sum('annual');
-  const monthly = sum('monthly');
-  const donate  = sum('donate');
-  const expense = sum('expense');
+  // Stats
+  const sumT = function(type){ return source.filter(function(r){return r.type===type;}).reduce(function(a,r){return a+r.amount;},0); };
+  const annual  = sumT('annual');
+  const monthly = sumT('monthly');
+  const donate  = sumT('donate');
+  const expense = sumT('expense');
   const income  = annual + monthly + donate;
   const balance = income - expense;
-  const fmt = function(n){ return 'NT$ '+(n).toLocaleString(); };
+  const fmt = function(n){ return 'NT$ '+(n).toLocaleString(); };
 
+  // Year picker
+  const yearPickerHtml = '<div style="margin-bottom:14px">'
+    + '<button class="finYearPicker" onclick="toggleFinYearDropdown(event)">'
+    + _finYear + ' <span class="finYearPickerCaret">▼</span>'
+    + '</button></div>';
+
+  // View tabs
+  const VIEW_TABS = [{key:'overview',label:'總覽'},{key:'detail',label:'明細'},{key:'chart',label:'圖表分析'}];
   let html = yearPickerHtml;
+  html += '<div class="finViewTabs">';
+  VIEW_TABS.forEach(function(t){
+    const active = _finViewTab === t.key;
+    html += '<button class="finViewTabBtn'+(active?' active':'')+'" onclick="_finViewTab=\''+t.key+'\';renderFinance()">'+t.label+'</button>';
+  });
+  html += '</div>';
 
-  // Balance card — only balance, clean
+  if(_finViewTab === 'overview'){
+    html += _renderFinOverview(source, balance, annual, monthly, donate, expense, income, fmt);
+  } else if(_finViewTab === 'detail'){
+    html += _renderFinDetail(source, isAdmin, fmt);
+  } else {
+    html += _renderFinChart(source, income, expense, annual, monthly, donate, fmt);
+  }
+
+  el.innerHTML = html;
+}
+
+/* ── Finance: Overview tab ── */
+function _renderFinOverview(source, balance, annual, monthly, donate, expense, income, fmt){
+  var html = '';
   html += '<div class="financeBalanceCard">';
   html += '<div class="financeBalanceLabel">結餘</div>';
   html += '<div class="financeBalanceAmt">'+fmt(balance)+'</div>';
   html += '</div>';
-
-  // Stats grid (每格可點擊)
   html += '<div class="financeStats">';
   html += _statCard('年費','annual',annual,false);
   html += _statCard('月費','monthly',monthly,false);
   html += _statCard('抖內','donate',donate,false);
   html += _statCard('支出','expense',expense,true);
   html += '</div>';
+  html += '<div class="finChartSummaryRow" style="margin-bottom:8px">';
+  html += '<span class="finChartSummaryLabel">總收入</span><span class="finChartSummaryVal">'+fmt(income)+'</span>';
+  html += '</div>';
+  html += _renderExpiringSoon();
+  return html;
+}
 
-  // Detail list — apply search filter
-  const q = _finSearchQuery.toLowerCase().trim();
-  const filtered = q
+/* ── Finance: Expiring Members ── */
+function _renderExpiringSoon(){
+  var todayD = new Date(); todayD.setHours(0,0,0,0);
+  var members = (typeof MOCK_MEMBERS !== 'undefined') ? MOCK_MEMBERS : [];
+  var list = members.filter(function(m){
+    if(m.status !== 'active') return false;  // resigned / inactive / removed — all excluded
+    if(!m.expireDate) return false;
+    if(m.expirePaid) return false;
+    var exp = new Date(m.expireDate.replace(/\//g,'-')+'T00:00:00');
+    var diff = Math.floor((exp - todayD) / 86400000);
+    return diff <= 30; // within 30 days or already overdue
+  });
+  if(!list.length){
+    return '<div class="finChartSummaryRow" style="margin-top:6px">'
+      +'<span class="finChartSummaryLabel">即將到期</span>'
+      +'<span class="finChartSummaryVal" style="font-size:12px;color:var(--color-text-muted)">目前無</span>'
+      +'</div>';
+  }
+  list.sort(function(a,b){
+    var expA = new Date(a.expireDate.replace(/\//g,'-')+'T00:00:00');
+    var expB = new Date(b.expireDate.replace(/\//g,'-')+'T00:00:00');
+    return expA - expB;
+  });
+  var html = '<div class="finExpireBlock">';
+  html += '<div class="finExpireBlockTitle">即將到期 / 未繳</div>';
+  list.forEach(function(m){
+    var exp = new Date(m.expireDate.replace(/\//g,'-')+'T00:00:00');
+    var diff = Math.floor((exp - todayD) / 86400000);
+    var tagClass, tagText;
+    if(diff < 0){ tagClass='overdue'; tagText='未繳'; }
+    else if(diff === 0){ tagClass='today'; tagText='今日到期 ⏰'; }
+    else{ tagClass='soon'; tagText='即將到期 ⏰'; }
+    var typeLabel = m.type==='annual'?'年費':m.type==='monthly'?'月費':m.type;
+    var enc = encodeURIComponent(JSON.stringify({id:m.id,name:m.name,expireDate:m.expireDate,type:typeLabel}));
+    html += '<div class="finExpireMemberRow" onclick="_finOpenMemberSheet(\''+enc+'\')">';
+    html += '<div class="finExpireAvatar">'+(m.name||'?').charAt(0)+'</div>';
+    html += '<div style="flex:1;min-width:0">';
+    html += '<div class="finExpireName">'+m.name+'</div>';
+    html += '<div class="finExpireDate">'+typeLabel+' · '+m.expireDate+'</div>';
+    html += '</div>';
+    html += '<span class="finExpireTag '+tagClass+'">'+tagText+'</span>';
+    html += '</div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+/* ── Finance: Member Action Sheet ── */
+function _finOpenMemberSheet(enc){
+  var data; try{ data=JSON.parse(decodeURIComponent(enc)); }catch(e){ return; }
+  var sheet=document.getElementById('finMemberSheet');
+  var backdrop=document.getElementById('finMemberBackdrop');
+  if(!sheet||!backdrop) return;
+  document.getElementById('fmsName').textContent = data.name||'—';
+  document.getElementById('fmsMeta').textContent = (data.type||'')+'  ·  到期：'+(data.expireDate||'—');
+  var expInput=document.getElementById('fmsExpireInput');
+  if(expInput) expInput.value=(data.expireDate||'').replace(/\//g,'-');
+  sheet.dataset.memberId = data.id||'';
+  backdrop.classList.add('open');
+  setTimeout(function(){ sheet.classList.add('open'); },10);
+}
+function _finCloseMemberSheet(){
+  var sheet=document.getElementById('finMemberSheet');
+  var backdrop=document.getElementById('finMemberBackdrop');
+  if(sheet) sheet.classList.remove('open');
+  if(backdrop) backdrop.classList.remove('open');
+}
+function _finMarkPaid(){
+  var sheet=document.getElementById('finMemberSheet');
+  if(!sheet) return;
+  var mid=sheet.dataset.memberId;
+  var m=(typeof MOCK_MEMBERS!=='undefined'?MOCK_MEMBERS:[]).find(function(x){return x.id===mid;});
+  if(m){ m.expirePaid=true; }
+  _finCloseMemberSheet();
+  setTimeout(function(){ renderFinance(); showToast('已標記收費，從提醒清單移除'); },260);
+}
+function _finUpdateExpiry(){
+  var sheet=document.getElementById('finMemberSheet');
+  if(!sheet) return;
+  var mid=sheet.dataset.memberId;
+  var val=(document.getElementById('fmsExpireInput')||{}).value;
+  if(!val){ showToast('請選擇新到期日'); return; }
+  var m=(typeof MOCK_MEMBERS!=='undefined'?MOCK_MEMBERS:[]).find(function(x){return x.id===mid;});
+  if(m){ m.expireDate=val.replace(/-/g,'/'); m.expirePaid=false; }
+  _finCloseMemberSheet();
+  setTimeout(function(){ renderFinance(); showToast('到期日已更新'); },260);
+}
+function _finMarkResigned(){
+  if(!confirm('確定將此會員標記為退會？財務紀錄將保留。')) return;
+  var sheet=document.getElementById('finMemberSheet');
+  if(!sheet) return;
+  var mid=sheet.dataset.memberId;
+  var m=(typeof MOCK_MEMBERS!=='undefined'?MOCK_MEMBERS:[]).find(function(x){return x.id===mid;});
+  if(m){ m.status='resigned'; m.resignedAt=new Date().toISOString(); }
+  _finCloseMemberSheet();
+  setTimeout(function(){ renderFinance(); showToast('已標記退會（財務紀錄保留）'); },260);
+}
+
+/* ── Finance: Detail tab ── */
+function _renderFinDetail(source, isAdmin, fmt){
+  var q = _finSearchQuery.toLowerCase().trim();
+  var filtered = q
     ? source.filter(function(r){
-        return (r.member       || '').toLowerCase().includes(q)
-            || (r.note         || '').toLowerCase().includes(q)
-            || (r.createdByName|| '').toLowerCase().includes(q);
+        return (r.member||'').toLowerCase().includes(q)
+            || (r.note||'').toLowerCase().includes(q)
+            || (r.createdByName||'').toLowerCase().includes(q);
       })
     : source;
-
-  html += '<div class="screenSection">明細'+(q ? '（'+filtered.length+' 筆）' : '')+'</div>';
-  const sorted = filtered.slice().sort(function(a,b){ return b.date.localeCompare(a.date); });
+  var html = '<div class="screenSection">明細'+(q?'（'+filtered.length+' 筆）':'')+'</div>';
+  var sorted = filtered.slice().sort(function(a,b){return b.date.localeCompare(a.date);});
   if(!sorted.length){
     html += '<div class="emptyState"><div class="emptyStateIcon">¥</div>尚無紀錄</div>';
-  } else {
-    html += '<div style="padding:0 2px">';
-    sorted.forEach(function(r){
-      const isOut = r.type==='expense';
-      // dateMeta: date · 登記 · 修改
-      const editedPart = r.updatedByName ? ' · 修改：'+r.updatedByName : '';
-      const dateMeta = r.date
-        + (r.createdByName ? ' · 登記：'+r.createdByName : '')
-        + editedPart;
-      const delIcon = isAdmin
-        ? '<button class="finDeleteIcon" onclick="event.stopPropagation();deleteFinanceRecord(\''+r.id+'\')" title="刪除">'
-          + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>'
-          + '</button>'
-        : '';
-      html += '<div class="financeRecord" style="align-items:flex-start">'
-        + '<div class="finRecordLeft financeRecordLeft" onclick="editFinanceRecord(\''+r.id+'\')">'
-          + '<div class="financeRecordName">'+(r.member||'—')+'</div>'
-          + (r.note ? '<div class="finRecordNote">'+r.note+'</div>' : '')
-          + '<div class="finRecordDateMeta">'+dateMeta+'</div>'
-        + '</div>'
-        + '<div class="finRecordRight">'
-          + '<div class="financeRecordAmt'+(isOut?' out':'')+'">'+fmt(r.amount)+'</div>'
-          + '<span class="finTypeBadge '+FIN_TYPE_CLASS[r.type]+'">'+FIN_TYPE_LABEL[r.type]+'</span>'
-          + delIcon
-        + '</div>'
-      + '</div>';
-    });
-    // 底部留白，避免最後一筆被固定 nav 遮住
-    html += '<div style="height:72px"></div>';
-    html += '</div>';
+    return html;
   }
+  html += '<div style="padding:0 2px">';
+  sorted.forEach(function(r){
+    var isOut = r.type==='expense';
+    var editedPart = r.updatedByName?' · 修改：'+r.updatedByName:'';
+    var dateMeta = r.date+(r.createdByName?' · 登記：'+r.createdByName:'')+editedPart;
+    // Check if member has since resigned — look up by name in MOCK_MEMBERS
+    var memberObj = (typeof MOCK_MEMBERS!=='undefined'&&r.member)
+      ? MOCK_MEMBERS.find(function(x){return x.name===r.member;}) : null;
+    var resignedTag = (memberObj&&memberObj.status==='resigned')
+      ? '<span style="font-size:9.5px;letter-spacing:0.05em;color:#8C4637;background:rgba(130,65,52,0.09);padding:2px 7px;border-radius:99px;margin-left:6px;vertical-align:middle">已退會</span>'
+      : '';
+    var delIcon = isAdmin
+      ? '<button class="finDeleteIcon" onclick="event.stopPropagation();deleteFinanceRecord(\''+r.id+'\')" title="刪除">'
+        + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>'
+        + '</button>'
+      : '';
+    html += '<div class="financeRecord" style="align-items:flex-start">'
+      + '<div class="finRecordLeft financeRecordLeft" onclick="editFinanceRecord(\''+r.id+'\')">'
+        + '<div class="financeRecordName">'+(r.member||'—')+resignedTag+'</div>'
+        + (r.note?'<div class="finRecordNote">'+r.note+'</div>':'')
+        + '<div class="finRecordDateMeta">'+dateMeta+'</div>'
+      + '</div>'
+      + '<div class="finRecordRight">'
+        + '<div class="financeRecordAmt'+(isOut?' out':'')+'">'+fmt(r.amount)+'</div>'
+        + '<span class="finTypeBadge '+FIN_TYPE_CLASS[r.type]+'">'+FIN_TYPE_LABEL[r.type]+'</span>'
+        + delIcon
+      + '</div>'
+    + '</div>';
+  });
+  html += '<div style="height:72px"></div></div>';
+  return html;
+}
 
-  el.innerHTML = html;
+/* ── Finance: Chart tab (router) ── */
+function _renderFinChart(source, income, expense, annual, monthly, donate, fmt){
+  var modes = [{key:'income',label:'收入類別'},{key:'expense',label:'支出類別'},{key:'member',label:'成員貢獻'}];
+  var html = '<div class="finChartModeSwitcher">';
+  modes.forEach(function(m){
+    var a = _finChartMode===m.key;
+    html += '<button class="finChartModeBtn'+(a?' active':'')+'" onclick="_finChartMode=\''+m.key+'\';renderFinance()">'+m.label+'</button>';
+  });
+  html += '</div>';
+  if(_finChartMode==='income')  html += _finChartIncome(source, income, annual, monthly, donate, fmt);
+  else if(_finChartMode==='expense') html += _finChartExpense(source, expense, fmt);
+  else                          html += _finChartMember(source, fmt);
+  return html;
+}
+
+/* ── Finance: Income donut ── */
+function _finChartIncome(source, income, annual, monthly, donate, fmt){
+  var segs = [
+    {value:annual,  color:FIN_CHART_COLORS.annual,  label:'年費'},
+    {value:monthly, color:FIN_CHART_COLORS.monthly, label:'月費'},
+    {value:donate,  color:FIN_CHART_COLORS.donate,  label:'抖內'},
+  ].filter(function(s){return s.value>0;});
+  if(!segs.length) return '<div class="emptyState" style="padding:32px 0">本年度尚無收入紀錄</div>';
+  var html = '<div class="finChartDonutWrap">';
+  html += '<div class="finChartDonut" style="width:150px;height:150px">';
+  html += _donutSVG(segs,150,0.60);
+  html += '<div class="finChartCenter"><div class="finChartCenterLabel">總收入</div>';
+  html += '<div class="finChartCenterAmt">'+fmt(income)+'</div></div></div>';
+  html += '<div class="finChartLegend">';
+  segs.forEach(function(s){ html += '<div class="finChartLegendItem"><div class="finChartLegendDot" style="background:'+s.color+'"></div>'+s.label+'</div>'; });
+  html += '</div></div>';
+  var sorted = segs.slice().sort(function(a,b){return b.value-a.value;});
+  html += '<div class="finChartRanking">';
+  sorted.forEach(function(s,i){
+    var pct = income>0?Math.round(s.value/income*100):0;
+    html += '<div class="finChartRankRow">'
+      +'<span class="finChartRankNum">'+(i+1)+'</span>'
+      +'<div class="finChartLegendDot" style="background:'+s.color+';margin:0 2px"></div>'
+      +'<span class="finChartRankName">'+s.label+'</span>'
+      +'<span class="finChartRankAmt">'+fmt(s.value)+'</span>'
+      +'<span class="finChartRankPct">'+pct+'%</span>'
+      +'</div>';
+  });
+  html += '</div>';
+  html += '<div class="finChartSummaryRow"><span class="finChartSummaryLabel">平均每日收入</span>'
+    +'<span class="finChartSummaryVal">'+fmt(Math.round(income/365))+'</span></div>';
+  return html;
+}
+
+/* ── Finance: Expense donut ── */
+function _finChartExpense(source, expense, fmt){
+  var expRecs = source.filter(function(r){return r.type==='expense';});
+  if(!expRecs.length) return '<div class="emptyState" style="padding:32px 0">本年度尚無支出紀錄</div>';
+  var catMap = {};
+  expRecs.forEach(function(r){
+    var k = r.note&&r.note.trim() ? r.note.trim() : '其他';
+    catMap[k] = (catMap[k]||0)+r.amount;
+  });
+  var cats = Object.keys(catMap).map(function(k,i){
+    return {label:k,value:catMap[k],color:FIN_MEMBER_PALETTE[i%FIN_MEMBER_PALETTE.length]};
+  }).sort(function(a,b){return b.value-a.value;});
+  var html = '<div class="finChartDonutWrap">';
+  html += '<div class="finChartDonut" style="width:150px;height:150px">';
+  html += _donutSVG(cats,150,0.60);
+  html += '<div class="finChartCenter"><div class="finChartCenterLabel">總支出</div>';
+  html += '<div class="finChartCenterAmt">'+fmt(expense)+'</div></div></div>';
+  html += '<div class="finChartLegend">';
+  cats.slice(0,4).forEach(function(c){ html += '<div class="finChartLegendItem"><div class="finChartLegendDot" style="background:'+c.color+'"></div>'+c.label+'</div>'; });
+  html += '</div></div>';
+  html += '<div class="finChartRanking">';
+  cats.forEach(function(c,i){
+    var pct = expense>0?Math.round(c.value/expense*100):0;
+    html += '<div class="finChartRankRow">'
+      +'<span class="finChartRankNum">'+(i+1)+'</span>'
+      +'<div class="finChartLegendDot" style="background:'+c.color+';margin:0 2px"></div>'
+      +'<span class="finChartRankName">'+c.label+'</span>'
+      +'<span class="finChartRankAmt">'+fmt(c.value)+'</span>'
+      +'<span class="finChartRankPct">'+pct+'%</span>'
+      +'</div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+/* ── Finance: Member contribution donut ── */
+function _finChartMember(source, fmt){
+  var incRecs = source.filter(function(r){return r.type!=='expense';});
+  if(!incRecs.length) return '<div class="emptyState" style="padding:32px 0">尚無成員貢獻紀錄</div>';
+  var mMap = {};
+  incRecs.forEach(function(r){
+    var k = r.member&&r.member.trim() ? r.member.trim() : '未指定';
+    mMap[k] = (mMap[k]||0)+r.amount;
+  });
+  var members = Object.keys(mMap).map(function(k,i){
+    return {label:k,value:mMap[k],color:FIN_MEMBER_PALETTE[i%FIN_MEMBER_PALETTE.length]};
+  }).sort(function(a,b){return b.value-a.value;});
+  var total = members.reduce(function(a,m){return a+m.value;},0);
+  var top = members.slice(0,7);
+  var html = '<div class="finChartDonutWrap">';
+  html += '<div class="finChartDonut" style="width:150px;height:150px">';
+  html += _donutSVG(top,150,0.60);
+  html += '<div class="finChartCenter"><div class="finChartCenterLabel">'+members.length+' 位成員</div>';
+  html += '<div class="finChartCenterAmt">'+fmt(total)+'</div></div></div>';
+  html += '<div class="finChartLegend">';
+  top.slice(0,4).forEach(function(m){ html += '<div class="finChartLegendItem"><div class="finChartLegendDot" style="background:'+m.color+'"></div>'+m.label+'</div>'; });
+  html += '</div></div>';
+  html += '<div class="finChartRanking">';
+  top.forEach(function(m,i){
+    var pct = total>0?Math.round(m.value/total*100):0;
+    html += '<div class="finChartRankRow">'
+      +'<span class="finChartRankNum">'+(i+1)+'</span>'
+      +'<div class="finChartLegendDot" style="background:'+m.color+';margin:0 2px"></div>'
+      +'<span class="finChartRankName">'+m.label+'</span>'
+      +'<span class="finChartRankAmt">'+fmt(m.value)+'</span>'
+      +'<span class="finChartRankPct">'+pct+'%</span>'
+      +'</div>';
+  });
+  html += '</div>';
+  var avg = members.length?Math.round(total/members.length):0;
+  html += '<div class="finChartSummaryRow"><span class="finChartSummaryLabel">每位成員平均</span>'
+    +'<span class="finChartSummaryVal">'+fmt(avg)+'</span></div>';
+  return html;
+}
+
+/* ── Finance: SVG Donut helper ── */
+function _donutSVG(segs, size, hole){
+  size = size||150; hole = (hole!==undefined)?hole:0.60;
+  var cx=size/2, cy=size/2, r=size/2-3, ir=r*hole;
+  var total=segs.reduce(function(a,s){return a+(s.value||0);},0);
+  if(!total) return '<svg width="'+size+'" height="'+size+'">'
+    +'<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="var(--color-border-soft)"/>'
+    +'<circle cx="'+cx+'" cy="'+cy+'" r="'+ir+'" fill="var(--color-bg)"/></svg>';
+  var paths=''; var sa=-Math.PI/2;
+  segs.forEach(function(seg){
+    if(!seg.value) return;
+    var por=seg.value/total;
+    var gap=segs.length>1?0.025:0;
+    var sweep=por*2*Math.PI-gap;
+    if(sweep<=0) return;
+    var ea=sa+sweep;
+    var la=sweep>Math.PI?1:0;
+    var d='M '+f(cx+r*Math.cos(sa))+' '+f(cy+r*Math.sin(sa))
+      +' A '+r+' '+r+' 0 '+la+' 1 '+f(cx+r*Math.cos(ea))+' '+f(cy+r*Math.sin(ea))
+      +' L '+f(cx+ir*Math.cos(ea))+' '+f(cy+ir*Math.sin(ea))
+      +' A '+ir+' '+ir+' 0 '+la+' 0 '+f(cx+ir*Math.cos(sa))+' '+f(cy+ir*Math.sin(sa))
+      +' Z';
+    paths+='<path d="'+d+'" fill="'+seg.color+'" opacity="0.88"/>';
+    sa+=por*2*Math.PI;
+  });
+  function f(n){return n.toFixed(2);}
+  return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'" xmlns="http://www.w3.org/2000/svg">'+paths+'</svg>';
 }
 
 /* ── Finance: Year Dropdown ── */
@@ -1782,6 +2673,9 @@ function switchFinYear(y){
   const inp = document.getElementById('finSearchInput');
   if(inp) inp.value = '';
   renderFinance();
+  // restore search bar visibility after render
+  const sb = document.getElementById('finSearchInput');
+  if(sb) sb.style.display = _finViewTab === 'detail' ? '' : 'none';
 }
 
 /* ── Finance: Search ── */
@@ -2090,18 +2984,278 @@ function showTab(name, el){
   document.querySelector('.header').classList.toggle('court-header-hidden', name==='court');
   // court tab: disable min-height:100dvh so weekday grid doesn't leave blank space
   document.querySelector('.app').classList.toggle('court-active', name==='court');
-  if(name==='manage') renderManage();
+  if(name==='manage'){ renderManage(); if(!announcementsCache.length) loadAnnouncements(); if(Object.keys(usersCache).length===0) loadUsersCache(); }
   if(name==='finance'){ renderFinance(); if(Object.keys(usersCache).length===0) loadUsersCache(); }
 }
 
 function setView(v, el){
   currentView=v;
+  document.getElementById('view-day').style.display=v==='day'?'block':'none';
   document.getElementById('view-week').style.display=v==='week'?'block':'none';
   document.getElementById('view-month').style.display=v==='month'?'block':'none';
   document.querySelectorAll('.switcherOption').forEach(b=>b.classList.remove('active'));
   el.classList.add('active');
   if(v==='month') renderMonthView();
+  if(v==='week') render();
+  if(v==='day') renderDayView();
 }
+
+/* ── Day View ── */
+var _DV_S=6, _DV_E=22;
+var _DV_PX=52;                           /* px per hour */
+var _DV_W=(_DV_E-_DV_S)*_DV_PX;         /* total scroll width = 832px */
+
+function renderDayView(){
+  var el=document.getElementById('view-day');
+  if(!el) return;
+  var ds=formatDate(selectedDate);
+  var d=selectedDate;
+  var dstr=d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日（'+DAYS_TC[d.getDay()]+'）';
+  var allB=courtBookingsFirestore!==null?courtBookingsFirestore:MOCK_BOOKINGS;
+  var dayB=allB.filter(function(b){return b.date===ds;});
+  var now=new Date();
+  var nowMin=now.getHours()*60+now.getMinutes();
+  var h='';
+  h+='<div class="dayViewDateNav"><button class="navButton" onclick="changeDayView(-1)">‹</button><span class="dayViewDateLabel">'+dstr+'</span><button class="navButton" onclick="changeDayView(1)">›</button></div>';
+  var isClay=(_courtSurfaceFilter==='clay');
+  h+='<div class="dayViewSurfaceTabs surface-'+_courtSurfaceFilter+'">';
+  [{key:'hard',label:'硬地'},{key:'clay',label:'紅土'}].forEach(function(s){
+    var a=_courtSurfaceFilter===s.key;
+    h+='<button class="dayViewSurfaceBtn'+(a?' active':'')+'" onclick="setCourtSurface(\''+s.key+'\')">'+s.label+'</button>';
+  });
+  h+='</div>';
+  /* time axis — scrollable independently; courts stay fixed below */
+  h+='<div class="dvScrollOuter'+(isClay?' surface-clay':'')+'" id="dvScroll"><div class="dvScrollInner" style="width:'+(_DV_W+32)+'px">';
+  h+=_dvTimeAxis(nowMin);
+  h+='</div></div>';
+  /* courts — hard_a/b or clay_a/b depending on filter */
+  var courtIds=isClay?['clay_a','clay_b']:['hard_a','hard_b'];
+  courtIds.forEach(function(cid){
+    h+=_dvCourtBlock(cid,dayB.filter(function(b){return b.court===cid;}),nowMin);
+  });
+  el.innerHTML=h;
+  /* auto-scroll axis to show current time + wire scroll → avatar fade */
+  requestAnimationFrame(function(){
+    var outer=document.getElementById('dvScroll');
+    if(!outer) return;
+    var targetMin=Math.max(nowMin,_DV_S*60+120);
+    var scrollPx=Math.max(0,((targetMin-_DV_S*60)/60)*_DV_PX - outer.clientWidth/3);
+    outer.scrollLeft=scrollPx;
+    outer.removeEventListener('scroll',_dvOnAxisScroll);
+    outer.addEventListener('scroll',_dvOnAxisScroll,{passive:true});
+    setTimeout(_dvOnAxisScroll,100);
+  });
+}
+
+/* called on axis scroll — fade avatars + now marker outside visible time window */
+function _dvOnAxisScroll(){
+  var outer=document.getElementById('dvScroll');
+  if(!outer) return;
+  /* dvScrollInner starts at padding-left=16px inside outer — subtract to get content coords */
+  var PAD=16;
+  var contentLeft=outer.scrollLeft-PAD;   /* dvScrollInner position at left edge of viewport */
+  var contentRight=contentLeft+outer.clientWidth-PAD*2; /* -32px for both paddings */
+  /* convert content px → minutes */
+  var visStartMin=Math.max(_DV_S*60, contentLeft/_DV_PX*60+_DV_S*60);
+  var visEndMin  =Math.min(_DV_E*60, contentRight/_DV_PX*60+_DV_S*60);
+  /* ── avatar fade ── */
+  var avatars=document.querySelectorAll('.dvAvatar');
+  for(var i=0;i<avatars.length;i++){
+    var av=avatars[i];
+    var sMin=parseInt(av.dataset.start||0,10);
+    var eMin=parseInt(av.dataset.end||0,10);
+    var active=(eMin>visStartMin&&sMin<visEndMin);
+    av.style.opacity=active?'1':'0.18';
+    av.style.transform=active?'translate(-50%,-50%) scale(1)':'translate(-50%,-50%) scale(0.72)';
+  }
+  /* ── now marker fade — dim when scrolled out of visible area ── */
+  var marker=document.getElementById('dvNowMarker');
+  if(marker){
+    var now=new Date();
+    var nowM=now.getHours()*60+now.getMinutes();
+    var nowPx=(nowM-_DV_S*60)/60*_DV_PX; /* position in content coords */
+    var inView=(nowPx>=contentLeft-20&&nowPx<=contentRight+20);
+    marker.style.opacity=inView?'1':'0';
+  }
+}
+
+function _dvTimeAxis(nowMin){
+  var h='<div class="dvTimeAxis" style="width:'+(_DV_W+32)+'px">';
+  for(var hr=_DV_S;hr<=_DV_E;hr+=2){
+    var px=((hr-_DV_S)*_DV_PX).toFixed(0);
+    var cls='dvTimeTick'+(hr===_DV_S?' tick-first':hr===_DV_E?' tick-last':'');
+    h+='<div class="'+cls+'" style="left:'+px+'px">'+pad(hr)+':00</div>';
+  }
+  if(nowMin>=_DV_S*60&&nowMin<=_DV_E*60){
+    var np=(((nowMin-_DV_S*60)/60)*_DV_PX).toFixed(0);
+    /* id="dvNowMarker" — inside scroll content; scrolls with timeline */
+    h+='<div id="dvNowMarker" class="dvTimeNowWrap" style="left:'+np+'px;transition:opacity 200ms"><div class="dvTimeNowDot"></div><div class="dvTimeNowTick"></div></div>';
+  }
+  h+='</div>';
+  return h;
+}
+
+function _dvCourtBlock(courtId,bookings,nowMin){
+  var isClay=(typeof COURT_SURFACE!=='undefined'&&COURT_SURFACE[courtId]==='clay');
+  var h='<div class="dvCourtWrap'+(isClay?' court-clay':'')+'">';
+  h+=isClay?_clayCourtSVG(COURT_LABELS[courtId].letter):_hardCourtSVG(COURT_LABELS[courtId].letter);
+  h+='<div class="dvOverlayLayer">';
+  bookings.forEach(function(b,i){ h+=_dvAvatar(b,i,bookings.length); });
+  h+='</div></div>';
+  return h;
+}
+
+function _dvAvatar(b,idx,total){
+  var sm=timeToMin(b.startTime), em=timeToMin(b.endTime);
+  var midMin=(sm+em)/2;
+  /* % position within full day range — court is fixed full-width */
+  var lPct=Math.max(2,Math.min(98,((midMin-_DV_S*60)/((_DV_E-_DV_S)*60)*100)));
+  /* stagger multiple avatars on same court vertically */
+  var topPct = total>1 ? (30+idx*20) : 50;
+  var isCoach=b.mode==='coaching', isLock=b.mode==='event_lock';
+  var cls='dvAvatar'+(isCoach?' is-coaching':'')+(isLock?' is-lock':'');
+  var init=(b.primaryName||'?').charAt(0);
+  /* look up member data from MOCK_MEMBERS */
+  var mem=null;
+  if(typeof MOCK_MEMBERS!=='undefined'){
+    for(var mi=0;mi<MOCK_MEMBERS.length;mi++){
+      if(MOCK_MEMBERS[mi].name===(b.primaryName||'')){mem=MOCK_MEMBERS[mi];break;}
+    }
+  }
+  var ntrp=mem?mem.ntrp:'—';
+  var pos=mem?(mem.position||'—'):'—';
+  var att=mem?((2026-parseInt(mem.joined||'2020',10))*10)+'':'—';
+  var modeLabel=b.mode==='coaching'?'教學課':b.mode==='event_lock'?'場地封鎖':b.mode==='group_class'?'團體課':'一般預約';
+  var enc=encodeURIComponent(JSON.stringify({name:b.primaryName||'?',time:b.startTime+'–'+b.endTime,mode:modeLabel,count:b.participantCount||1,isCoach:isCoach,ntrp:ntrp,pos:pos,att:att}));
+  var smMin=timeToMin(b.startTime), emMin=timeToMin(b.endTime);
+  return '<div class="'+cls+'" data-start="'+smMin+'" data-end="'+emMin+'" style="left:'+lPct.toFixed(1)+'%;top:'+topPct+'%;transition:opacity 180ms,transform 180ms" onclick="event.stopPropagation();_dvShowDetail(\''+enc+'\')">'+init+'</div>';
+}
+
+function _hardCourtSVG(letter){
+  /*
+   * viewBox 100×50 — real tennis court ratio ~2.25:1
+   * preserveAspectRatio="xMidYMid slice" fills fixed 170px height container
+   */
+  var s='<svg viewBox="0 0 100 50" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" style="opacity:0.82">';
+  s+='<defs><clipPath id="cc'+letter+'"><rect x="5" y="5" width="90" height="40"/></clipPath></defs>';
+  s+='<rect x="0" y="0" width="100" height="50" fill="#aacdd2"/>';
+  s+='<rect x="5" y="5" width="90" height="40" fill="#ceeaed"/>';
+  s+='<rect x="5" y="5" width="90" height="12" fill="rgba(255,255,255,0.07)"/>';
+  s+='<g clip-path="url(#cc'+letter+')">';
+  s+='<line x1="5" y1="5" x2="5" y2="45" stroke="white" stroke-width="0.9"/>';
+  s+='<line x1="95" y1="5" x2="95" y2="45" stroke="white" stroke-width="0.9"/>';
+  s+='<line x1="5" y1="5" x2="95" y2="5" stroke="white" stroke-width="0.9"/>';
+  s+='<line x1="5" y1="45" x2="95" y2="45" stroke="white" stroke-width="0.9"/>';
+  s+='<line x1="5" y1="10" x2="95" y2="10" stroke="white" stroke-width="0.65" opacity="0.88"/>';
+  s+='<line x1="5" y1="40" x2="95" y2="40" stroke="white" stroke-width="0.65" opacity="0.88"/>';
+  s+='<line x1="26" y1="10" x2="26" y2="40" stroke="white" stroke-width="0.65" opacity="0.88"/>';
+  s+='<line x1="74" y1="10" x2="74" y2="40" stroke="white" stroke-width="0.65" opacity="0.88"/>';
+  s+='<line x1="26" y1="25" x2="74" y2="25" stroke="white" stroke-width="0.55" opacity="0.72"/>';
+  s+='<line x1="50.7" y1="5" x2="50.7" y2="45" stroke="rgba(0,0,0,0.16)" stroke-width="0.8"/>';
+  s+='<line x1="50" y1="5" x2="50" y2="45" stroke="white" stroke-width="1.4"/>';
+  s+='<rect x="49" y="9.2" width="2" height="1.6" rx="0.5" fill="white" opacity="0.90"/>';
+  s+='<rect x="49" y="39.2" width="2" height="1.6" rx="0.5" fill="white" opacity="0.90"/>';
+  s+='</g>';
+  s+='<text x="6" y="47" font-size="10.8" fill="#e8f2f4" opacity="0.14" stroke="#e8f2f4" stroke-width="1.5" stroke-opacity="0.07" paint-order="stroke fill" font-family="Georgia,serif" font-weight="700">'+letter+'</text>';
+  s+='</svg>';
+  return s;
+}
+
+function _clayCourtSVG(letter){
+  /*
+   * Clay court — warm terracotta palette
+   * run-off: #D9A06F  surface: #EBC3A3  lines: #FFF8EF 0.9
+   * clip ID: cc${letter}k (distinct from hard court cc${letter})
+   */
+  var id='cc'+letter+'k';
+  var s='<svg viewBox="0 0 100 50" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" style="opacity:0.88">';
+  s+='<defs><clipPath id="'+id+'"><rect x="5" y="5" width="90" height="40"/></clipPath></defs>';
+  /* run-off */
+  s+='<rect x="0" y="0" width="100" height="50" fill="#DDB292"/>';
+  /* court surface */
+  s+='<rect x="5" y="5" width="90" height="40" fill="#EDD5BE"/>';
+  /* top sheen */
+  s+='<rect x="5" y="5" width="90" height="12" fill="rgba(255,255,255,0.06)"/>';
+  /* all lines clipped to surface */
+  s+='<g clip-path="url(#'+id+')">';
+  s+='<line x1="5" y1="5" x2="5" y2="45" stroke="#FFF8EF" stroke-width="0.9" opacity="0.90"/>';
+  s+='<line x1="95" y1="5" x2="95" y2="45" stroke="#FFF8EF" stroke-width="0.9" opacity="0.90"/>';
+  s+='<line x1="5" y1="5" x2="95" y2="5" stroke="#FFF8EF" stroke-width="0.9" opacity="0.90"/>';
+  s+='<line x1="5" y1="45" x2="95" y2="45" stroke="#FFF8EF" stroke-width="0.9" opacity="0.90"/>';
+  s+='<line x1="5" y1="10" x2="95" y2="10" stroke="#FFF8EF" stroke-width="0.65" opacity="0.80"/>';
+  s+='<line x1="5" y1="40" x2="95" y2="40" stroke="#FFF8EF" stroke-width="0.65" opacity="0.80"/>';
+  s+='<line x1="26" y1="10" x2="26" y2="40" stroke="#FFF8EF" stroke-width="0.65" opacity="0.80"/>';
+  s+='<line x1="74" y1="10" x2="74" y2="40" stroke="#FFF8EF" stroke-width="0.65" opacity="0.80"/>';
+  s+='<line x1="26" y1="25" x2="74" y2="25" stroke="#FFF8EF" stroke-width="0.55" opacity="0.65"/>';
+  s+='<line x1="50.7" y1="5" x2="50.7" y2="45" stroke="rgba(120,70,35,0.20)" stroke-width="0.8"/>';
+  s+='<line x1="50" y1="5" x2="50" y2="45" stroke="#FFF8EF" stroke-width="1.4" opacity="0.88"/>';
+  s+='<rect x="49" y="9.2" width="2" height="1.6" rx="0.5" fill="#FFF8EF" opacity="0.85"/>';
+  s+='<rect x="49" y="39.2" width="2" height="1.6" rx="0.5" fill="#FFF8EF" opacity="0.85"/>';
+  s+='</g>';
+  /* watermark — warm cream, very faint */
+  s+='<text x="6" y="47" font-size="10.8" fill="#FFF3EA" opacity="0.15" stroke="#FFF3EA" stroke-width="1.5" stroke-opacity="0.07" paint-order="stroke fill" font-family="Georgia,serif" font-weight="700">'+letter+'</text>';
+  s+='</svg>';
+  return s;
+}
+
+function _dvShowDetail(enc){
+  var data;
+  try { data=JSON.parse(decodeURIComponent(enc)); } catch(e){ return; }
+  /* remove old panel if exists */
+  var old=document.getElementById('dvDetailPanel');
+  if(old){ old.parentNode.removeChild(old); }
+  var old2=document.getElementById('dvDetailBackdrop');
+  if(old2){ old2.parentNode.removeChild(old2); }
+  /* backdrop */
+  var bd=document.createElement('div');
+  bd.id='dvDetailBackdrop';
+  bd.className='dvDetailBackdrop';
+  bd.onclick=_dvCloseDetail;
+  document.body.appendChild(bd);
+  /* panel */
+  var p=document.createElement('div');
+  p.id='dvDetailPanel';
+  p.className='dvDetailPanel';
+  var modeColor=data.isCoach?'var(--color-clay)':'var(--color-hard)';
+  var attStr=(data.att&&data.att!=='—')?(data.att+'次'):data.att;
+  p.innerHTML=
+    '<div class="dvDetailHandle"></div>'+
+    '<div class="dvDetailTop">'+
+      '<div class="dvDetailAvatar'+(data.isCoach?' is-coaching':'')+'" style="border-color:'+modeColor+'">'+data.name.charAt(0)+'</div>'+
+      '<div><div class="dvDetailName">'+data.name+'</div><div class="dvDetailMode">'+data.mode+'</div></div>'+
+    '</div>'+
+    '<div class="dvDetailRows">'+
+      '<div class="dvDetailCell"><div class="dvDetailCellLabel">時間</div><div class="dvDetailCellValue" style="font-size:13px">'+data.time+'</div></div>'+
+      '<div class="dvDetailCell"><div class="dvDetailCellLabel">NTRP</div><div class="dvDetailCellValue">'+data.ntrp+'</div></div>'+
+      '<div class="dvDetailCell"><div class="dvDetailCellLabel">本場人數</div><div class="dvDetailCellValue">'+data.count+'人</div></div>'+
+      '<div class="dvDetailCell"><div class="dvDetailCellLabel">出席次數</div><div class="dvDetailCellValue">'+attStr+'</div></div>'+
+    '</div>'+
+    '<div style="padding:12px 20px 4px;border-top:1px solid var(--color-border-soft)">'+
+      '<div class="dvDetailCellLabel">常打位置</div>'+
+      '<div class="dvDetailCellValue" style="font-size:14px;font-weight:500;margin-top:4px">'+data.pos+'</div>'+
+    '</div>'+
+    '<button class="dvDetailClose" onclick="_dvCloseDetail()">關閉</button>';
+  document.body.appendChild(p);
+  /* animate in */
+  requestAnimationFrame(function(){
+    bd.classList.add('open');
+    p.classList.add('open');
+  });
+}
+
+function _dvCloseDetail(){
+  var bd=document.getElementById('dvDetailBackdrop');
+  var p=document.getElementById('dvDetailPanel');
+  if(p) p.classList.remove('open');
+  if(bd) bd.classList.remove('open');
+  setTimeout(function(){
+    if(p&&p.parentNode) p.parentNode.removeChild(p);
+    if(bd&&bd.parentNode) bd.parentNode.removeChild(bd);
+  },300);
+}
+
+function setCourtSurface(filter){ _courtSurfaceFilter=filter; renderDayView(); }
+function changeDayView(delta){ selectedDate=addDays(selectedDate,delta); renderDayView(); }
 
 function selectDate(dateStr){
   selectedDate=new Date(dateStr+'T00:00:00');
@@ -2345,6 +3499,7 @@ function render(){
 }
 
 render();
+renderDayView();
 startNowLineTicker();
 renderBookings();
 renderManage();
