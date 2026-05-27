@@ -1031,6 +1031,9 @@ button {
   <!-- Loading -->
   <div id="authLoadingScreen" class="authCenter">
     <div class="authSpinner"></div>
+    <p id="authLoadingDebug" style="display:none;margin-top:20px;font-size:11px;
+       color:var(--color-text-muted);letter-spacing:0.03em;max-width:280px;
+       text-align:center;line-height:1.6"></p>
   </div>
   <!-- LINE Login -->
   <div id="authLoginScreen" class="authCenter" style="display:none">
@@ -1225,50 +1228,8 @@ button {
 <!-- ── Profile Sheet ── -->
 <div class="profileSheet" id="profileSheet">
   <div class="sheetHandle"></div>
-  <div class="sheetUserRow">
-    <div class="sheetAvatar">
-      <img id="profileAvatarImg" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='52' height='52' viewBox='0 0 52 52'%3E%3Crect width='52' height='52' fill='%23d4c9b5'/%3E%3Ccircle cx='26' cy='20' r='9' fill='%238a7f6e'/%3E%3Cellipse cx='26' cy='44' rx='14' ry='10' fill='%238a7f6e'/%3E%3C/svg%3E" alt="頭像">
-    </div>
-    <div class="sheetUserInfo">
-      <div class="sheetNameRow">
-        <span class="sheetUserName" id="profileDisplayName">Maverick 小狸</span>
-        <button class="editNameBtn" onclick="openSettings()">編輯</button>
-      </div>
-      <span class="sheetMemberBadge" id="profileBadge">Annual Member · Expire 2026/12/31</span>
-    </div>
-  </div>
-  <div class="sheetSection">
-    <div class="sheetRow">
-      <span class="sheetRowLabel">NTRP</span>
-      <span class="sheetRowValue" id="profileNTRP">3.5</span>
-    </div>
-    <div class="sheetRow">
-      <span class="sheetRowLabel">擅長位置</span>
-      <span class="sheetRowValue" id="profilePosition">底線型 / 後場</span>
-    </div>
-    <div class="sheetRow">
-      <span class="sheetRowLabel">會員類型</span>
-      <span class="sheetRowValue" id="profileMemberType">Annual Member</span>
-    </div>
-    <div class="sheetRow">
-      <span class="sheetRowLabel">會費到期日</span>
-      <span class="sheetRowValue" id="profileExpire">2026 / 12 / 31</span>
-    </div>
-    <div class="sheetRow">
-      <span class="sheetRowLabel">本月出席</span>
-      <span class="sheetRowValue" id="profileAttendance">1 次</span>
-    </div>
-  </div>
-  <div class="sheetSection">
-    <div class="sheetRow sheetNavRow" onclick="openNotifications()">
-      <span class="sheetRowLabel">通知中心</span>
-      <span class="sheetRowChevron">›</span>
-    </div>
-    <div class="sheetRow sheetNavRow" onclick="openAbout()">
-      <span class="sheetRowLabel">關於清心網球協會</span>
-      <span class="sheetRowChevron">›</span>
-    </div>
-  </div>
+  <!-- populated by _renderProfileSheet() each time the sheet opens -->
+  <div id="profileSheetContent"></div>
 </div>
 
 <!-- ── Settings Sub-Sheet ── -->
@@ -1498,25 +1459,7 @@ button {
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-<script type="module">
-/* ── Firebase Auth (modular SDK) ─────────────────────────────────────
-   Imported as ES module; exposes helpers to window so the classic
-   script block below can call them without a build step.
-   getAuth() reuses the default app already initialised by
-   firebase-app-compat.js above.
-   ──────────────────────────────────────────────────────────────────── */
-import { getAuth, signInWithPopup, OAuthProvider,
-         onAuthStateChanged, signOut }
-  from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js';
-
-const auth = getAuth();
-window._firebaseAuth       = auth;
-window._signInWithPopup    = signInWithPopup;
-window._OAuthProvider      = OAuthProvider;
-window._onAuthStateChanged = onAuthStateChanged;
-window._signOut            = signOut;
-window.dispatchEvent(new Event('firebaseAuthReady'));
-</script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script>
 /* ── Firebase Init ── */
 // ⚠ Replace with your chingxin-tennis project config from Firebase Console
@@ -1530,11 +1473,17 @@ const FB_CONFIG = {
   appId:             "1:631543657695:web:348bdcc19bace490c6256a",
 };
 
-var db;
+var db, auth;
 try {
   firebase.initializeApp(FB_CONFIG);
-  db = firebase.firestore();
-} catch(e){ console.warn('Firebase init failed:', e); }
+  db   = firebase.firestore();
+  auth = firebase.auth();
+} catch(e){
+  console.error('[Firebase] Init failed:', e);
+  // Show error on loading screen for debugging
+  var _errEl = document.getElementById('authLoadingDebug');
+  if(_errEl) _errEl.textContent = 'Init error: ' + (e.message || e);
+}
 const TS = () => db ? firebase.firestore.FieldValue.serverTimestamp() : new Date();
 const ROLE_LABELS = {owner:'擁有者',admin:'管理員',annual_member:'年費會員',monthly_member:'月費會員',coach:'教練',pending:'待審核'};
 
@@ -1551,7 +1500,7 @@ const ROLE_LABELS = {owner:'擁有者',admin:'管理員',annual_member:'年費�
        → user absent  → show login screen
 
    Flow (button click):
-     _doLineLogin() → signInWithPopup(oidc.line)
+     _doLineLogin() → signInWithRedirect(oidc.line)
        → success  → _upsertAndRoute(fbUser)  [write member first, then route]
        → error    → show login screen
 
@@ -1573,6 +1522,11 @@ function _showAuthGate(state){
 function _showMainApp(){
   var gate = document.getElementById('authGate');
   if(gate) gate.style.display = 'none';
+  // Sync nav avatar from Firebase Auth photoURL
+  if(currentUser && currentUser.photoURL){
+    var navImg = document.getElementById('navAvatarImg');
+    if(navImg) navImg.src = currentUser.photoURL;
+  }
   render();
   renderDayView();
   startNowLineTicker();
@@ -1581,28 +1535,201 @@ function _showMainApp(){
   renderFinance();
 }
 
+/* ── Profile Sheet: auth-aware renderer ────────────────────────────────
+   Called each time the "我的" tab opens.  Renders based on currentUser
+   so the sheet reflects real login state — login button, pending notice,
+   or full profile depending on auth state.
+   ──────────────────────────────────────────────────────────────────── */
+function _renderProfileSheet(){
+  var body = document.getElementById('profileSheetContent');
+  if(!body) return;
+
+  var _defaultAvatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='52' height='52' viewBox='0 0 52 52'%3E%3Crect width='52' height='52' fill='%23d4c9b5'/%3E%3Ccircle cx='26' cy='20' r='9' fill='%238a7f6e'/%3E%3Cellipse cx='26' cy='44' rx='14' ry='10' fill='%238a7f6e'/%3E%3C/svg%3E";
+  var _roleLabels = {owner:'擁有者',admin:'管理員',annual_member:'年費會員',monthly_member:'月費會員',coach:'教練',member:'會員',pending:'待審核'};
+
+  // ── Not logged in ──────────────────────────────────────────────────
+  var isLoggedIn = !!(currentUser || DEV_ROLE);
+  if(!isLoggedIn){
+    body.innerHTML =
+      '<div style="padding:48px 28px 36px;text-align:center">' +
+        '<div style="font-family:var(--font-display);font-size:24px;font-weight:600;' +
+             'color:var(--color-text-primary);letter-spacing:0.12em;margin-bottom:5px">' +
+          'CHING XIN</div>' +
+        '<div style="font-size:10px;letter-spacing:0.14em;text-transform:uppercase;' +
+             'color:var(--color-text-muted);margin-bottom:40px">Tennis Society</div>' +
+        '<p style="font-size:13px;color:var(--color-text-secondary);margin-bottom:32px;line-height:1.7">' +
+          '登入後可查看個人資料、<br>預約管理與通知。</p>' +
+        '<button class="authLineBtn" style="margin-top:0" ' +
+             'onclick="closeProfile();setTimeout(function(){_doLineLogin();},220)">' +
+          'LINE Login' +
+        '</button>' +
+        '<p class="authNote" style="margin-top:24px">僅供清心網球協會會員使用</p>' +
+      '</div>';
+    return;
+  }
+
+  // ── Build user object (real auth or DEV fallback) ───────────────────
+  var u = currentUser || {
+    uid: '__dev__', displayName: 'Dev (' + DEV_ROLE + ')',
+    photoURL: '', role: DEV_ROLE, status: 'active',
+  };
+
+  // ── Pending ────────────────────────────────────────────────────────
+  if(u.status === 'pending'){
+    body.innerHTML =
+      '<div style="padding:48px 28px 36px;text-align:center">' +
+        '<div style="font-size:40px;margin-bottom:18px">⏳</div>' +
+        '<div style="font-family:var(--font-display);font-size:20px;color:var(--color-text-primary);' +
+             'margin-bottom:12px;letter-spacing:0.03em">等待管理員審核</div>' +
+        '<p style="font-size:13px;color:var(--color-text-muted);line-height:1.85;margin-bottom:36px">' +
+          '您的帳號已建立完成，<br>管理員核准後即可使用全部功能。</p>' +
+        '<button class="authLogoutBtn" onclick="closeProfile();_doLogout()">登出</button>' +
+      '</div>';
+    return;
+  }
+
+  // ── Resigned / Blocked ─────────────────────────────────────────────
+  if(u.status === 'resigned' || u.status === 'blocked'){
+    var _icon  = u.status === 'resigned' ? '🎾' : '🔒';
+    var _title = u.status === 'resigned' ? '會員資格已結束' : '帳號已停用';
+    body.innerHTML =
+      '<div style="padding:48px 28px 36px;text-align:center">' +
+        '<div style="font-size:40px;margin-bottom:18px">' + _icon + '</div>' +
+        '<div style="font-family:var(--font-display);font-size:20px;color:var(--color-text-primary);' +
+             'margin-bottom:12px;letter-spacing:0.03em">' + _title + '</div>' +
+        '<button class="authLogoutBtn" onclick="closeProfile();_doLogout()">登出</button>' +
+      '</div>';
+    return;
+  }
+
+  // ── Active ─────────────────────────────────────────────────────────
+  var _avatarSrc  = u.photoURL || _defaultAvatar;
+  var _roleLabel  = _roleLabels[u.role] || u.role || '會員';
+  var _mockM = (typeof MOCK_MEMBERS !== 'undefined')
+    ? (MOCK_MEMBERS.find(function(m){ return m.id === u.uid || m.name === u.displayName; }) || {})
+    : {};
+
+  var _extraRows = '';
+  if(_mockM.ntrp)
+    _extraRows += '<div class="sheetRow"><span class="sheetRowLabel">NTRP</span><span class="sheetRowValue">' + _mockM.ntrp + '</span></div>';
+  if(_mockM.position)
+    _extraRows += '<div class="sheetRow"><span class="sheetRowLabel">擅長位置</span><span class="sheetRowValue">' + _mockM.position + '</span></div>';
+  if(_mockM.expireDate)
+    _extraRows += '<div class="sheetRow"><span class="sheetRowLabel">會費到期日</span><span class="sheetRowValue">' + _mockM.expireDate.replace(/\//g,' / ') + '</span></div>';
+
+  body.innerHTML =
+    '<div class="sheetUserRow">' +
+      '<div class="sheetAvatar">' +
+        '<img id="profileAvatarImg" src="' + _avatarSrc + '" alt="頭像" ' +
+             'onerror="this.src=\'' + _defaultAvatar + '\'">' +
+      '</div>' +
+      '<div class="sheetUserInfo">' +
+        '<div class="sheetNameRow">' +
+          '<span class="sheetUserName" id="profileDisplayName">' + (u.displayName || '未命名') + '</span>' +
+        '</div>' +
+        '<span class="sheetMemberBadge" id="profileBadge">' + _roleLabel + '</span>' +
+      '</div>' +
+    '</div>' +
+    '<div class="sheetSection">' +
+      '<div class="sheetRow"><span class="sheetRowLabel">會員角色</span><span class="sheetRowValue">' + _roleLabel + '</span></div>' +
+      _extraRows +
+    '</div>' +
+    '<div class="sheetSection">' +
+      '<div class="sheetRow sheetNavRow" onclick="openNotifications()">' +
+        '<span class="sheetRowLabel">通知中心</span><span class="sheetRowChevron">›</span></div>' +
+      '<div class="sheetRow sheetNavRow" onclick="openAbout()">' +
+        '<span class="sheetRowLabel">關於清心網球協會</span><span class="sheetRowChevron">›</span></div>' +
+    '</div>' +
+    '<div class="sheetSection">' +
+      '<button class="authLogoutBtn" ' +
+           'style="width:100%;text-align:center;padding:12px 0;border-radius:10px" ' +
+           'onclick="closeProfile();_doLogout()">登出</button>' +
+    '</div>';
+}
+
 function initAuth(){
   // ── DEV bypass ─────────────────────────────────────────────────────
-  if(DEV_ROLE){
-    _showMainApp();
-    return;
-  }
-  // ── Wait for modular auth module to finish loading ──────────────────
-  if(!window._firebaseAuth){
-    window.addEventListener('firebaseAuthReady', initAuth, {once:true});
-    return;
-  }
-  // ───────────────────────────────────────────────────────────────────
+  if(DEV_ROLE){ _showMainApp(); return; }
+
+  // Show loading gate immediately so mock UI never flashes through
   _showAuthGate('loading');
 
-  // Observe persistent Firebase Auth state (handles page refresh / re-open)
-  window._onAuthStateChanged(window._firebaseAuth, function(fbUser){
+  // ── Guard: Firebase init failed ─────────────────────────────────────
+  if(!auth){
+    console.error('[Auth] auth object not available');
+    _setDebug('Firebase auth not ready. See console.');
+    _showAuthGate('login');
+    return;
+  }
+
+  /* ── Redirect + Persistent-session strategy ──────────────────────────
+     _settle() ensures only the FIRST resolution wins (redirect result OR
+     onAuthStateChanged — whichever fires first).
+
+     Flow A — returning from signInWithRedirect:
+       getRedirectResult() resolves with user  → _settle(_upsertAndRoute)
+       (onAuthStateChanged also fires; _done flag suppresses duplicate route)
+
+     Flow B — persisted session (no redirect):
+       getRedirectResult() resolves with null  → no-op
+       onAuthStateChanged fires with user      → _settle(_loadMemberAndRoute)
+
+     Flow C — first visit / signed out:
+       getRedirectResult() resolves with null  → no-op
+       onAuthStateChanged fires with null      → _settle(show login)
+
+     Flow D — any error / timeout:
+       graceful fallback to login screen
+     ────────────────────────────────────────────────────────────────── */
+  var _done   = false;
+  var _authTO = setTimeout(function(){
+    console.warn('[Auth] Timeout — falling back to login');
+    _settle(function(){ _setDebug('Timeout. Check console.'); _showAuthGate('login'); });
+  }, 10000);
+
+  function _settle(fn){
+    if(_done) return;
+    _done = true;
+    clearTimeout(_authTO);
+    fn();
+  }
+
+  // ── Step 1: getRedirectResult — catches return from signInWithRedirect
+  auth.getRedirectResult()
+    .then(function(result){
+      if(result && result.user){
+        console.info('[Auth] Redirect result — uid:', result.user.uid);
+        _settle(function(){ _upsertAndRoute(result.user); });
+      }
+      // No redirect result: onAuthStateChanged handles Flow B / C
+    })
+    .catch(function(err){
+      // "missing initial state" or similar — log and let onAuthStateChanged run
+      console.warn('[Auth] getRedirectResult error (non-fatal):', err.code, err.message);
+      _setDebug(err.code + ' — retrying session check…');
+    });
+
+  // ── Step 2: onAuthStateChanged — handles persisted sessions + Flow C
+  auth.onAuthStateChanged(function(fbUser){
     if(fbUser){
-      _loadMemberAndRoute(fbUser);
+      _settle(function(){ _loadMemberAndRoute(fbUser); });
     } else {
-      _showAuthGate('login');
+      _settle(function(){ _showAuthGate('login'); });
     }
+  }, function(err){
+    console.error('[Auth] onAuthStateChanged error:', err);
+    _settle(function(){
+      _setDebug('Auth error: ' + (err.code || err.message));
+      _showAuthGate('login');
+    });
   });
+}
+
+// Shows a one-line debug message on the loading screen (visible on device)
+function _setDebug(msg){
+  var el = document.getElementById('authLoadingDebug');
+  if(el){ el.textContent = msg; el.style.display = 'block'; }
+  console.info('[Auth debug]', msg);
 }
 
 // Called on page load when Firebase Auth already has a logged-in user.
@@ -1623,7 +1750,7 @@ async function _loadMemberAndRoute(fbUser){
   }
 }
 
-// Called after signInWithPopup succeeds.
+// Called after redirect sign-in succeeds (via getRedirectResult) or on first visit.
 // Writes / updates the member doc first, then routes.
 async function _upsertAndRoute(fbUser){
   if(!db){ _showMainApp(); return; }
@@ -1687,27 +1814,26 @@ function _routeByStatus(d, fbUser){
 }
 
 function _doLineLogin(){
-  if(!window._firebaseAuth){ return; }
-  var provider = new window._OAuthProvider('oidc.line');
-  // Request LINE scopes — these must be enabled in the OIDC provider config
+  if(!auth){ _setDebug('Firebase auth not initialised'); return; }
+  var provider = new firebase.auth.OAuthProvider('oidc.line');
   provider.addScope('profile');
   provider.addScope('openid');
-  window._signInWithPopup(window._firebaseAuth, provider)
-    .then(function(result){
-      return _upsertAndRoute(result.user);
-    })
+  // signInWithRedirect: whole-page navigation — works in LINE app, Safari,
+  // and storage-partitioned browsers where popup state cannot be preserved.
+  // Result is picked up by getRedirectResult() in initAuth() on return.
+  _showAuthGate('loading');
+  auth.signInWithRedirect(provider)
     .catch(function(err){
-      // popup_closed_by_user is normal (user closed popup) — don't show error
-      if(err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request'){
-        console.error('[Auth] signInWithPopup failed:', err.code, err.message);
-      }
+      // signInWithRedirect itself rarely fails (redirect hasn't happened yet)
+      console.error('[Auth] signInWithRedirect failed:', err.code, err.message);
+      _setDebug(err.code || err.message);
       _showAuthGate('login');
     });
 }
 
 function _doLogout(){
   currentUser = null;
-  if(window._firebaseAuth) window._signOut(window._firebaseAuth).catch(function(){});
+  if(auth) auth.signOut().catch(function(){});
   _showAuthGate('login');
 }
 /* ══ end auth flow ══ */
@@ -2488,8 +2614,9 @@ const FIN_TYPE_LABEL = {annual:'年費',monthly:'月費',donate:'抖內',expense
 const FIN_TYPE_CLASS = {annual:'fin-annual',monthly:'fin-monthly',donate:'fin-donate',expense:'fin-expense'};
 
 /* ── Dev/Test Override ── */
-// 本地測試用：設定 role 繞過 LIFF auth。上線後改為 null。
-const DEV_ROLE = 'owner'; // 'owner' | 'admin' | 'coach' | null
+// 本地測試用：設定 role 繞過 Firebase auth。上線後保持 null。
+// 若要本機測試不登入，暫改為 'owner'。
+const DEV_ROLE = null; // 'owner' | 'admin' | 'coach' | null
 
 /* ── Global Permission Helper ── */
 function isAdminLike(){
@@ -3522,6 +3649,7 @@ function filterMembers(v){ renderMembers(v); }
 
 /* ── Profile Sheet ── */
 function openProfile(){
+  _renderProfileSheet();
   document.getElementById('tabProfile').classList.add('active');
   document.getElementById('sheetBackdrop').classList.add('open');
   document.getElementById('profileSheet').classList.add('open');
