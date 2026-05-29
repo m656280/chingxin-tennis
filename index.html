@@ -2432,6 +2432,13 @@ function _renderMembersTab(el){
           '<div style="font-size:10px;color:var(--color-text-muted);margin-top:2px;opacity:0.7">'+_esc(shortUid)+'</div>'+
         '</div>'+
         '<div class="memberBadge'+(m.role==='coach'?' coach':'')+'">'+roleLabel+'</div>'+
+      '</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 0 12px 56px;border-bottom:1px solid var(--color-border-soft);margin-top:-12px">'+
+        '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="alert(\'功能尚未開放\')">封鎖</button>'+
+        '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="alert(\'功能尚未開放\')">設為會員</button>'+
+        '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="alert(\'功能尚未開放\')">設為教練</button>'+
+        '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="alert(\'功能尚未開放\')">設為管理員</button>'+
+        '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid #e74c3c;background:transparent;color:#e74c3c;cursor:pointer" onclick="alert(\'功能尚未開放\')">刪除</button>'+
       '</div>';
     });
   } else {
@@ -4120,6 +4127,14 @@ function loadUsersCache(){
       var name = (fresh[uid].displayName || '').trim();
       if(!name || winners.has(uid)) usersCache[uid] = fresh[uid];
     });
+
+    // Sync currentUser.role from latest Firestore data before re-rendering
+    if(currentUser){
+      var _myId = currentUser.uid || currentUser.userId || '';
+      if(_myId && usersCache[_myId] && usersCache[_myId].role){
+        currentUser.role = usersCache[_myId].role;
+      }
+    }
 
     renderMembers('');
     renderGrid();
