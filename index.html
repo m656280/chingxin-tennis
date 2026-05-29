@@ -118,31 +118,27 @@ button {
 
 
 /* ── Week List (primary court view) ── */
-.wkListNav { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
-.wkListNavLabel { font-family:var(--font-display); font-size:17px; letter-spacing:0.06em; color:var(--color-text-primary); font-weight:600; flex:1; text-align:center; font-variant-numeric:lining-nums; }
-.wkListSurface { margin-bottom:12px; }
-.wkListDay { margin-bottom:16px; border-radius:12px; overflow:hidden; background:var(--color-surface); box-shadow:0 1px 6px rgba(0,0,0,0.06); }
-.wkListDay.today .wkListDayHeader { background:var(--color-text-primary); }
-.wkListDay.today .wkListDayLabel { color:var(--color-bg); }
-.wkListDay.today .wkListDayNum { color:var(--color-bg); }
-.wkListDay.today .wkListDaySub { color:rgba(255,255,255,0.55); }
-.wkListDayHeader { display:flex; align-items:baseline; gap:8px; padding:10px 14px 9px; background:var(--color-surface-alt); cursor:pointer; user-select:none; }
-.wkListDayLabel { font-size:12px; letter-spacing:0.06em; color:var(--color-text-muted); font-weight:500; }
-.wkListDayNum { font-family:var(--font-display); font-size:22px; color:var(--color-text-primary); font-variant-numeric:lining-nums; line-height:1; }
-.wkListDaySub { font-size:11px; color:var(--color-text-muted); margin-left:auto; }
-.wkListBookings { padding:0; }
-.wkListEmpty { padding:12px 14px; font-size:12px; color:var(--color-text-muted); letter-spacing:0.04em; }
-.wkListCard { display:flex; align-items:center; gap:10px; padding:10px 14px; border-top:1px solid var(--color-border-soft); cursor:pointer; transition:background 120ms; }
-.wkListCard:first-child { border-top:none; }
-.wkListCard:active { background:var(--color-surface-alt); }
-.wkListAvatar { width:36px; height:36px; border-radius:50%; object-fit:cover; flex-shrink:0; border:2px solid var(--color-border-soft); }
-.wkListAvatarInitial { width:36px; height:36px; border-radius:50%; background:var(--color-hard); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; color:#fff; flex-shrink:0; }
-.wkListAvatarInitial.clay { background:var(--color-clay); }
-.wkListCardInfo { flex:1; min-width:0; }
-.wkListCardCourt { font-size:10px; letter-spacing:0.08em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:1px; }
-.wkListCardTime { font-size:13px; font-weight:600; color:var(--color-text-primary); font-variant-numeric:lining-nums; }
-.wkListCardName { font-size:12px; color:var(--color-text-secondary); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.wkListCoachBadge { font-size:9px; padding:2px 6px; border-radius:4px; background:var(--color-clay); color:#fff; letter-spacing:0.06em; flex-shrink:0; }
+.calWeekNav { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+.calWeekNavLabel { font-family:var(--font-display); font-size:16px; letter-spacing:0.05em; color:var(--color-text-primary); font-weight:600; flex:1; text-align:center; font-variant-numeric:lining-nums; }
+.calWeekGrid { display:grid; grid-template-columns:32px repeat(7,1fr); border-radius:12px; overflow:hidden; border:1px solid var(--color-border-soft); background:var(--color-border-soft); gap:1px; touch-action:pan-y; }
+.calGridCorner { background:var(--color-surface-alt); min-height:52px; }
+.calDayHead { background:var(--color-surface-alt); text-align:center; padding:8px 2px 6px; display:flex; flex-direction:column; align-items:center; gap:2px; }
+.calDayHead--today { background:var(--color-text-primary); }
+.calDayHead--weekend .calDayDow,.calDayHead--weekend .calDayNum { color:var(--color-clay); }
+.calDayHead--today .calDayDow,.calDayHead--today .calDayNum { color:var(--color-bg); }
+.calDayDow { font-size:9px; letter-spacing:0.06em; color:var(--color-text-muted); }
+.calDayNum { font-family:var(--font-display); font-size:17px; color:var(--color-text-primary); line-height:1; font-variant-numeric:lining-nums; }
+.calCourtLabel { background:var(--color-surface-alt); display:flex; align-items:center; justify-content:center; font-family:var(--font-display); font-size:14px; color:var(--color-text-secondary); letter-spacing:0.05em; min-height:76px; font-weight:500; }
+.calCourtLabel--clay { color:var(--color-clay); }
+.calCell { background:var(--color-surface); padding:3px 2px; min-height:76px; display:flex; flex-direction:column; gap:2px; }
+.calCell--today { background:rgba(0,0,0,0.03); }
+.calBlock { border-radius:4px; padding:3px 3px; cursor:pointer; display:flex; flex-direction:column; align-items:flex-start; gap:1px; background:var(--color-hard); }
+.calBlock:active { opacity:0.7; }
+.calBlock--coach { background:var(--color-clay); }
+.calBlock--lock { background:#2a2a2a; }
+.calBlockTime { font-size:9px; font-weight:700; color:#fff; line-height:1; font-variant-numeric:lining-nums; letter-spacing:0; }
+.calBlockAvatar { width:16px; height:16px; border-radius:50%; object-fit:cover; border:1.5px solid rgba(255,255,255,0.5); }
+.calBlockInit { width:16px; height:16px; border-radius:50%; background:rgba(255,255,255,0.25); display:flex; align-items:center; justify-content:center; font-size:8px; font-weight:700; color:#fff; }
 
 /* ── View Switcher ── */
 .viewSwitcher { display:flex; justify-content:center; margin-bottom:24px; }
@@ -1024,6 +1020,7 @@ button {
   <!-- Loading -->
   <div id="authLoadingScreen" class="authCenter" style="justify-content:flex-start;padding-top:80px">
     <div class="authSpinner"></div>
+    <div id="authLoadingMsg" style="display:none;margin-top:20px;padding:0 24px;text-align:center;font-size:12px;color:var(--color-text-muted);line-height:1.8"></div>
   </div>
   <!-- LINE Login — two sub-states toggled by _showAuthGate('login') -->
   <div id="authLoginScreen" class="authCenter" style="display:none">
@@ -1049,8 +1046,6 @@ button {
     <div class="authStateIcon">⏳</div>
     <div class="authStateTitle">等待管理員審核</div>
     <p class="authStateDesc">您的帳號已建立完成，<br>管理員核准後即可使用全部功能。</p>
-    <pre id="authDebugPanel" style="margin:16px 0 0;padding:12px;background:#1a1a1a;color:#06C755;font-size:11px;line-height:1.6;border-radius:8px;text-align:left;width:100%;max-width:320px;white-space:pre-wrap;word-break:break-all;">(等待 auth...)</pre>
-    <button style="margin-top:10px;padding:8px 20px;background:#333;color:#06C755;border:none;border-radius:8px;font-size:12px;cursor:pointer" onclick="document.getElementById('authGate').style.display='none'">強制進入（診斷用）</button>
     <button class="authLogoutBtn" onclick="_doLogout()">登出</button>
   </div>
   <!-- Resigned -->
@@ -1104,29 +1099,17 @@ button {
           <span class="courtBrandSub">Tennis Society · 清心網球協會</span>
         </div>
       </div>
-      <!-- view switcher hidden — week list is the default court view -->
-    </div>
-
-
-    <!-- Week view (primary court view) -->
-    <div id="view-week">
-      <div class="weekStrip">
-        <div class="weekHeader">
-          <button class="navButton" onclick="changeWeek(-1)" aria-label="上一週">‹</button>
-          <span class="monthLabel" id="weekMonthLabel"></span>
-          <button class="navButton" onclick="changeWeek(1)" aria-label="下一週">›</button>
+      <!-- view switcher: 週 / 月 -->
+      <div class="viewSwitcher" style="margin-bottom:16px">
+        <div class="switcherGroup">
+          <button class="switcherOption active" id="btnWeek" onclick="setView('week',this)">週</button>
+          <button class="switcherOption" id="btnMonth" onclick="setView('month',this)">月</button>
         </div>
-        <div class="chips" id="chips"></div>
-      </div>
-      <div class="dayHeader">
-        <span class="dayLabelMain" id="dayLabel"></span>
-        <span class="dayMeta" id="dayMeta"></span>
-      </div>
-      <div class="timeGridWrapper">
-        <div class="courtHeader" id="courtHeader"></div>
-        <div class="grid" id="grid"></div>
       </div>
     </div>
+
+    <!-- Week view (7-day court grid, primary) -->
+    <div id="view-week"></div>
 
     <!-- Month view -->
     <div id="view-month" style="display:none">
@@ -1497,6 +1480,8 @@ const ROLE_LABELS = {owner:'擁有者',admin:'管理員',annual_member:'年費�
    ══════════════════════════════════════════════ */
 
 function _showAuthGate(state){
+  // Clear any loading timeout whenever we transition screens
+  try { if(typeof _loadingTimer !== 'undefined') clearTimeout(_loadingTimer); } catch(e){}
   var gate = document.getElementById('authGate');
   if(!gate) return;
   gate.style.display = 'block';
@@ -1511,13 +1496,6 @@ function _showAuthGate(state){
 function _showMainApp(){
   var gate = document.getElementById('authGate');
   if(gate) gate.style.display = 'none';
-  // Log confirmation to debug panel so we can verify _showMainApp ran
-  try {
-    var dbgEl = document.getElementById('authDebugPanel');
-    if(dbgEl){
-      dbgEl.textContent += '\n---\n_showMainApp() 已執行\ngate hidden: ' + (!gate || gate.style.display === 'none') + '\n時間: ' + new Date().toLocaleTimeString();
-    }
-  } catch(e){}
   // Sync nav avatar from Firebase Auth photoURL
   if(currentUser && currentUser.photoURL){
     var navImg = document.getElementById('navAvatarImg');
@@ -1691,15 +1669,13 @@ const LS_UID_KEY = 'cxts_uid'; // localStorage: cached LINE userId for fast sess
 // Accepts all equivalent "approved" states across different schema versions.
 function _canEnter(d){
   if(!d) return false;
-  var role   = d.role   || '';
-  var status = d.status || '';
-  // role-based: owner / admin always enter regardless of status field
-  if(role === 'owner' || role === 'admin') return true;
-  // status-based: active OR approved (both mean "cleared by admin")
-  if(status === 'active' || status === 'approved') return true;
-  // approved field: boolean flag sometimes used alongside status
-  if(d.approved === true) return true;
-  return false;
+  var status = (d.status || '').toLowerCase();
+  var role   = (d.role   || '').toLowerCase();
+  // Require explicit approved/active status — pending always blocked
+  if(status !== 'approved' && status !== 'active') return false;
+  // Must hold a recognised member role
+  var validRoles = ['owner','admin','annual_member','monthly_member','coach','member'];
+  return validRoles.indexOf(role) >= 0;
 }
 
 // Fast path: if localStorage has a known UID, read Firestore and enter directly.
@@ -1732,14 +1708,28 @@ async function _tryResumeSession(){
   }
 }
 
+function _showLoadingTimeout(){
+  var msgEl = document.getElementById('authLoadingMsg');
+  if(!msgEl) return;
+  // Only show if still on loading screen
+  var loadingEl = document.getElementById('authLoadingScreen');
+  if(!loadingEl || loadingEl.style.display === 'none') return;
+  msgEl.style.display = 'block';
+  msgEl.innerHTML = '載入時間較長，請稍候⋯<br>' +
+    '<button onclick="location.reload()" style="margin-top:10px;padding:7px 18px;background:var(--color-text-primary);color:var(--color-bg);border:none;border-radius:8px;font-size:12px;cursor:pointer">重新載入</button>';
+}
+
 async function initAuth(){
   if(DEV_ROLE){ _showMainApp(); return; }
   _showAuthGate('loading');
   _liffDebugLines = [];
 
+  // Timeout fallback: if still loading after 5 s, show reload prompt
+  var _loadingTimer = setTimeout(_showLoadingTimeout, 5000);
+
   // ── Fast path ───────────────────────────────────────────────────────
   var resumed = await _tryResumeSession();
-  if(resumed) return;
+  if(resumed){ clearTimeout(_loadingTimer); return; }
 
   // ── Slow path: full LIFF init ───────────────────────────────────────
   _liffDbg('LIFF_ID', LIFF_ID);
@@ -1841,7 +1831,7 @@ function _showAuthGateError(msg){
 async function _upsertAndRoute(profile){
   var uid = profile.userId;
   _liffDbg('upsert uid', uid);
-  if(!db){ _showMainApp(); return; }
+  if(!db){ _showAuthGateError('資料庫連線失敗，請稍後再試'); return; }
   try {
     var memberRef = db.collection('members').doc(uid);
     var snap = await memberRef.get();
@@ -1897,24 +1887,6 @@ function _routeByStatus(d, profile){
     '| role:', d.role, '| status:', d.status, '| approved:', d.approved,
     '| canEnter:', canEnter, '| → ', destination);
 
-  // Write debug info to pending screen panel (always, so it's ready if needed)
-  try {
-    var dbgEl = document.getElementById('authDebugPanel');
-    if(dbgEl){
-      dbgEl.textContent = [
-        'uid:      ' + (profile.userId || '—'),
-        'doc存在:  ' + (d ? 'YES' : 'NO'),
-        'role:     ' + (d.role     !== undefined ? d.role     : '—'),
-        'status:   ' + (d.status   !== undefined ? d.status   : '—'),
-        'approved: ' + (d.approved !== undefined ? String(d.approved) : '—'),
-        'canEnter: ' + canEnter,
-        '導向:     ' + destination,
-        '時間:     ' + new Date().toLocaleTimeString(),
-      ].join('\n');
-      dbgEl.style.display = 'block'; // always visible for diagnosis
-    }
-  } catch(e){}
-
   currentUser = {
     uid:         profile.userId,
     userId:      profile.userId,
@@ -1965,7 +1937,8 @@ const SLOT_MIN = 30;
 const today = new Date();
 let selectedDate = new Date(today);
 let currentView = 'week';
-let weekBookingsCache = {};   // date-string → booking[]
+let weekBookingsCache = {};   // date-string → booking[] (current week)
+let monthBookingsCache = {};  // date-string → booking[] (current month, for month view)
 let _courtSurfaceFilter = 'hard'; // 'hard' | 'clay'
 /* Firebase state — null = use mock data fallback */
 let currentUser = null;
@@ -2156,7 +2129,7 @@ function renderMonthView(){
     if(isT) cls+=' today';
     if(isSel) cls+=' selected';
     if(isWe) cls+=' weekend';
-    const dayBookings=(courtBookingsFirestore||[]).filter(b=>b.date===ds);
+    const dayBookings=(monthBookingsCache[ds]||[]);
     html+='<button class="'+cls+'" onclick="selectDate(\''+ds+'\');setView(\'week\',document.getElementById(\'btnWeek\'))">'
       +'<span class="monthCellNum">'+d+'</span>';
     if(dayBookings.length>0){
@@ -2406,7 +2379,7 @@ function _renderAdminSettingsTab(el){
   var promotable = isOwner
     ? all.filter(function(m){
         var s = m.status || '';
-        var canEnterMember = (s==='active' || s==='approved' || m.approved===true);
+        var canEnterMember = (s==='active' || s==='approved');
         return canEnterMember && m.role!=='owner' && m.role!=='admin';
       }).sort(function(a,b){ return (a.displayName||'').localeCompare(b.displayName||'','zh-Hant'); })
     : [];
@@ -3475,8 +3448,8 @@ function setView(v, el){
   document.getElementById('view-month').style.display=v==='month'?'block':'none';
   document.querySelectorAll('.switcherOption').forEach(b=>b.classList.remove('active'));
   if(el) el.classList.add('active');
-  if(v==='month') renderMonthView();
-  if(v==='week'){ loadWeekBookings(); }
+  if(v==='month') loadMonthBookings();
+  if(v==='week') loadWeekBookings();
 }
 
 function _dvShowDetail(enc){
@@ -3542,13 +3515,14 @@ function _dvCloseDetail(){
 
 function setCourtSurface(filter){
   _courtSurfaceFilter=filter;
-  if(currentView==='week') renderWeekList();
+  if(currentView==='week') renderWeekView();
+  else if(currentView==='month') renderMonthView();
 }
 function changeWeekNav(delta){ selectedDate=addDays(selectedDate,delta*7); loadWeekBookings(); }
 
 /* ── Load all bookings for the current week (7 days) ── */
 function loadWeekBookings(){
-  if(!db){ renderWeekList(); return; }
+  if(!db){ renderWeekView(); return; }
   var ws=startOfWeek(selectedDate);
   var startStr=formatDate(ws);
   var endStr=formatDate(addDays(ws,6));
@@ -3565,95 +3539,108 @@ function loadWeekBookings(){
         if(!weekBookingsCache[b.date]) weekBookingsCache[b.date]=[];
         weekBookingsCache[b.date].push(b);
       });
-      renderWeekList();
+      renderWeekView();
     })
     .catch(function(e){
       console.warn('loadWeekBookings error:',e);
       weekBookingsCache={};
-      renderWeekList();
+      renderWeekView();
     });
 }
 
 /* ── Render: Week List (7-day booking overview) ── */
-function renderWeekList(){
+function renderWeekView(){
   var el=document.getElementById('view-week');
   if(!el) return;
   var ws=startOfWeek(selectedDate);
   var weekDates=Array.from({length:7},function(_,i){ return addDays(ws,i); });
   var isClay=(_courtSurfaceFilter==='clay');
   var activeCourts=isClay?['clay_a','clay_b']:['hard_a','hard_b'];
-  var cLabel={hard_a:'HARD A',hard_b:'HARD B',clay_a:'CLAY A',clay_b:'CLAY B'};
   var myUid=currentUser?(currentUser.uid||currentUser.userId||currentUser.id||''):'';
 
-  var h='';
-  /* week nav */
+  // week nav label — show both months if week spans a boundary
+  var endWk=addDays(ws,6);
   var wsLabel=ws.getFullYear()+'年'+(ws.getMonth()+1)+'月';
-  h+='<div class="wkListNav">'+
-    '<button class="navButton" onclick="changeWeekNav(-1)">‹</button>'+
-    '<span class="wkListNavLabel">'+wsLabel+'</span>'+
-    '<button class="navButton" onclick="changeWeekNav(1)">›</button>'+
-  '</div>';
-  /* surface filter */
-  h+='<div class="dayViewSurfaceTabs'+(isClay?' surface-clay':'')+'" style="margin-bottom:14px">';
+  if(endWk.getMonth()!==ws.getMonth())
+    wsLabel+=' – '+(endWk.getMonth()+1)+'月';
+
+  var h='';
+  // Surface filter
+  h+='<div class="dayViewSurfaceTabs'+(isClay?' surface-clay':'')+'" style="margin-bottom:12px">';
   [{key:'hard',label:'硬地'},{key:'clay',label:'紅土'}].forEach(function(s){
     var a=_courtSurfaceFilter===s.key;
     h+='<button class="dayViewSurfaceBtn'+(a?' active':'')+'" onclick="setCourtSurface(\''+s.key+'\')">'+s.label+'</button>';
   });
   h+='</div>';
-  /* 7-day list */
+  // Week navigation
+  h+='<div class="calWeekNav">'+
+    '<button class="navButton" onclick="changeWeekNav(-1)">‹</button>'+
+    '<span class="calWeekNavLabel">'+wsLabel+'</span>'+
+    '<button class="navButton" onclick="changeWeekNav(1)">›</button>'+
+  '</div>';
+  // 7-day grid
+  h+='<div class="calWeekGrid">';
+  // corner
+  h+='<div class="calGridCorner"></div>';
+  // day header cells
   weekDates.forEach(function(d){
-    var ds=formatDate(d);
-    var isToday=isSameDay(d,today);
-    var dayBookings=((weekBookingsCache[ds]||[])
-      .filter(function(b){ return activeCourts.indexOf(b.court)>=0; })
-      .sort(function(a,b){ return (a.startTime||'').localeCompare(b.startTime||''); }));
-    var dayCls='wkListDay'+(isToday?' today':'');
-    var dayOfWeek=DAYS_TC[d.getDay()];
-    var monthSub=(d.getMonth()+1)+'/'+d.getDate();
-    h+='<div class="'+dayCls+'">'+
-      '<div class="wkListDayHeader">'+
-        '<span class="wkListDayLabel">（'+dayOfWeek+'）</span>'+
-        '<span class="wkListDayNum">'+d.getDate()+'</span>'+
-        '<span class="wkListDaySub">'+monthSub+'</span>'+
-      '</div>'+
-      '<div class="wkListBookings">';
-    if(!dayBookings.length){
-      h+='<div class="wkListEmpty">無預約</div>';
-    } else {
-      dayBookings.forEach(function(b){
+    var isT=isSameDay(d,today), isWe=isWeekend(d);
+    var cls='calDayHead'+(isT?' calDayHead--today':'')+(isWe?' calDayHead--weekend':'');
+    h+='<div class="'+cls+'"><span class="calDayDow">'+DAYS_TC[d.getDay()]+'</span><span class="calDayNum">'+d.getDate()+'</span></div>';
+  });
+  // court rows
+  activeCourts.forEach(function(courtId){
+    var isClayCourt=COURT_SURFACE[courtId]==='clay';
+    h+='<div class="calCourtLabel'+(isClayCourt?' calCourtLabel--clay':'')+'">'+COURT_LABELS[courtId].letter+'</div>';
+    weekDates.forEach(function(d){
+      var ds=formatDate(d);
+      var bookings=((weekBookingsCache[ds]||[])
+        .filter(function(b){ return b.court===courtId; })
+        .sort(function(a,b){ return (a.startTime||'').localeCompare(b.startTime||''); }));
+      var isT=isSameDay(d,today);
+      h+='<div class="calCell'+(isT?' calCell--today':'')+'">';
+      bookings.forEach(function(b){
         var u=b.createdBy?usersCache[b.createdBy]:null;
         if(!u) u=Object.values(usersCache).find(function(x){return (x.displayName||'')===(b.primaryName||'');});
         var name=u?u.displayName:(b.primaryName||'?');
         var photoURL=u?(u.photoURL||u.lineAvatar||''):'';
-        var isClayCourt=COURT_SURFACE[b.court]==='clay';
-        var isCoach=b.mode==='coaching';
-        var modeLabel=isCoach?'教學課':b.mode==='event_lock'?'場地封鎖':b.mode==='group_class'?'團體課':'一般預約';
+        var isCoach=b.mode==='coaching', isLock=b.mode==='event_lock';
+        var modeLabel=isCoach?'教學課':isLock?'場地封鎖':b.mode==='group_class'?'團體課':'一般預約';
         var isOwner=(b.createdBy===myUid);
+        var courtLbl=COURT_LABELS[courtId].surface+' '+COURT_LABELS[courtId].letter;
         var enc=encodeURIComponent(JSON.stringify({
-          name:name, photoURL:photoURL,
-          court:cLabel[b.court]||b.court, date:b.date,
-          time:b.startTime+'–'+b.endTime, mode:modeLabel,
-          count:b.participantCount||1, isCoach:isCoach,
-          ntrp:u?(u.ntrp||'—'):'—', pos:u?(u.preferredPosition||'—'):'—', att:'—',
-          bookingId:b.id, isOwner:isOwner
+          name:name,photoURL:photoURL,court:courtLbl,date:b.date,
+          time:b.startTime+'–'+b.endTime,mode:modeLabel,
+          count:b.participantCount||1,isCoach:isCoach,
+          ntrp:u?(u.ntrp||'—'):'—',pos:u?(u.preferredPosition||'—'):'—',att:'—',
+          bookingId:b.id,isOwner:isOwner
         }));
+        var bCls='calBlock'+(isCoach?' calBlock--coach':'')+(isLock?' calBlock--lock':'');
         var avatarHtml=photoURL
-          ?('<img src="'+photoURL+'" class="wkListAvatar" onerror="this.style.display=\'none\'" alt="">')
-          :'<div class="wkListAvatarInitial'+(isClayCourt?' clay':'')+'">'+name.charAt(0)+'</div>';
-        h+='<div class="wkListCard" onclick="_dvShowDetail(\''+enc+'\')">'+
+          ?('<img class="calBlockAvatar" src="'+photoURL+'" onerror="this.style.display=\'none\'" alt="">')
+          :'<span class="calBlockInit">'+name.charAt(0)+'</span>';
+        h+='<div class="'+bCls+'" onclick="event.stopPropagation();_dvShowDetail(\''+enc+'\')">'+
+          '<span class="calBlockTime">'+b.startTime+'</span>'+
           avatarHtml+
-          '<div class="wkListCardInfo">'+
-            '<div class="wkListCardCourt">'+cLabel[b.court]+'</div>'+
-            '<div class="wkListCardTime">'+b.startTime+' – '+b.endTime+'</div>'+
-            '<div class="wkListCardName">'+name+'</div>'+
-          '</div>'+
-          (isCoach?'<span class="wkListCoachBadge">教學</span>':'')+
         '</div>';
       });
-    }
-    h+='</div></div>';
+      h+='</div>';
+    });
   });
+  h+='</div>'; // calWeekGrid
   el.innerHTML=h;
+  _initWeekSwipe(el);
+}
+
+var _swipeStartX=0, _swipeEl=null;
+function _initWeekSwipe(el){
+  if(el._swipeInit) return;
+  el._swipeInit=true;
+  el.addEventListener('touchstart',function(e){ _swipeStartX=e.touches[0].clientX; },{passive:true});
+  el.addEventListener('touchend',function(e){
+    var dx=e.changedTouches[0].clientX-_swipeStartX;
+    if(Math.abs(dx)>55){ changeWeekNav(dx<0?1:-1); }
+  },{passive:true});
 }
 
 function selectDate(dateStr){
@@ -3663,7 +3650,7 @@ function selectDate(dateStr){
 function changeWeek(delta){ selectedDate=addDays(selectedDate,delta*7); render(); }
 function changeMonth(delta){
   selectedDate=new Date(selectedDate.getFullYear(), selectedDate.getMonth()+delta, 1);
-  renderMonthView();
+  loadMonthBookings();
 }
 function filterMembers(v){ renderMembers(v); }
 
@@ -3831,6 +3818,35 @@ function loadCourtBookings(dateStr){
     });
 }
 
+/* ── Load bookings for the current month (month view) ── */
+function loadMonthBookings(){
+  if(!db){ renderMonthView(); return; }
+  var year=selectedDate.getFullYear(), month=selectedDate.getMonth();
+  var startStr=year+'-'+pad(month+1)+'-01';
+  var lastDay=new Date(year,month+1,0).getDate();
+  var endStr=year+'-'+pad(month+1)+'-'+pad(lastDay);
+  db.collection('bookings')
+    .where('date','>=',startStr)
+    .where('date','<=',endStr)
+    .get()
+    .then(function(snap){
+      monthBookingsCache={};
+      snap.docs.forEach(function(d){
+        var b=Object.assign({id:d.id},d.data());
+        if(b.status&&b.status!=='confirmed') return;
+        if(!monthBookingsCache[b.date]) monthBookingsCache[b.date]=[];
+        monthBookingsCache[b.date].push(b);
+      });
+      renderMonthView();
+    })
+    .catch(function(e){
+      console.warn('loadMonthBookings error:',e);
+      monthBookingsCache={};
+      renderMonthView();
+    });
+}
+
+
 /* ── Load My Bookings from Firestore ── */
 function loadMyBookings(){
   if(!db||!currentUser){ renderBookings(); renderManage(); return; }
@@ -3979,10 +3995,8 @@ function submitBooking(){
 
 /* ── Main Render ── */
 function render(){
-  /* Week-list is the primary court view — load 7 days of bookings */
-  loadWeekBookings();
-  /* Keep day-header + court header updated for any legacy calls */
-  renderCourtHeader();
+  if(currentView==='week') loadWeekBookings();
+  else if(currentView==='month') loadMonthBookings();
 }
 
 // Startup: auth gate manages when renders fire.
