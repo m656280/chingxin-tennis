@@ -1543,6 +1543,8 @@ function _showMainApp(){
   renderBookings();
   renderManage();
   renderFinance();
+  loadUsersCache();
+  loadMyBookings();
 }
 
 /* ── Profile Sheet: auth-aware renderer ────────────────────────────────
@@ -1615,17 +1617,15 @@ function _renderProfileSheet(){
   // ── Active ─────────────────────────────────────────────────────────
   var _avatarSrc  = u.photoURL || _defaultAvatar;
   var _roleLabel  = _roleLabels[u.role] || u.role || '會員';
-  var _mockM = (typeof MOCK_MEMBERS !== 'undefined')
-    ? (MOCK_MEMBERS.find(function(m){ return m.id === u.uid || m.name === u.displayName; }) || {})
-    : {};
-
+  // Look up extra fields from Firestore cache (ntrp, preferredPosition, expireDate)
+  var _fsM = usersCache[u.uid || u.userId] || {};
   var _extraRows = '';
-  if(_mockM.ntrp)
-    _extraRows += '<div class="sheetRow"><span class="sheetRowLabel">NTRP</span><span class="sheetRowValue">' + _mockM.ntrp + '</span></div>';
-  if(_mockM.position)
-    _extraRows += '<div class="sheetRow"><span class="sheetRowLabel">擅長位置</span><span class="sheetRowValue">' + _mockM.position + '</span></div>';
-  if(_mockM.expireDate)
-    _extraRows += '<div class="sheetRow"><span class="sheetRowLabel">會費到期日</span><span class="sheetRowValue">' + _mockM.expireDate.replace(/\//g,' / ') + '</span></div>';
+  if(_fsM.ntrp)
+    _extraRows += '<div class="sheetRow"><span class="sheetRowLabel">NTRP</span><span class="sheetRowValue">' + _fsM.ntrp + '</span></div>';
+  if(_fsM.preferredPosition)
+    _extraRows += '<div class="sheetRow"><span class="sheetRowLabel">擅長位置</span><span class="sheetRowValue">' + _fsM.preferredPosition + '</span></div>';
+  if(_fsM.expireDate)
+    _extraRows += '<div class="sheetRow"><span class="sheetRowLabel">會費到期日</span><span class="sheetRowValue">' + String(_fsM.expireDate).replace(/\//g,' / ') + '</span></div>';
 
   body.innerHTML =
     '<div class="sheetUserRow">' +
@@ -1975,8 +1975,8 @@ let _courtSurfaceFilter = 'hard'; // 'hard' | 'clay'
 /* Firebase state — null = use mock data fallback */
 let currentUser = null;
 let usersCache = {};          // uid → user doc
-let courtBookingsFirestore = null;  // array when loaded, null = use mock
-let myBookingsFirestore = null;     // array when loaded, null = use mock
+let courtBookingsFirestore = null;  // null = not yet loaded; [] = loaded but empty
+let myBookingsFirestore = null;     // null = not yet loaded; [] = loaded but empty
 let pendingUsersFirestore = [];
 let unsubMyBookings = null;
 let _manageTab = 'pending';   // 'pending' | 'members' | 'coach' | 'adminSettings' | 'announcements'
@@ -2029,76 +2029,14 @@ const NEXT_SAT = offsetDays(offsetToNext(6));
 const NEXT_SUN = offsetDays(offsetToNext(0));
 const todayIsWeekend = isWeekend(today);
 
-const MOCK_USER = {
-  name: 'Maverick 小狸',
-  memberType: 'Annual Member',
-  expireDate: '2026/12/31',
-  ntrp: '3.5',
-  position: '底線型 / 後場',
-  attendance: 1,
-};
-
-const MOCK_BOOKINGS = [
-  ...(todayIsWeekend ? [
-    {id:'mb-w01',date:TODAY_STR,startTime:'07:00',endTime:'09:00',court:'clay_a',mode:'normal',primaryName:'早晨組',participantCount:4},
-    {id:'mb-w02',date:TODAY_STR,startTime:'09:30',endTime:'11:30',court:'hard_a',mode:'coaching',primaryName:'Coach 王',participantCount:3},
-  ] : []),
-  {id:'mb-001',date:TODAY_STR,startTime:'18:00',endTime:'19:30',court:'hard_a',mode:'normal',primaryName:'林志強',participantCount:4},
-  {id:'mb-002',date:TODAY_STR,startTime:'19:00',endTime:'20:30',court:'hard_b',mode:'coaching',primaryName:'Coach Lin',participantCount:2},
-  {id:'mb-003',date:TODAY_STR,startTime:'20:00',endTime:'22:00',court:'clay_a',mode:'normal',primaryName:'王雅琴',participantCount:4},
-  {id:'mb-004',date:TODAY_STR,startTime:'21:00',endTime:'23:00',court:'clay_b',mode:'group_class',primaryName:'Coach 吳 團課',participantCount:6},
-  {id:'mb-005',date:TOMORROW,startTime:'18:30',endTime:'20:30',court:'hard_a',mode:'pickleball',primaryName:'匹克球聚會',participantCount:8},
-  {id:'mb-006',date:TOMORROW,startTime:'19:30',endTime:'21:00',court:'clay_a',mode:'coaching',primaryName:'Coach Chen',participantCount:2},
-  {id:'mb-007',date:D2,startTime:'18:00',endTime:'21:00',court:'hard_a',mode:'event_lock',primaryName:'會員之夜',participantCount:0},
-  {id:'mb-008',date:D2,startTime:'18:00',endTime:'21:00',court:'hard_b',mode:'event_lock',primaryName:'會員之夜',participantCount:0},
-  {id:'mb-009',date:NEXT_SAT,startTime:'07:00',endTime:'09:00',court:'clay_a',mode:'normal',primaryName:'張教練 私訓',participantCount:2},
-  {id:'mb-010',date:NEXT_SAT,startTime:'08:30',endTime:'10:30',court:'hard_a',mode:'coaching',primaryName:'Coach 黃',participantCount:3},
-  {id:'mb-011',date:NEXT_SAT,startTime:'19:00',endTime:'21:00',court:'hard_b',mode:'normal',primaryName:'陳俊宏',participantCount:4},
-  {id:'mb-012',date:NEXT_SUN,startTime:'08:00',endTime:'10:00',court:'hard_a',mode:'normal',primaryName:'週日早場',participantCount:4},
-];
-
-const MOCK_MY_BOOKINGS = [
-  {id:'me-1',date:D3,startTime:'19:00',endTime:'21:00',court:'hard_a',mode:'normal',status:'confirmed',partners:['陳志明','林雅琳'],courtLabel:'Hard A'},
-  {id:'me-2',date:D5,startTime:'08:30',endTime:'10:30',court:'clay_a',mode:'coaching',status:'confirmed',partners:['Coach Lin'],courtLabel:'Clay A'},
-  {id:'me-3',date:D_2,startTime:'20:00',endTime:'22:00',court:'hard_b',mode:'normal',status:'completed',partners:['王大明'],courtLabel:'Hard B'},
-  {id:'me-4',date:D_7,startTime:'18:30',endTime:'20:00',court:'clay_b',mode:'normal',status:'completed',partners:['陳志明'],courtLabel:'Clay B'},
-];
-
-const MOCK_MEMBERS = [
-  {id:'c1',name:'Coach Lin', type:'coach', ntrp:'5.0',position:'全場',      joined:'2020'},
-  {id:'c2',name:'Coach 王',  type:'coach', ntrp:'4.5',position:'全場',      joined:'2021'},
-  {id:'m1',name:'Maverick 小狸',type:'annual', ntrp:'3.5',position:'底線型 / 後場',joined:'2024', expireDate:'2026/12/31', status:'active', expirePaid:false},
-  {id:'m2',name:'陳志明',   type:'annual', ntrp:'4.0',position:'網前型',    joined:'2023', expireDate:'2026/06/10', status:'active', expirePaid:false},
-  {id:'m3',name:'林雅琳',   type:'annual', ntrp:'3.0',position:'雙打後場',  joined:'2024', expireDate:'2026/06/25', status:'active', expirePaid:false},
-  {id:'m4',name:'王大明',   type:'monthly',ntrp:'3.5',position:'底線型',    joined:'2025', expireDate:'2026/05/15', status:'active', expirePaid:false},
-  {id:'m5',name:'張芷晴',   type:'annual', ntrp:'3.5',position:'全場',      joined:'2022', expireDate:'2026/12/31', status:'active', expirePaid:false},
-  {id:'m6',name:'李建宏',   type:'monthly',ntrp:'4.0',position:'網前型',    joined:'2025', expireDate:'2026/05/27', status:'active', expirePaid:false},
-  {id:'m7',name:'吳美玲',   type:'annual', ntrp:'3.0',position:'雙打後場',  joined:'2023', expireDate:'2026/04/20', status:'active', expirePaid:false},
-  {id:'m8',name:'黃俊傑',   type:'annual', ntrp:'4.5',position:'底線型',    joined:'2021', expireDate:'2026/06/01', status:'active', expirePaid:false},
-];
-
-const MOCK_FINANCE_RECORDS = [
-  // ── 2025 歷史 ──
-  {id:'f0a',year:2025,type:'annual', member:'Maverick 小狸', date:'2025-01-10', amount:5500, note:'2025 年費',  createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
-  {id:'f0b',year:2025,type:'annual', member:'陳志明',        date:'2025-01-18', amount:5500, note:'2025 年費',  createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
-  {id:'f0c',year:2025,type:'expense',member:'',               date:'2025-06-20', amount:1200, note:'球場維護',   createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
-  // ── 2026 ──
-  {id:'f1', year:2026,type:'annual', member:'Maverick 小狸', date:'2026-01-15', amount:6000, note:'2026 年費',  createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
-  {id:'f2', year:2026,type:'annual', member:'陳志明',        date:'2026-01-20', amount:6000, note:'2026 年費',  createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
-  {id:'f3', year:2026,type:'monthly',member:'王大明',         date:'2026-04-01', amount:1200, note:'4 月月費',   createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
-  {id:'f4', year:2026,type:'annual', member:'林雅琳',         date:'2026-02-03', amount:6000, note:'2026 年費',  createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
-  {id:'f5', year:2026,type:'donate', member:'黃俊傑',         date:'2026-03-10', amount:2000, note:'球場修繕支持',createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
-  {id:'f6', year:2026,type:'expense',member:'',               date:'2026-03-15', amount:3500, note:'球網更換',   createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
-  {id:'f7', year:2026,type:'monthly',member:'李建宏',         date:'2026-05-01', amount:1200, note:'5 月月費',   createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
-  {id:'f8', year:2026,type:'expense',member:'',               date:'2026-05-10', amount:800,  note:'清潔用品',   createdByName:'Maverick 小狸', updatedByName:null, updatedAt:null},
-];
-
-const MOCK_NOTIFICATIONS = [
-  {id:'n1',type:'booking',title:'預約確認',text:shortDateStr(D3)+' Hard A 19:00 已確認',time:'2 小時前',read:false},
-  {id:'n2',type:'event',title:'活動公告',text:shortDateStr(D2)+' 會員之夜已開放報名',time:'昨天',read:false},
-  {id:'n3',type:'system',title:'會費提醒',text:'您的年費將於 2026/12/31 到期，請提早續費',time:'3 天前',read:true},
-  {id:'n4',type:'booking',title:'預約完成',text:shortDateStr(D_2)+' Hard B 20:00 已完成',time:'2 天前',read:true},
-];
+// ── Production: no mock / seed data ──────────────────────────────────────
+// All data comes from Firestore. Empty arrays are intentional — do not seed.
+const MOCK_USER = {};
+const MOCK_BOOKINGS = [];
+const MOCK_MY_BOOKINGS = [];
+const MOCK_MEMBERS = [];
+const MOCK_FINANCE_RECORDS = [];
+const MOCK_NOTIFICATIONS = [];
 
 /* ── Court: Scroll to current time ── */
 function scrollToNow(){
@@ -2184,7 +2122,7 @@ function renderGrid(){
       '<span class="timeLabel">'+(showLabel?slot:'')+'</span></div>';
   });
   const ds=formatDate(selectedDate);
-  const bookingsForDay=(courtBookingsFirestore!==null?courtBookingsFirestore:MOCK_BOOKINGS).filter(b=>b.date===ds);
+  const bookingsForDay=(courtBookingsFirestore||[]).filter(b=>b.date===ds);
   bookingsForDay.forEach(b=>{
     const {startSlot,spanSlots}=getSlotPosition(b.startTime,b.endTime,open);
     const courtIdx=COURTS.indexOf(b.court);
@@ -2236,7 +2174,7 @@ function renderMonthView(){
     if(isT) cls+=' today';
     if(isSel) cls+=' selected';
     if(isWe) cls+=' weekend';
-    const dayBookings=MOCK_BOOKINGS.filter(b=>b.date===ds);
+    const dayBookings=(courtBookingsFirestore||[]).filter(b=>b.date===ds);
     html+='<button class="'+cls+'" onclick="selectDate(\''+ds+'\');setView(\'week\',document.getElementById(\'btnWeek\'))">'
       +'<span class="monthCellNum">'+d+'</span>';
     if(dayBookings.length>0){
@@ -2258,7 +2196,7 @@ function renderMonthView(){
 /* ── Render: Booking Records ── */
 function renderBookings(){
   const todayStr=formatDate(today);
-  const source=myBookingsFirestore!==null?myBookingsFirestore:MOCK_MY_BOOKINGS;
+  const source=myBookingsFirestore||[];
   // 只顯示 currentUser 自己的有效預約（confirmed 且日期 >= 今天）
   const upcoming=source.filter(b=>b.status==='confirmed'&&b.date>=todayStr)
     .sort((a,b)=>a.date.localeCompare(b.date));
@@ -2461,12 +2399,22 @@ function _renderAdminSettingsTab(el){
   var isOwner = myRole === 'owner';
   var MAX_ADMIN = 8;
   var all       = Object.values(usersCache);
-  var ownerList = all.filter(function(m){ return m.role==='owner'; });
+  // Deduplicate owners: if current user is owner, show only them; otherwise show first owner only
+  var myUid = currentUser ? (currentUser.uid || currentUser.userId || '') : '';
+  var rawOwners = all.filter(function(m){ return m.role==='owner'; });
+  var ownerList = rawOwners.length <= 1 ? rawOwners
+    : (rawOwners.find(function(m){ return m.userId === myUid; })
+       ? [rawOwners.find(function(m){ return m.userId === myUid; })]
+       : [rawOwners[0]]);
+
   var adminList = all.filter(function(m){ return m.role==='admin'; })
     .sort(function(a,b){ return (a.displayName||'').localeCompare(b.displayName||'','zh-Hant'); });
   var promotable = isOwner
-    ? all.filter(function(m){ return m.status==='active' && m.role!=='owner' && m.role!=='admin'; })
-        .sort(function(a,b){ return (a.displayName||'').localeCompare(b.displayName||'','zh-Hant'); })
+    ? all.filter(function(m){
+        var s = m.status || '';
+        var canEnterMember = (s==='active' || s==='approved' || m.approved===true);
+        return canEnterMember && m.role!=='owner' && m.role!=='admin';
+      }).sort(function(a,b){ return (a.displayName||'').localeCompare(b.displayName||'','zh-Hant'); })
     : [];
   var adminCount  = adminList.length;
   var adminRemain = MAX_ADMIN - adminCount;
@@ -2802,7 +2750,7 @@ function _isFinanceAdmin(){
 function renderFinance(){
   const el = document.getElementById('financeContent');
   if(!el) return;
-  const allRecords = financeRecords.length > 0 ? financeRecords : MOCK_FINANCE_RECORDS;
+  const allRecords = financeRecords;
   const isAdmin = _isFinanceAdmin();
 
   // Admin button visibility
@@ -2878,9 +2826,20 @@ function _renderFinOverview(source, balance, annual, monthly, donate, expense, i
 /* ── Finance: Expiring Members ── */
 function _renderExpiringSoon(){
   var todayD = new Date(); todayD.setHours(0,0,0,0);
-  var members = (typeof MOCK_MEMBERS !== 'undefined') ? MOCK_MEMBERS : [];
+  // Use live Firestore cache — no mock data
+  var members = Object.values(usersCache).map(function(m){
+    return {
+      id:         m.userId,
+      name:       m.displayName || '',
+      status:     m.status || '',
+      expireDate: m.expireDate || null,
+      expirePaid: m.expirePaid || false,
+      type:       m.memberType || m.type || 'annual',
+    };
+  });
   var list = members.filter(function(m){
-    if(m.status !== 'active') return false;  // resigned / inactive / removed — all excluded
+    var s = m.status || '';
+    if(s === 'pending' || s === 'blocked' || s === 'resigned') return false;
     if(!m.expireDate) return false;
     if(m.expirePaid) return false;
     var exp = new Date(m.expireDate.replace(/\//g,'-')+'T00:00:00');
@@ -2946,8 +2905,8 @@ function _finMarkPaid(){
   var sheet=document.getElementById('finMemberSheet');
   if(!sheet) return;
   var mid=sheet.dataset.memberId;
-  var m=(typeof MOCK_MEMBERS!=='undefined'?MOCK_MEMBERS:[]).find(function(x){return x.id===mid;});
-  if(m){ m.expirePaid=true; }
+  if(db && mid){ db.collection('members').doc(mid).update({expirePaid:true}).catch(function(){}); }
+  if(usersCache[mid]) usersCache[mid].expirePaid=true;
   _finCloseMemberSheet();
   setTimeout(function(){ renderFinance(); showToast('已標記收費，從提醒清單移除'); },260);
 }
@@ -2957,8 +2916,9 @@ function _finUpdateExpiry(){
   var mid=sheet.dataset.memberId;
   var val=(document.getElementById('fmsExpireInput')||{}).value;
   if(!val){ showToast('請選擇新到期日'); return; }
-  var m=(typeof MOCK_MEMBERS!=='undefined'?MOCK_MEMBERS:[]).find(function(x){return x.id===mid;});
-  if(m){ m.expireDate=val.replace(/-/g,'/'); m.expirePaid=false; }
+  var newDate=val.replace(/-/g,'/');
+  if(db && mid){ db.collection('members').doc(mid).update({expireDate:newDate,expirePaid:false}).catch(function(){}); }
+  if(usersCache[mid]){ usersCache[mid].expireDate=newDate; usersCache[mid].expirePaid=false; }
   _finCloseMemberSheet();
   setTimeout(function(){ renderFinance(); showToast('到期日已更新'); },260);
 }
@@ -2967,8 +2927,9 @@ function _finMarkResigned(){
   var sheet=document.getElementById('finMemberSheet');
   if(!sheet) return;
   var mid=sheet.dataset.memberId;
-  var m=(typeof MOCK_MEMBERS!=='undefined'?MOCK_MEMBERS:[]).find(function(x){return x.id===mid;});
-  if(m){ m.status='resigned'; m.resignedAt=new Date().toISOString(); }
+  var now=new Date().toISOString();
+  if(db && mid){ db.collection('members').doc(mid).update({status:'resigned',resignedAt:now}).catch(function(){}); }
+  if(usersCache[mid]){ usersCache[mid].status='resigned'; usersCache[mid].resignedAt=now; }
   _finCloseMemberSheet();
   setTimeout(function(){ renderFinance(); showToast('已標記退會（財務紀錄保留）'); },260);
 }
@@ -2994,9 +2955,10 @@ function _renderFinDetail(source, isAdmin, fmt){
     var isOut = r.type==='expense';
     var editedPart = r.updatedByName?' · 修改：'+r.updatedByName:'';
     var dateMeta = r.date+(r.createdByName?' · 登記：'+r.createdByName:'')+editedPart;
-    // Check if member has since resigned — look up by name in MOCK_MEMBERS
-    var memberObj = (typeof MOCK_MEMBERS!=='undefined'&&r.member)
-      ? MOCK_MEMBERS.find(function(x){return x.name===r.member;}) : null;
+    // Check if member has since resigned — look up by displayName in usersCache
+    var memberObj = r.member
+      ? Object.values(usersCache).find(function(x){ return (x.displayName||'')===r.member; })
+      : null;
     var resignedTag = (memberObj&&memberObj.status==='resigned')
       ? '<span style="font-size:9.5px;letter-spacing:0.05em;color:#8C4637;background:rgba(130,65,52,0.09);padding:2px 7px;border-radius:99px;margin-left:6px;vertical-align:middle">已退會</span>'
       : '';
@@ -3243,7 +3205,7 @@ function _statCard(label, type, amt, isOut){
 
 /* ── Finance: Category Sheet ── */
 function openFinCategory(type){
-  const allRecs = financeRecords.length > 0 ? financeRecords : MOCK_FINANCE_RECORDS;
+  const allRecs = financeRecords;
   const records = allRecs.filter(function(r){
     return r.type === type
         && (r.year || parseInt(r.date.slice(0,4),10)) === _finYear;
@@ -3294,8 +3256,7 @@ function deleteFinanceRecord(id){
   if(fi > -1){
     financeRecords.splice(fi, 1);
   } else {
-    const mi = MOCK_FINANCE_RECORDS.findIndex(function(r){ return r.id===id; });
-    if(mi > -1) MOCK_FINANCE_RECORDS.splice(mi, 1);
+    showToast('紀錄不存在');
   }
   renderFinance();
   showToast('紀錄已刪除');
@@ -3304,7 +3265,7 @@ function deleteFinanceRecord(id){
 /* ── Finance: Export CSV ── */
 function exportFinanceCSV(){
   if(!_isFinanceAdmin()){ showToast('僅管理員可匯出'); return; }
-  const allRecs = financeRecords.length > 0 ? financeRecords : MOCK_FINANCE_RECORDS;
+  const allRecs = financeRecords;
   const source = allRecs.filter(function(r){
     return (r.year || parseInt(r.date.slice(0,4),10)) === _finYear;
   });
@@ -3348,10 +3309,7 @@ function exportFinanceCSV(){
 function _finPopulateMemberSelect(selectedName){
   const sel = document.getElementById('finFormMember');
   sel.innerHTML = '<option value="">— 選擇會員 / 備註用 —</option>';
-  const cached = Object.values(usersCache);
-  const list = cached.length > 0
-    ? cached.filter(function(u){ return u.role !== 'blocked'; })
-    : MOCK_MEMBERS.map(function(m){ return {displayName:m.name}; });
+  const list = Object.values(usersCache).filter(function(u){ return u.role !== 'blocked'; });
   list.forEach(function(u){
     const name = u.displayName || u.name || '';
     if(!name) return;
@@ -3417,9 +3375,7 @@ function submitEditFinanceRecord(type, member, date, amount, note){
     : 'Maverick 小狸';
   const updatedAt = new Date().toISOString().slice(0,10);
 
-  // find in local financeRecords first, then MOCK
   var rec = financeRecords.find(function(r){ return r.id===_finEditId; });
-  if(!rec) rec = MOCK_FINANCE_RECORDS.find(function(r){ return r.id===_finEditId; });
   if(!rec){ showToast('找不到紀錄'); return; }
 
   rec.type   = type;
@@ -3438,10 +3394,7 @@ function submitEditFinanceRecord(type, member, date, amount, note){
 /* ── Finance: Edit ── */
 function editFinanceRecord(id){
   if(!_isFinanceAdmin()){ showToast('僅管理員可編輯紀錄'); return; }
-  const allRecs = financeRecords.length > 0
-    ? financeRecords.concat(MOCK_FINANCE_RECORDS.filter(function(m){ return !financeRecords.find(function(f){return f.id===m.id;}); }))
-    : MOCK_FINANCE_RECORDS;
-  const rec = allRecs.find(function(r){ return r.id===id; });
+  const rec = financeRecords.find(function(r){ return r.id===id; });
   if(!rec){ showToast('找不到紀錄'); return; }
 
   _finEditId = id;
@@ -3461,60 +3414,48 @@ function renderMembers(filter){
   const ROLE_BADGE={owner:'擁有者',admin:'管理員',annual_member:'年費',monthly_member:'月費',coach:'教練',annual:'年費',monthly:'月費'};
   const el=document.getElementById('memberList');
   if(!el) return;
-  let list;
-  if(Object.keys(usersCache).length>0){
-    /* Use Firestore usersCache */
-    list=Object.values(usersCache)
-      .filter(m=>m.role&&m.role!=='pending'&&m.role!=='blocked')
-      .filter(m=>!f||(m.displayName||'').toLowerCase().includes(f)||String(m.ntrp||'').includes(f)||(m.preferredPosition||'').toLowerCase().includes(f))
-      .sort((a,b)=>{
-        if(a.role==='coach'&&b.role!=='coach') return -1;
-        if(b.role==='coach'&&a.role!=='coach') return 1;
-        return (a.displayName||'').localeCompare(b.displayName||'','zh');
-      });
-    el.innerHTML=list.map(m=>{
-      const initials=(m.displayName||'?').charAt(0);
-      const isCoach=m.role==='coach';
-      const isAdmin=m.role==='admin'||m.role==='owner';
-      const avatarHtml=m.lineAvatar
-        ?'<img src="'+m.lineAvatar+'" onerror="this.style.display=\'none\'" alt="'+m.displayName+'">'
+  // Always use Firestore usersCache — no mock fallback
+  var list = Object.values(usersCache)
+    .filter(function(m){
+      var s = m.status || '';
+      return s !== 'pending' && s !== 'blocked';
+    })
+    .filter(function(m){
+      return !f || (m.displayName||'').toLowerCase().includes(f)
+                || String(m.ntrp||'').includes(f)
+                || (m.preferredPosition||'').toLowerCase().includes(f);
+    })
+    .sort(function(a,b){
+      if(a.role==='coach' && b.role!=='coach') return -1;
+      if(b.role==='coach' && a.role!=='coach') return  1;
+      return (a.displayName||'').localeCompare(b.displayName||'','zh');
+    });
+  if(!list.length){
+    el.innerHTML = '<div class="emptyState"><div class="emptyStateIcon">—</div>目前無會員資料</div>';
+  } else {
+    el.innerHTML = list.map(function(m){
+      var initials=(m.displayName||'?').charAt(0);
+      var isCoach=m.role==='coach';
+      var avatarHtml=m.photoURL
+        ?'<img src="'+m.photoURL+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'" alt="">'
         :'<svg width="40" height="40" viewBox="0 0 40 40"><rect width="40" height="40" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="16" font-family="serif">'+initials+'</text></svg>';
       return '<div class="memberCard" onclick="showMemberDetail(\''+m.userId+'\')" style="cursor:pointer">'+
         '<div class="memberAvatar">'+avatarHtml+'</div>'+
         '<div class="memberInfo">'+
-          '<div class="memberName">'+m.displayName+'</div>'+
-          '<div class="memberMeta">'+(m.ntrp?'NTRP '+m.ntrp+' · ':'')+( m.preferredPosition||'—')+'</div>'+
+          '<div class="memberName">'+(m.displayName||'未知')+'</div>'+
+          '<div class="memberMeta">'+(m.ntrp?'NTRP '+m.ntrp+' · ':'')+(m.preferredPosition||'—')+'</div>'+
         '</div>'+
-        '<span class="memberBadge'+(isCoach?' coach':'')+'">'+((ROLE_BADGE[m.role])||m.role||'—')+'</span>'+
+        '<span class="memberBadge'+(isCoach?' coach':'')+'">'+((ROLE_BADGE[m.role])||'會員')+'</span>'+
       '</div>';
-    }).join('')||'<div class="emptyState">找不到符合的會員</div>';
-  } else {
-    /* Mock fallback */
-    list=MOCK_MEMBERS.filter(m=>!f||m.name.toLowerCase().includes(f)||m.ntrp.includes(f)||m.position.toLowerCase().includes(f));
-    const typeLabel={annual:'年費會員',monthly:'月費會員',coach:'教練'};
-    el.innerHTML=list.map(m=>{
-      const initials=m.name.charAt(0);
-      const isCoach=m.type==='coach';
-      return '<div class="memberCard">'+
-        '<div class="memberAvatar"><svg width="40" height="40" viewBox="0 0 40 40"><rect width="40" height="40" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="16" font-family="serif">'+initials+'</text></svg></div>'+
-        '<div class="memberInfo"><div class="memberName">'+m.name+'</div><div class="memberMeta">NTRP '+m.ntrp+'  ·  '+m.position+'</div></div>'+
-        '<span class="memberBadge'+(isCoach?' coach':'')+'">'+typeLabel[m.type]+'</span>'+
-      '</div>';
-    }).join('')||'<div class="emptyState">找不到符合的會員</div>';
+    }).join('');
   }
 }
 
 /* ── Render: Notifications ── */
 function renderNotifications(){
-  document.getElementById('notificationsList').innerHTML=MOCK_NOTIFICATIONS.map(n=>{
-    return '<div class="notifItem'+(n.read?' read':'')+'" onclick="markRead(\''+n.id+'\',this)">'+
-      '<div class="notifDot"></div>'+
-      '<div class="notifBody">'+
-        '<div class="notifTitle">'+n.title+'</div>'+
-        '<div class="notifText">'+n.text+'</div>'+
-        '<div class="notifTime">'+n.time+'</div>'+
-      '</div></div>';
-  }).join('');
+  var el = document.getElementById('notificationsList');
+  if(!el) return;
+  el.innerHTML = '<div class="emptyState"><div class="emptyStateIcon">—</div>目前沒有通知</div>';
 }
 function markRead(id, el){ el.classList.add('read'); }
 
@@ -3557,7 +3498,7 @@ function renderDayView(){
   var ds=formatDate(selectedDate);
   var d=selectedDate;
   var dstr=d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日（'+DAYS_TC[d.getDay()]+'）';
-  var allB=courtBookingsFirestore!==null?courtBookingsFirestore:MOCK_BOOKINGS;
+  var allB=courtBookingsFirestore||[];
   var dayB=allB.filter(function(b){return b.date===ds;});
   var now=new Date();
   var nowMin=now.getHours()*60+now.getMinutes();
@@ -3661,16 +3602,13 @@ function _dvAvatar(b,idx,total){
   var isCoach=b.mode==='coaching', isLock=b.mode==='event_lock';
   var cls='dvAvatar'+(isCoach?' is-coaching':'')+(isLock?' is-lock':'');
   var init=(b.primaryName||'?').charAt(0);
-  /* look up member data from MOCK_MEMBERS */
-  var mem=null;
-  if(typeof MOCK_MEMBERS!=='undefined'){
-    for(var mi=0;mi<MOCK_MEMBERS.length;mi++){
-      if(MOCK_MEMBERS[mi].name===(b.primaryName||'')){mem=MOCK_MEMBERS[mi];break;}
-    }
-  }
-  var ntrp=mem?mem.ntrp:'—';
-  var pos=mem?(mem.position||'—'):'—';
-  var att=mem?((2026-parseInt(mem.joined||'2020',10))*10)+'':'—';
+  // Look up member from Firestore cache by displayName or createdBy uid
+  var mem = (b.createdBy && usersCache[b.createdBy])
+    || Object.values(usersCache).find(function(x){ return (x.displayName||'')===(b.primaryName||''); })
+    || null;
+  var ntrp=mem?( mem.ntrp||'—'):'—';
+  var pos=mem?(mem.preferredPosition||'—'):'—';
+  var att='—';
   var modeLabel=b.mode==='coaching'?'教學課':b.mode==='event_lock'?'場地封鎖':b.mode==='group_class'?'團體課':'一般預約';
   var enc=encodeURIComponent(JSON.stringify({name:b.primaryName||'?',time:b.startTime+'–'+b.endTime,mode:modeLabel,count:b.participantCount||1,isCoach:isCoach,ntrp:ntrp,pos:pos,att:att}));
   var smMin=timeToMin(b.startTime), emMin=timeToMin(b.endTime);
@@ -3842,13 +3780,30 @@ function closeSettings(){
   document.getElementById('settingsSheet').classList.remove('open');
 }
 function saveSettings(){
-  const name=document.getElementById('nameInput').value.trim()||MOCK_USER.name;
-  const ntrp=document.getElementById('ntrpSelect').value;
-  const position=document.getElementById('positionSelect').value;
-  MOCK_USER.name=name; MOCK_USER.ntrp=ntrp; MOCK_USER.position=position;
-  document.getElementById('profileDisplayName').textContent=name;
-  document.getElementById('profileNTRP').textContent=ntrp;
-  document.getElementById('profilePosition').textContent=position;
+  var ntrp     = (document.getElementById('ntrpSelect')    ||{}).value || '';
+  var position = (document.getElementById('positionSelect')||{}).value || '';
+  // Update local currentUser state
+  if(currentUser){
+    if(ntrp)     currentUser.ntrp              = ntrp;
+    if(position) currentUser.preferredPosition = position;
+  }
+  // Persist to Firestore
+  if(db && currentUser){
+    var uid    = currentUser.uid || currentUser.userId || '';
+    var update = {};
+    if(ntrp)     update.ntrp              = ntrp;
+    if(position) update.preferredPosition = position;
+    if(uid && Object.keys(update).length){
+      db.collection('members').doc(uid).update(update)
+        .then(function(){ showToast('設定已儲存'); })
+        .catch(function(e){ console.warn('saveSettings error:',e); showToast('儲存失敗'); });
+    }
+  }
+  // Update DOM
+  var ntrpEl = document.getElementById('profileNTRP');
+  var posEl  = document.getElementById('profilePosition');
+  if(ntrpEl && ntrp)     ntrpEl.textContent     = ntrp;
+  if(posEl  && position) posEl.textContent       = position;
   closeSettings();
 }
 
@@ -3880,7 +3835,7 @@ function showToast(msg){
 
 /* ── Booking Detail (tap event on court grid) ── */
 function showBookingDetail(id){
-  var source=courtBookingsFirestore!==null?courtBookingsFirestore:MOCK_BOOKINGS;
+  var source=courtBookingsFirestore||[];
   var b=source.find(function(x){ return x.id===id; });
   if(!b) return;
   var u=b.createdBy?usersCache[b.createdBy]:null;
@@ -3898,16 +3853,35 @@ function showMemberDetail(uid){
 function loadUsersCache(){
   if(!db) return;
   db.collection('members').onSnapshot(function(snap){
-    snap.docs.forEach(function(d){ usersCache[d.id]=Object.assign({userId:d.id},d.data()); });
+    var fresh = {};
+    snap.docs.forEach(function(d){
+      fresh[d.id] = Object.assign({userId: d.id}, d.data());
+    });
+
+    // Deduplicate: same displayName → prefer current user's uid
+    var myUid = currentUser ? (currentUser.uid || currentUser.userId || '') : '';
+    var nameToWinner = {};
+    Object.keys(fresh).forEach(function(uid){
+      var name = (fresh[uid].displayName || '').trim();
+      if(!name) return;
+      if(!nameToWinner[name] || uid === myUid) nameToWinner[name] = uid;
+    });
+    var winners = new Set(Object.values(nameToWinner));
+    usersCache = {};
+    Object.keys(fresh).forEach(function(uid){
+      var name = (fresh[uid].displayName || '').trim();
+      if(!name || winners.has(uid)) usersCache[uid] = fresh[uid];
+    });
+
     renderMembers('');
     renderGrid();
-    // re-render manage tab if it's currently open
     if(document.getElementById('screen-manage') &&
        document.getElementById('screen-manage').classList.contains('active')){
       renderManage();
     }
   }, function(e){ console.warn('loadUsersCache error:',e); });
 }
+
 
 /* ── Load Court Bookings from Firestore ── */
 function loadCourtBookings(dateStr){
@@ -3921,8 +3895,8 @@ function loadCourtBookings(dateStr){
       renderGrid();
     })
     .catch(function(e){
-      console.warn('loadCourtBookings error, using mock:',e);
-      courtBookingsFirestore=null;
+      console.warn('loadCourtBookings error:',e);
+      courtBookingsFirestore=[];
       renderGrid();
     });
 }
@@ -3940,8 +3914,8 @@ function loadMyBookings(){
       renderManage();
     })
     .catch(function(e){
-      console.warn('loadMyBookings error, using mock:',e);
-      myBookingsFirestore=null;
+      console.warn('loadMyBookings error:',e);
+      myBookingsFirestore=[];
       renderBookings();
       renderManage();
     });
@@ -4013,7 +3987,7 @@ function submitBooking(){
   if(!date||!start||!end){ showToast('請填寫完整資料'); return; }
   if((court==='clay_a'||court==='clay_b')&&!isAdminLike()){ showToast('紅土場地僅管理員可預約'); return; }
   if(timeToMin(end)<=timeToMin(start)){ showToast('結束時間需晚於開始時間'); return; }
-  var displayName=currentUser?currentUser.displayName:(MOCK_USER.name||'—');
+  var displayName=currentUser?(currentUser.displayName||'—'):'—';
   var creatorId=currentUser?(currentUser.userId||currentUser.id||''):'';
   if(bookFor&&usersCache[bookFor]){ displayName=usersCache[bookFor].displayName; }
   var courtDisplay={hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'};
