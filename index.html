@@ -151,6 +151,31 @@ button {
 .dvDetailCellValue { font-size:15px; font-weight:600; color:var(--color-text-primary); }
 .dvDetailClose { display:block; width:calc(100% - 40px); margin:14px 20px; padding:13px; text-align:center; border-radius:10px; background:var(--color-surface-alt); font-size:13px; letter-spacing:0.06em; color:var(--color-text-secondary); border:none; cursor:pointer; }
 
+/* ── Day View: Vertical Grid (courts=columns, time=Y) ── */
+.dvVertOuter { overflow-y:auto; -webkit-overflow-scrolling:touch; max-height:calc(100dvh - 252px); margin:0 -16px; padding:0 16px 16px; scrollbar-width:none; }
+.dvVertOuter::-webkit-scrollbar { display:none; }
+.dvVertGrid { display:grid; grid-template-columns:44px 1fr 1fr; min-width:0; }
+.dvVertTimeHead { /* empty header corner */ background:var(--color-bg); position:sticky; top:0; z-index:4; }
+.dvVertCourtHead { text-align:center; font-size:11px; letter-spacing:0.08em; color:var(--color-text-secondary); padding:7px 4px 5px; border-bottom:1px solid var(--color-border-soft); position:sticky; top:0; background:var(--color-bg); z-index:3; font-weight:500; }
+.dvVertCourtHead.clay { color:var(--color-clay); }
+.dvVertTimeCol { position:relative; }
+.dvVTimeTick { position:absolute; right:6px; font-size:10px; color:var(--color-text-muted); transform:translateY(-50%); line-height:1; white-space:nowrap; font-variant-numeric:lining-nums; }
+.dvVertCourtLane { position:relative; border-left:1px solid var(--color-border-soft); }
+.dvVGridLine { position:absolute; left:0; right:0; height:1px; pointer-events:none; }
+.dvVGridLine.full { background:var(--color-border-soft); }
+.dvVGridLine.half { background:var(--color-border-soft); opacity:0.4; }
+.dvVNowLine { position:absolute; left:0; right:0; height:2px; background:#cc3333; z-index:4; pointer-events:none; border-radius:1px; box-shadow:0 0 4px rgba(204,51,51,0.4); }
+.dvVNowDot { position:absolute; left:-4px; top:-3px; width:8px; height:8px; border-radius:50%; background:#cc3333; }
+.dvVBlock { position:absolute; left:3px; right:3px; border-radius:6px; background:var(--color-hard); padding:3px 5px; overflow:hidden; cursor:pointer; z-index:2; box-shadow:0 1px 6px rgba(0,0,0,0.18); min-height:20px; }
+.dvVBlock:active { opacity:0.75; }
+.dvVBlock.is-coaching { background:var(--color-clay); }
+.dvVBlock.is-lock { background:#2a2a2a; }
+.dvVBlockName { font-size:10px; font-weight:700; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dvVBlockTime { font-size:9px; color:rgba(255,255,255,0.80); white-space:nowrap; overflow:hidden; }
+/* clay day view tint */
+.surface-clay .dvVNowLine { background:#C97948; box-shadow:0 0 4px rgba(201,121,72,0.4); }
+.surface-clay .dvVNowDot { background:#C97948; }
+
 /* ── View Switcher ── */
 .viewSwitcher { display:flex; justify-content:center; margin-bottom:24px; }
 .switcherGroup {
@@ -2314,7 +2339,7 @@ function _esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').re
 
 /* ── 會員管理 tab ── */
 function _renderMembersTab(el){
-  var ROLE_LABEL={owner:'創辦人',admin:'管理員',coach:'教練',annual_member:'年費會員',monthly_member:'月費會員',member:'會員'};
+  var ROLE_LABEL={owner:'擁有者',admin:'管理員',coach:'教練',annual_member:'年費會員',monthly_member:'月費會員',member:'會員'};
   var members=Object.values(usersCache).filter(function(m){
     return m.role&&m.role!=='pending'&&m.role!=='blocked';
   }).sort(function(a,b){
@@ -2438,7 +2463,7 @@ function _renderAdminSettingsTab(el){
   var html='<div style="padding:0 2px">';
 
   // ── OWNER
-  html+='<div style="font-size:11px;font-weight:600;letter-spacing:0.08em;color:var(--color-text-muted);text-transform:uppercase;margin:16px 0 8px;padding:0 4px">創辦人</div>';
+  html+='<div style="font-size:11px;font-weight:600;letter-spacing:0.08em;color:var(--color-text-muted);text-transform:uppercase;margin:16px 0 8px;padding:0 4px">擁有者</div>';
   if(!ownerList.length){
     html+='<div style="font-size:13px;color:var(--color-text-muted);padding:8px 4px">—</div>';
   } else {
@@ -2446,7 +2471,7 @@ function _renderAdminSettingsTab(el){
       html+='<div class="adminSettingsRow">'+
         _av(m)+
         '<div style="flex:1;font-size:14px;color:var(--color-text-primary);font-weight:500;margin-left:10px">'+_esc(m.displayName||'未知')+'</div>'+
-        '<span class="adminRoleBadge owner">創辦人</span>'+
+        '<span class="adminRoleBadge owner">擁有者</span>'+
       '</div>';
     });
   }
@@ -2712,10 +2737,10 @@ function saveCoachStudentRecord(coachId, studentId){
 /* ── Admin Settings: Set / revoke admin role ── */
 function setAdminRole(userId, makeAdmin){
   var myRole=_currentRole();
-  if(myRole!=='owner'){showToast('僅創辦人可變更管理員');return;}
+  if(myRole!=='owner'){showToast('僅擁有者可變更管理員');return;}
   var target=usersCache[userId];
   if(!target){showToast('找不到此會員');return;}
-  if(target.role==='owner'){showToast('不可變更創辦人權限');return;}
+  if(target.role==='owner'){showToast('不可變更擁有者權限');return;}
   // Admin cap check
   if(makeAdmin){
     var curAdminCount=Object.values(usersCache).filter(function(m){return m.role==='admin';}).length;
@@ -3512,35 +3537,100 @@ function renderDayView(){
   var dayB=allB.filter(function(b){return b.date===ds;});
   var now=new Date();
   var nowMin=now.getHours()*60+now.getMinutes();
+  var isClay=(_courtSurfaceFilter==='clay');
+  var courtIds=isClay?['clay_a','clay_b']:['hard_a','hard_b'];
+  var TOTAL_H=(_DV_E-_DV_S)*_DV_PX; /* 832px for 6–22 at 52px/hr */
+
   var h='';
   h+='<div class="dayViewDateNav"><button class="navButton" onclick="changeDayView(-1)">‹</button><span class="dayViewDateLabel">'+dstr+'</span><button class="navButton" onclick="changeDayView(1)">›</button></div>';
-  var isClay=(_courtSurfaceFilter==='clay');
-  h+='<div class="dayViewSurfaceTabs surface-'+_courtSurfaceFilter+'">';
+  h+='<div class="dayViewSurfaceTabs'+(isClay?' surface-clay':'')+'">';
   [{key:'hard',label:'硬地'},{key:'clay',label:'紅土'}].forEach(function(s){
     var a=_courtSurfaceFilter===s.key;
     h+='<button class="dayViewSurfaceBtn'+(a?' active':'')+'" onclick="setCourtSurface(\''+s.key+'\')">'+s.label+'</button>';
   });
   h+='</div>';
-  /* time axis — scrollable independently; courts stay fixed below */
-  h+='<div class="dvScrollOuter'+(isClay?' surface-clay':'')+'" id="dvScroll"><div class="dvScrollInner" style="width:'+(_DV_W+32)+'px">';
-  h+=_dvTimeAxis(nowMin);
-  h+='</div></div>';
-  /* courts — hard_a/b or clay_a/b depending on filter */
-  var courtIds=isClay?['clay_a','clay_b']:['hard_a','hard_b'];
+
+  /* ── Vertical grid: time col + 2 court cols ── */
+  h+='<div class="dvVertOuter"><div class="dvVertGrid">';
+
+  /* sticky header row */
+  h+='<div class="dvVertTimeHead"></div>';
   courtIds.forEach(function(cid){
-    h+=_dvCourtBlock(cid,dayB.filter(function(b){return b.court===cid;}),nowMin);
+    var isClayCourt=COURT_SURFACE[cid]==='clay';
+    h+='<div class="dvVertCourtHead'+(isClayCourt?' clay':'')+'">'+
+      COURT_LABELS[cid].surface+' '+COURT_LABELS[cid].letter+
+    '</div>';
   });
+
+  /* time axis column */
+  h+='<div class="dvVertTimeCol" style="height:'+TOTAL_H+'px">';
+  for(var hr=_DV_S;hr<=_DV_E;hr++){
+    var tickTop=((hr-_DV_S)*_DV_PX).toFixed(0);
+    h+='<div class="dvVTimeTick" style="top:'+tickTop+'px">'+pad(hr)+':00</div>';
+  }
+  h+='</div>';
+
+  /* court lane columns */
+  var isToday=isSameDay(selectedDate,today);
+  courtIds.forEach(function(cid){
+    var bList=dayB.filter(function(b){return b.court===cid;});
+    h+='<div class="dvVertCourtLane" style="height:'+TOTAL_H+'px">';
+
+    /* hour + half-hour grid lines */
+    for(var hr2=_DV_S;hr2<=_DV_E;hr2++){
+      var lineTop=((hr2-_DV_S)*_DV_PX).toFixed(0);
+      h+='<div class="dvVGridLine full" style="top:'+lineTop+'px"></div>';
+      if(hr2<_DV_E){
+        var halfTop=((hr2-_DV_S)*_DV_PX+_DV_PX/2).toFixed(0);
+        h+='<div class="dvVGridLine half" style="top:'+halfTop+'px"></div>';
+      }
+    }
+
+    /* now line */
+    if(isToday&&nowMin>=_DV_S*60&&nowMin<=_DV_E*60){
+      var nowTop=((nowMin-_DV_S*60)/60*_DV_PX).toFixed(1);
+      h+='<div class="dvVNowLine" style="top:'+nowTop+'px"><div class="dvVNowDot"></div></div>';
+    }
+
+    /* booking blocks */
+    bList.forEach(function(b){
+      var sm=timeToMin(b.startTime), em=timeToMin(b.endTime);
+      if(em<=sm||sm<_DV_S*60||em>_DV_E*60+30) return; /* skip out-of-range */
+      var topPx=((sm-_DV_S*60)/60*_DV_PX).toFixed(1);
+      var hPx=Math.max(20,((em-sm)/60*_DV_PX-2)).toFixed(1);
+      var isCoach=b.mode==='coaching', isLock=b.mode==='event_lock';
+      var modeLabel=isCoach?'教學課':isLock?'場地封鎖':b.mode==='group_class'?'團體課':'一般預約';
+      var mem=(b.createdBy&&usersCache[b.createdBy])
+        ||Object.values(usersCache).find(function(x){return (x.displayName||'')===(b.primaryName||'');})
+        ||null;
+      var ntrp=mem?(mem.ntrp||'—'):'—';
+      var pos=mem?(mem.preferredPosition||'—'):'—';
+      var courtLabel={hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[b.court]||b.court;
+      var enc=encodeURIComponent(JSON.stringify({
+        name:b.primaryName||'?', court:courtLabel, date:b.date,
+        time:b.startTime+'–'+b.endTime, mode:modeLabel,
+        count:b.participantCount||1, isCoach:isCoach, ntrp:ntrp, pos:pos, att:'—'
+      }));
+      var cls='dvVBlock'+(isCoach?' is-coaching':'')+(isLock?' is-lock':'');
+      h+='<div class="'+cls+'" style="top:'+topPx+'px;height:'+hPx+'px" onclick="event.stopPropagation();_dvShowDetail(\''+enc+'\')">'+
+        '<div class="dvVBlockName">'+(b.primaryName||'?')+'</div>'+
+        '<div class="dvVBlockTime">'+b.startTime+'–'+b.endTime+'</div>'+
+      '</div>';
+    });
+
+    h+='</div>'; /* dvVertCourtLane */
+  });
+
+  h+='</div></div>'; /* dvVertGrid, dvVertOuter */
   el.innerHTML=h;
-  /* auto-scroll axis to show current time + wire scroll → avatar fade */
+
+  /* auto-scroll to current time (or 08:00 on non-today days) */
   requestAnimationFrame(function(){
-    var outer=document.getElementById('dvScroll');
+    var outer=el.querySelector('.dvVertOuter');
     if(!outer) return;
-    var targetMin=Math.max(nowMin,_DV_S*60+120);
-    var scrollPx=Math.max(0,((targetMin-_DV_S*60)/60)*_DV_PX - outer.clientWidth/3);
-    outer.scrollLeft=scrollPx;
-    outer.removeEventListener('scroll',_dvOnAxisScroll);
-    outer.addEventListener('scroll',_dvOnAxisScroll,{passive:true});
-    setTimeout(_dvOnAxisScroll,100);
+    var targetMin=isToday?Math.max(nowMin,_DV_S*60+60):(_DV_S*60+120);
+    var scrollPx=Math.max(0,((targetMin-_DV_S*60)/60)*_DV_PX - outer.clientHeight/3);
+    outer.scrollTop=scrollPx;
   });
 }
 
@@ -3719,14 +3809,12 @@ function _dvShowDetail(enc){
       '<div><div class="dvDetailName">'+data.name+'</div><div class="dvDetailMode">'+data.mode+'</div></div>'+
     '</div>'+
     '<div class="dvDetailRows">'+
+      '<div class="dvDetailCell"><div class="dvDetailCellLabel">場地</div><div class="dvDetailCellValue">'+(data.court||'—')+'</div></div>'+
+      '<div class="dvDetailCell"><div class="dvDetailCellLabel">日期</div><div class="dvDetailCellValue" style="font-size:13px">'+(data.date||'—')+'</div></div>'+
       '<div class="dvDetailCell"><div class="dvDetailCellLabel">時間</div><div class="dvDetailCellValue" style="font-size:13px">'+data.time+'</div></div>'+
-      '<div class="dvDetailCell"><div class="dvDetailCellLabel">NTRP</div><div class="dvDetailCellValue">'+data.ntrp+'</div></div>'+
       '<div class="dvDetailCell"><div class="dvDetailCellLabel">本場人數</div><div class="dvDetailCellValue">'+data.count+'人</div></div>'+
-      '<div class="dvDetailCell"><div class="dvDetailCellLabel">出席次數</div><div class="dvDetailCellValue">'+attStr+'</div></div>'+
-    '</div>'+
-    '<div style="padding:12px 20px 4px;border-top:1px solid var(--color-border-soft)">'+
-      '<div class="dvDetailCellLabel">常打位置</div>'+
-      '<div class="dvDetailCellValue" style="font-size:14px;font-weight:500;margin-top:4px">'+data.pos+'</div>'+
+      '<div class="dvDetailCell"><div class="dvDetailCellLabel">NTRP</div><div class="dvDetailCellValue">'+data.ntrp+'</div></div>'+
+      '<div class="dvDetailCell"><div class="dvDetailCellLabel">常打位置</div><div class="dvDetailCellValue" style="font-size:13px">'+data.pos+'</div></div>'+
     '</div>'+
     '<button class="dvDetailClose" onclick="_dvCloseDetail()">關閉</button>';
   document.body.appendChild(p);
@@ -3849,8 +3937,19 @@ function showBookingDetail(id){
   var b=source.find(function(x){ return x.id===id; });
   if(!b) return;
   var u=b.createdBy?usersCache[b.createdBy]:null;
-  var name=u?u.displayName:b.primaryName;
-  showToast(({hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[b.court]||b.court)+' · '+b.startTime+'–'+b.endTime+'  '+name);
+  var name=u?u.displayName:(b.primaryName||'?');
+  var courtLabel={hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[b.court]||b.court;
+  var modeLabel=b.mode==='coaching'?'教學課':b.mode==='event_lock'?'場地封鎖':b.mode==='group_class'?'團體課':'一般預約';
+  var ntrp=u?(u.ntrp||'—'):'—';
+  var pos=u?(u.preferredPosition||'—'):'—';
+  var isCoach=b.mode==='coaching';
+  var enc=encodeURIComponent(JSON.stringify({
+    name:name, court:courtLabel, date:b.date,
+    time:b.startTime+'–'+b.endTime,
+    mode:modeLabel, count:b.participantCount||1,
+    isCoach:isCoach, ntrp:ntrp, pos:pos, att:'—'
+  }));
+  _dvShowDetail(enc);
 }
 
 /* ── Member Detail (tap member card) ── */
@@ -3915,7 +4014,7 @@ function loadCourtBookings(dateStr){
 function loadMyBookings(){
   if(!db||!currentUser){ renderBookings(); renderManage(); return; }
   db.collection('bookings')
-    .where('createdBy','==',currentUser.userId||currentUser.id||'')
+    .where('createdBy','==',currentUser.uid||currentUser.userId||currentUser.id||'')
     .orderBy('date','asc')
     .get()
     .then(function(snap){
