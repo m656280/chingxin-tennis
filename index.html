@@ -1103,6 +1103,13 @@ button {
     <p class="authStateDesc">您的帳號目前無法使用。<br>如有疑問請聯繫管理員。</p>
     <button class="authLogoutBtn" onclick="_doLogout()">登出</button>
   </div>
+  <!-- Rejected -->
+  <div id="authRejectedScreen" class="authCenter" style="display:none">
+    <div class="authStateIcon">🚫</div>
+    <div class="authStateTitle">審核未通過</div>
+    <p class="authStateDesc">帳號未通過審核，<br>請聯絡管理員。</p>
+    <button class="authLogoutBtn" onclick="_doLogout()">登出</button>
+  </div>
 </div>
 
 <div class="app court-active">
@@ -1544,7 +1551,7 @@ function _showAuthGate(state){
   var gate = document.getElementById('authGate');
   if(!gate) return;
   gate.style.display = 'block';
-  ['Loading','Login','Pending','Resigned','Blocked'].forEach(function(s){
+  ['Loading','Login','Pending','Resigned','Blocked','Rejected'].forEach(function(s){
     var el = document.getElementById('auth'+s+'Screen');
     if(el) el.style.display = 'none';
   });
@@ -1937,7 +1944,8 @@ function _routeByStatus(d, profile){
   var destination = canEnter ? 'mainApp'
     : (s === 'resigned' ? 'resigned'
     : (s === 'blocked'  ? 'blocked'
-    : 'pending'));
+    : (s === 'rejected' ? 'rejected'
+    : 'pending')));
 
   console.log('[AUTH] _routeByStatus uid:', profile.userId,
     '| role:', d.role, '| status:', d.status, '| approved:', d.approved,
@@ -1975,6 +1983,7 @@ function _routeByStatus(d, profile){
   if(canEnter){ _showMainApp(); return; }
   if(s === 'resigned'){ _showAuthGate('resigned'); return; }
   if(s === 'blocked'){  _showAuthGate('blocked');  return; }
+  if(s === 'rejected'){ _showAuthGate('rejected'); return; }
   _showAuthGate('pending');
 }
 
@@ -2293,10 +2302,12 @@ function renderManage(){
   }
 
   // ── Tab bar ──
+  var pendingCount=Object.values(usersCache).filter(function(m){return m.status==='pending';}).length;
   var html='<div class="manageTabs">';
   TABS.forEach(function(t){
     var active=_manageTab===t.key;
-    html+='<button class="manageTabBtn'+(active?' active':'')+'" onclick="_manageTab=\''+t.key+'\';renderManage()">'+t.label+'</button>';
+    var label=(t.key==='pending'&&pendingCount>0)?'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#e74c3c;margin-right:5px;vertical-align:middle"></span>'+t.label:t.label;
+    html+='<button class="manageTabBtn'+(active?' active':'')+'" onclick="_manageTab=\''+t.key+'\';renderManage()">'+label+'</button>';
   });
   html+='</div>';
   el.innerHTML=html;
@@ -2311,36 +2322,63 @@ function renderManage(){
 
 /* ── 待審核 tab ── */
 function _renderPendingTab(el){
-  const pending = Object.values(usersCache).filter(function(m){ return m.status==='pending'; });
+  const pending  = Object.values(usersCache).filter(function(m){ return m.status==='pending'; });
+  const rejected = Object.values(usersCache).filter(function(m){ return m.status==='rejected'; });
 
   if(!pending.length){
     el.innerHTML+='<div class="emptyState"><div class="emptyStateIcon">✓</div>目前沒有待審核申請</div>';
-    return;
+  } else {
+    let html='';
+    pending.forEach(function(m){
+      const initials=(m.displayName||'?').charAt(0);
+      const avatarHtml=m.photoURL
+        ?'<img src="'+m.photoURL+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'" alt="">'
+        :'<svg width="40" height="40" viewBox="0 0 40 40"><rect width="40" height="40" rx="20" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="16" font-family="serif">'+initials+'</text></svg>';
+      const dateStr=m.createdAt
+        ?(m.createdAt.toDate?m.createdAt.toDate().toLocaleDateString('zh-TW'):String(m.createdAt))
+        :'—';
+      html+='<div class="pendingCard">'+
+        '<div class="pendingCardTop">'+
+          '<div class="memberAvatar">'+avatarHtml+'</div>'+
+          '<div>'+
+            '<div class="pendingCardName">'+(m.displayName||'未知')+'</div>'+
+            '<div class="pendingCardMeta">申請日期：'+dateStr+'</div>'+
+          '</div>'+
+        '</div>'+
+        '<div class="pendingActions">'+
+          '<button class="approveBtn" onclick="approveMember(\''+m.userId+'\')">批准入會</button>'+
+          '<button class="rejectBtn"  onclick="rejectMember(\''+m.userId+'\')">拒絕申請</button>'+
+        '</div>'+
+      '</div>';
+    });
+    el.innerHTML+=html;
   }
-  let html='';
-  pending.forEach(function(m){
+
+  // ── 已拒絕申請區塊 ──
+  if(!rejected.length) return;
+  let rHtml='<div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--color-border,#e5e0d8)">'+
+    '<div style="font-size:12px;color:var(--color-text-muted,#a09880);margin-bottom:12px;letter-spacing:0.04em">已拒絕申請</div>';
+  rejected.forEach(function(m){
     const initials=(m.displayName||'?').charAt(0);
     const avatarHtml=m.photoURL
       ?'<img src="'+m.photoURL+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'" alt="">'
       :'<svg width="40" height="40" viewBox="0 0 40 40"><rect width="40" height="40" rx="20" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="16" font-family="serif">'+initials+'</text></svg>';
-    const dateStr=m.createdAt
-      ?(m.createdAt.toDate?m.createdAt.toDate().toLocaleDateString('zh-TW'):String(m.createdAt))
-      :'—';
-    html+='<div class="pendingCard">'+
+    rHtml+='<div class="pendingCard">'+
       '<div class="pendingCardTop">'+
         '<div class="memberAvatar">'+avatarHtml+'</div>'+
         '<div>'+
           '<div class="pendingCardName">'+(m.displayName||'未知')+'</div>'+
-          '<div class="pendingCardMeta">申請日期：'+dateStr+'</div>'+
+          '<div class="pendingCardMeta" style="color:#c0392b">審核未通過</div>'+
         '</div>'+
       '</div>'+
       '<div class="pendingActions">'+
-        '<button class="approveBtn" onclick="approveMember(\''+m.userId+'\')">批准入會</button>'+
-        '<button class="rejectBtn"  onclick="rejectMember(\''+m.userId+'\')">拒絕申請</button>'+
+        '<button class="approveBtn" onclick="reApproveRejected(\''+m.userId+'\')">改為通過</button>'+
+        '<button class="rejectBtn"  onclick="reOpenRejected(\''+m.userId+'\')">重新審核</button>'+
       '</div>'+
     '</div>';
   });
-  el.innerHTML+=html;
+  rHtml+='</div>';
+  el.innerHTML+=rHtml;
 }
 
 /* ── Helper: HTML escape ── */
@@ -2350,7 +2388,7 @@ function _esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').re
 function _renderMembersTab(el){
   var ROLE_LABEL={owner:'擁有者',admin:'管理員',coach:'教練',annual_member:'年費會員',monthly_member:'月費會員',member:'會員'};
   var members=Object.values(usersCache).filter(function(m){
-    return m.role&&m.role!=='pending'&&m.role!=='blocked';
+    return m.status==='approved' || m.status==='active';
   }).sort(function(a,b){
     return (a.displayName||'').localeCompare(b.displayName||'','zh-Hant');
   });
@@ -2570,12 +2608,12 @@ function _renderAnnouncementsTab(el){
 function approveMember(userId){
   if(!db){showToast('無法連線，請稍後再試');return;}
   db.collection('members').doc(userId).update({
-    status:'active', role:'member', approvedAt:TS(),
-    approvedBy: currentUser ? (currentUser.displayName||currentUser.userId) : 'admin',
+    status:'approved', role:'member', approvedAt:TS(),
+    approvedBy: currentUser ? (currentUser.uid||currentUser.userId) : 'admin',
   })
     .then(function(){
       showToast('已批准入會');
-      if(usersCache[userId]){ usersCache[userId].status='active'; usersCache[userId].role='member'; }
+      if(usersCache[userId]){ usersCache[userId].status='approved'; usersCache[userId].role='member'; }
       renderManage();
     })
     .catch(function(e){ console.error('approveMember error:',e); showToast('操作失敗，請稍後再試'); });
@@ -2585,13 +2623,41 @@ function approveMember(userId){
 function rejectMember(userId){
   if(!confirm('確認拒絕此申請？')) return;
   if(!db){showToast('無法連線，請稍後再試');return;}
-  db.collection('members').doc(userId).update({ status:'blocked' })
+  db.collection('members').doc(userId).update({ status:'rejected' })
     .then(function(){
       showToast('已拒絕申請');
-      if(usersCache[userId]) usersCache[userId].status='blocked';
+      if(usersCache[userId]) usersCache[userId].status='rejected';
       renderManage();
     })
     .catch(function(e){ console.error('rejectMember error:',e); showToast('操作失敗，請稍後再試'); });
+}
+
+/* ── Re-Approve Rejected Member ── */
+function reApproveRejected(userId){
+  if(!db){showToast('無法連線，請稍後再試');return;}
+  var TS=firebase.firestore.FieldValue.serverTimestamp;
+  db.collection('members').doc(userId).update({
+    status:'approved', approved:true, approvedAt:TS(),
+    approvedBy: currentUser ? (currentUser.uid||currentUser.userId) : 'admin',
+  })
+    .then(function(){
+      showToast('已改為通過');
+      if(usersCache[userId]){ usersCache[userId].status='approved'; usersCache[userId].approved=true; }
+      renderManage();
+    })
+    .catch(function(e){ console.error('reApproveRejected error:',e); showToast('操作失敗，請稍後再試'); });
+}
+
+/* ── Re-Open Rejected Member ── */
+function reOpenRejected(userId){
+  if(!db){showToast('無法連線，請稍後再試');return;}
+  db.collection('members').doc(userId).update({ status:'pending' })
+    .then(function(){
+      showToast('已移回待審核');
+      if(usersCache[userId]) usersCache[userId].status='pending';
+      renderManage();
+    })
+    .catch(function(e){ console.error('reOpenRejected error:',e); showToast('操作失敗，請稍後再試'); });
 }
 
 /* ── Announcements: Load ── */
@@ -3462,7 +3528,7 @@ function renderMembers(filter){
   var list = Object.values(usersCache)
     .filter(function(m){
       var s = m.status || '';
-      return s !== 'pending' && s !== 'blocked';
+      return s !== 'pending' && s !== 'blocked' && s !== 'rejected';
     })
     .filter(function(m){
       return !f || (m.displayName||'').toLowerCase().includes(f)
