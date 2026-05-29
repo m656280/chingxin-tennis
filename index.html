@@ -90,50 +90,13 @@ button {
 .courtBrandText { display:flex; flex-direction:column; gap:1px; }
 .courtBrandName { font-family:var(--font-display); font-size:22px; letter-spacing:0.18em; text-transform:uppercase; color:var(--color-text-primary); font-weight:500; line-height:1.1; }
 .courtBrandSub { font-family:var(--font-display); font-style:italic; font-size:8.5px; letter-spacing:0.20em; color:var(--color-text-muted); line-height:1.5; white-space:nowrap; }
-.courtSwitcherWrap .switcherGroup { padding:2px; }
-.courtSwitcherWrap .switcherOption { padding:5px 13px; font-size:11px; letter-spacing:0.07em; }
 .header.court-header-hidden { display:none; }
 
-/* ── Day View ── */
-.dayViewDateNav { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
-.dayViewDateLabel { font-family:var(--font-display); font-size:17px; letter-spacing:0.06em; color:var(--color-text-primary); font-variant-numeric:lining-nums; font-weight:600; flex:1; text-align:center; }
 .dayViewSurfaceTabs { display:flex; gap:8px; margin-bottom:8px; }
 .dayViewSurfaceBtn { padding:5px 16px; border-radius:99px; font-size:11px; letter-spacing:0.08em; border:1px solid var(--color-border); color:var(--color-text-muted); background:transparent; cursor:pointer; transition:all 150ms; }
 .dayViewSurfaceBtn.active { background:var(--color-text-primary); color:var(--color-bg); border-color:var(--color-text-primary); }
-/* scroll container */
-.dvScrollOuter { overflow-x:auto; -webkit-overflow-scrolling:touch; margin:0 -16px; padding:0 16px; scrollbar-width:none; -webkit-transform:translateZ(0); transform:translateZ(0); }
-.dvScrollOuter::-webkit-scrollbar { display:none; }
-.dvScrollInner { display:block; position:relative; -webkit-transform:translateZ(0); transform:translateZ(0); }
-/* time axis */
-.dvTimeAxis { position:relative; height:36px; margin-bottom:8px; }
-.dvTimeTick { position:absolute; font-size:14px; color:var(--color-text-secondary); letter-spacing:0.04em; top:12px; white-space:nowrap; font-weight:400; transform:translateX(-50%); font-family:Georgia,'Cormorant Garamond','Times New Roman',serif; font-variant-numeric:lining-nums; }
-.dvTimeTick.tick-first { transform:translateX(0); }
-.dvTimeTick.tick-last  { transform:translateX(-100%); }
-.dvTimeNowWrap { position:absolute; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; top:2px; z-index:2; pointer-events:none; }
-.dvTimeNowDot { width:9px; height:9px; border-radius:50%; background:#cc3333; box-shadow:0 0 0 2px rgba(204,51,51,0.22); }
-.dvTimeNowTick { width:2px; height:16px; background:#cc3333; margin-top:3px; border-radius:2px; }
-/* court blocks */
-.dvCourtWrap { position:relative; height:clamp(150px,calc((100dvh - 318px) / 2),260px); border-radius:12px; overflow:hidden; margin-bottom:42px; border:1px solid rgba(0,0,0,0.05); box-shadow:0 1px 12px rgba(0,0,0,0.07),0 1px 3px rgba(0,0,0,0.04); }
-.dvCourtWrap:last-child { margin-bottom:0; }
-.dvCourtWrap svg { position:absolute; inset:0; width:100%; height:100%; display:block; }
-.dvOverlayLayer { position:absolute; inset:0; overflow:hidden; }
-/* booking avatars — float on court surface */
-.dvAvatar { position:absolute; width:28px; height:28px; border-radius:50%; background:rgba(255,255,255,0.92); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); border:2.5px solid var(--color-hard); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; color:var(--color-text-primary); box-shadow:0 1px 8px rgba(0,0,0,0.22); transform:translate(-50%,-50%); z-index:2; letter-spacing:0; cursor:pointer; transition:transform 120ms; }
-.dvAvatar:active { transform:translate(-50%,-50%) scale(0.88); }
-.dvAvatar.is-coaching { border-color:var(--color-clay); }
-.dvAvatar.is-lock { border-color:var(--color-text-primary); background:rgba(26,31,28,0.82); color:rgba(255,255,255,0.88); }
-/* clay note — warm clay palette */
-.dayViewClayNote { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:260px; gap:14px; text-align:center; background:linear-gradient(160deg,rgba(240,206,180,0.18),rgba(217,160,111,0.10)); border-radius:14px; padding:32px 24px; }
-.dayViewClayNoteTitle { font-family:var(--font-display); font-size:19px; color:#A9573D; letter-spacing:0.05em; font-weight:500; }
-.dayViewClayNoteSub { font-size:12px; color:#B79B8B; letter-spacing:0.06em; }
-/* clay theme overrides — active on .surface-clay wrapper */
 .surface-clay .dayViewSurfaceBtn.active { background:#C97948; color:#FFF8EF; border-color:#C97948; }
 .surface-clay .dayViewSurfaceBtn:not(.active) { color:#B79B8B; border-color:#DFC5B0; }
-.surface-clay .dvTimeNowDot { background:#C97948; box-shadow:0 0 0 2px rgba(201,121,72,0.24); }
-.surface-clay .dvTimeNowTick { background:#C97948; }
-/* clay court avatar borders */
-.court-clay .dvAvatar { border-color:#A9573D; }
-.court-clay .dvAvatar.is-coaching { border-color:#7A3020; }
 /* detail panel (bottom sheet) */
 .dvDetailBackdrop { position:fixed; inset:0; background:rgba(0,0,0,0); z-index:180; transition:background 220ms; pointer-events:none; }
 .dvDetailBackdrop.open { background:rgba(0,0,0,0.28); pointer-events:auto; }
@@ -153,37 +116,33 @@ button {
 .dvDetailCancelBtn:active { background:#fdd; }
 .dvDetailClose { display:block; width:calc(100% - 40px); margin:8px 20px 14px; padding:13px; text-align:center; border-radius:10px; background:var(--color-surface-alt); font-size:13px; letter-spacing:0.06em; color:var(--color-text-secondary); border:none; cursor:pointer; }
 
-/* ── Day View: Vertical Grid (courts=columns, time=Y) ── */
-.dvVertOuter { overflow-y:auto; -webkit-overflow-scrolling:touch; max-height:calc(100dvh - 252px); margin:0 -16px; padding:0 16px 16px; scrollbar-width:none; }
-.dvVertOuter::-webkit-scrollbar { display:none; }
-.dvVertGrid { display:grid; grid-template-columns:44px 1fr 1fr; min-width:0; }
-.dvVertTimeHead { /* empty header corner */ background:var(--color-bg); position:sticky; top:0; z-index:4; }
-.dvVertCourtHead { text-align:center; font-size:11px; letter-spacing:0.08em; color:var(--color-text-secondary); padding:7px 4px 5px; border-bottom:1px solid var(--color-border-soft); position:sticky; top:0; background:var(--color-bg); z-index:3; font-weight:500; }
-.dvVertCourtHead.clay { color:var(--color-clay); }
-.dvVertTimeCol { position:relative; }
-.dvVTimeTick { position:absolute; right:6px; font-size:10px; color:var(--color-text-muted); transform:translateY(-50%); line-height:1; white-space:nowrap; font-variant-numeric:lining-nums; }
-.dvVertCourtLane { position:relative; border-left:1px solid var(--color-border-soft); overflow:hidden; }
-/* court SVG background layer */
-.dvVCourtBg { position:absolute; inset:0; z-index:0; pointer-events:none; overflow:hidden; }
-.dvVCourtBg svg { position:absolute; inset:0; width:100%; height:100%; display:block; opacity:0.24; }
-/* time grid lines sit above SVG background */
-.dvVGridLine { position:absolute; left:0; right:0; height:1px; pointer-events:none; z-index:1; }
-.dvVGridLine.full { background:rgba(0,0,0,0.10); }
-.dvVGridLine.half { background:rgba(0,0,0,0.05); }
-/* now line: subtle so it doesn't clash with court artwork */
-.dvVNowLine { position:absolute; left:0; right:0; height:1.5px; background:rgba(204,51,51,0.70); z-index:4; pointer-events:none; }
-.dvVNowDot { position:absolute; left:-3px; top:-2.5px; width:7px; height:7px; border-radius:50%; background:#cc3333; box-shadow:0 0 4px rgba(204,51,51,0.5); }
-.dvVBlock { position:absolute; left:3px; right:3px; border-radius:6px; background:var(--color-hard); padding:3px 5px; overflow:hidden; cursor:pointer; z-index:2; box-shadow:0 1px 6px rgba(0,0,0,0.18); min-height:20px; }
-.dvVBlock:active { opacity:0.75; }
-.dvVBlock.is-coaching { background:var(--color-clay); }
-.dvVBlock.is-lock { background:#2a2a2a; }
-.dvVBlockPhoto { width:20px; height:20px; border-radius:50%; object-fit:cover; display:block; margin-bottom:2px; border:1.5px solid rgba(255,255,255,0.6); flex-shrink:0; }
-.dvVBlockInitial { width:20px; height:20px; border-radius:50%; background:rgba(255,255,255,0.25); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; color:#fff; margin-bottom:2px; flex-shrink:0; }
-.dvVBlockName { font-size:10px; font-weight:700; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.dvVBlockTime { font-size:9px; color:rgba(255,255,255,0.80); white-space:nowrap; overflow:hidden; }
-/* clay day view tint */
-.surface-clay .dvVNowLine { background:#C97948; box-shadow:0 0 4px rgba(201,121,72,0.4); }
-.surface-clay .dvVNowDot { background:#C97948; }
+
+/* ── Week List (primary court view) ── */
+.wkListNav { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+.wkListNavLabel { font-family:var(--font-display); font-size:17px; letter-spacing:0.06em; color:var(--color-text-primary); font-weight:600; flex:1; text-align:center; font-variant-numeric:lining-nums; }
+.wkListSurface { margin-bottom:12px; }
+.wkListDay { margin-bottom:16px; border-radius:12px; overflow:hidden; background:var(--color-surface); box-shadow:0 1px 6px rgba(0,0,0,0.06); }
+.wkListDay.today .wkListDayHeader { background:var(--color-text-primary); }
+.wkListDay.today .wkListDayLabel { color:var(--color-bg); }
+.wkListDay.today .wkListDayNum { color:var(--color-bg); }
+.wkListDay.today .wkListDaySub { color:rgba(255,255,255,0.55); }
+.wkListDayHeader { display:flex; align-items:baseline; gap:8px; padding:10px 14px 9px; background:var(--color-surface-alt); cursor:pointer; user-select:none; }
+.wkListDayLabel { font-size:12px; letter-spacing:0.06em; color:var(--color-text-muted); font-weight:500; }
+.wkListDayNum { font-family:var(--font-display); font-size:22px; color:var(--color-text-primary); font-variant-numeric:lining-nums; line-height:1; }
+.wkListDaySub { font-size:11px; color:var(--color-text-muted); margin-left:auto; }
+.wkListBookings { padding:0; }
+.wkListEmpty { padding:12px 14px; font-size:12px; color:var(--color-text-muted); letter-spacing:0.04em; }
+.wkListCard { display:flex; align-items:center; gap:10px; padding:10px 14px; border-top:1px solid var(--color-border-soft); cursor:pointer; transition:background 120ms; }
+.wkListCard:first-child { border-top:none; }
+.wkListCard:active { background:var(--color-surface-alt); }
+.wkListAvatar { width:36px; height:36px; border-radius:50%; object-fit:cover; flex-shrink:0; border:2px solid var(--color-border-soft); }
+.wkListAvatarInitial { width:36px; height:36px; border-radius:50%; background:var(--color-hard); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; color:#fff; flex-shrink:0; }
+.wkListAvatarInitial.clay { background:var(--color-clay); }
+.wkListCardInfo { flex:1; min-width:0; }
+.wkListCardCourt { font-size:10px; letter-spacing:0.08em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:1px; }
+.wkListCardTime { font-size:13px; font-weight:600; color:var(--color-text-primary); font-variant-numeric:lining-nums; }
+.wkListCardName { font-size:12px; color:var(--color-text-secondary); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wkListCoachBadge { font-size:9px; padding:2px 6px; border-radius:4px; background:var(--color-clay); color:#fff; letter-spacing:0.06em; flex-shrink:0; }
 
 /* ── View Switcher ── */
 .viewSwitcher { display:flex; justify-content:center; margin-bottom:24px; }
@@ -1145,20 +1104,12 @@ button {
           <span class="courtBrandSub">Tennis Society · 清心網球協會</span>
         </div>
       </div>
-      <div class="courtSwitcherWrap">
-        <div class="switcherGroup">
-          <button class="switcherOption active" id="btnDay" onclick="setView('day',this)">日</button>
-          <button class="switcherOption" id="btnWeek" onclick="setView('week',this)">週</button>
-          <button class="switcherOption" id="btnMonth" onclick="setView('month',this)">月</button>
-        </div>
-      </div>
+      <!-- view switcher hidden — week list is the default court view -->
     </div>
 
-    <!-- Day view -->
-    <div id="view-day"></div>
 
-    <!-- Week view -->
-    <div id="view-week" style="display:none">
+    <!-- Week view (primary court view) -->
+    <div id="view-week">
       <div class="weekStrip">
         <div class="weekHeader">
           <button class="navButton" onclick="changeWeek(-1)" aria-label="上一週">‹</button>
@@ -1572,9 +1523,7 @@ function _showMainApp(){
     var navImg = document.getElementById('navAvatarImg');
     if(navImg) navImg.src = currentUser.photoURL;
   }
-  render();
-  renderDayView();
-  startNowLineTicker();
+  render();           /* loads week bookings + renders week list */
   renderBookings();
   renderManage();
   renderFinance();
@@ -2015,7 +1964,8 @@ const SLOT_MIN = 30;
 /* ── State ── */
 const today = new Date();
 let selectedDate = new Date(today);
-let currentView = 'day';
+let currentView = 'week';
+let weekBookingsCache = {};   // date-string → booking[]
 let _courtSurfaceFilter = 'hard'; // 'hard' | 'clay'
 /* Firebase state — null = use mock data fallback */
 let currentUser = null;
@@ -2094,20 +2044,6 @@ function scrollToNow(){
 }
 
 /* ── Court: Live nowLine ticker (every minute) ── */
-function startNowLineTicker(){
-  if(_nowTickInterval) clearInterval(_nowTickInterval);
-  _nowTickInterval=setInterval(function(){
-    if(currentView!=='week'||!isSameDay(selectedDate,today)) return;
-    var openMin=timeToMin(getGridOpen());
-    var now=new Date();
-    var nowMin=now.getHours()*60+now.getMinutes();
-    var nl=document.querySelector('.timeGridWrapper .nowLine');
-    if(nl&&nowMin>=openMin&&nowMin<timeToMin('24:00')){
-      var offset=(nowMin-openMin)/SLOT_MIN;
-      nl.style.top=(offset*SLOT_HEIGHT)+'px';
-    }
-  },60000);
-}
 
 /* ── Week / Grid Helpers ── */
 /* Grid always starts at 06:00 so daytime bookings are not squeezed to slot 0 */
@@ -3535,293 +3471,12 @@ function showTab(name, el){
 
 function setView(v, el){
   currentView=v;
-  document.getElementById('view-day').style.display=v==='day'?'block':'none';
   document.getElementById('view-week').style.display=v==='week'?'block':'none';
   document.getElementById('view-month').style.display=v==='month'?'block':'none';
   document.querySelectorAll('.switcherOption').forEach(b=>b.classList.remove('active'));
-  el.classList.add('active');
+  if(el) el.classList.add('active');
   if(v==='month') renderMonthView();
-  if(v==='week') render();
-  if(v==='day') renderDayView();
-}
-
-/* ── Day View ── */
-var _DV_S=6, _DV_E=22;
-var _DV_PX=52;                           /* px per hour */
-var _DV_W=(_DV_E-_DV_S)*_DV_PX;         /* total scroll width = 832px */
-
-function renderDayView(){
-  var el=document.getElementById('view-day');
-  if(!el) return;
-  var ds=formatDate(selectedDate);
-  var d=selectedDate;
-  var dstr=d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日（'+DAYS_TC[d.getDay()]+'）';
-  var allB=courtBookingsFirestore||[];
-  var dayB=allB.filter(function(b){return b.date===ds;});
-  var now=new Date();
-  var nowMin=now.getHours()*60+now.getMinutes();
-  var isClay=(_courtSurfaceFilter==='clay');
-  var courtIds=isClay?['clay_a','clay_b']:['hard_a','hard_b'];
-  var TOTAL_H=(_DV_E-_DV_S)*_DV_PX; /* 832px for 6–22 at 52px/hr */
-
-  var h='';
-  h+='<div class="dayViewDateNav"><button class="navButton" onclick="changeDayView(-1)">‹</button><span class="dayViewDateLabel">'+dstr+'</span><button class="navButton" onclick="changeDayView(1)">›</button></div>';
-  h+='<div class="dayViewSurfaceTabs'+(isClay?' surface-clay':'')+'">';
-  [{key:'hard',label:'硬地'},{key:'clay',label:'紅土'}].forEach(function(s){
-    var a=_courtSurfaceFilter===s.key;
-    h+='<button class="dayViewSurfaceBtn'+(a?' active':'')+'" onclick="setCourtSurface(\''+s.key+'\')">'+s.label+'</button>';
-  });
-  h+='</div>';
-
-  /* ── Vertical grid: time col + 2 court cols ── */
-  h+='<div class="dvVertOuter"><div class="dvVertGrid">';
-
-  /* sticky header row */
-  h+='<div class="dvVertTimeHead"></div>';
-  courtIds.forEach(function(cid){
-    var isClayCourt=COURT_SURFACE[cid]==='clay';
-    h+='<div class="dvVertCourtHead'+(isClayCourt?' clay':'')+'">'+
-      COURT_LABELS[cid].surface+' '+COURT_LABELS[cid].letter+
-    '</div>';
-  });
-
-  /* time axis column */
-  h+='<div class="dvVertTimeCol" style="height:'+TOTAL_H+'px">';
-  for(var hr=_DV_S;hr<=_DV_E;hr++){
-    var tickTop=((hr-_DV_S)*_DV_PX).toFixed(0);
-    h+='<div class="dvVTimeTick" style="top:'+tickTop+'px">'+pad(hr)+':00</div>';
-  }
-  h+='</div>';
-
-  /* court lane columns */
-  var isToday=isSameDay(selectedDate,today);
-  courtIds.forEach(function(cid){
-    var bList=dayB.filter(function(b){return b.court===cid;});
-    var isClayCourt=COURT_SURFACE[cid]==='clay';
-    h+='<div class="dvVertCourtLane" style="height:'+TOTAL_H+'px">';
-
-    /* ── court SVG background (decorative, low opacity) ── */
-    h+='<div class="dvVCourtBg">';
-    h+=isClayCourt?_clayCourtSVG(COURT_LABELS[cid].letter):_hardCourtSVG(COURT_LABELS[cid].letter);
-    h+='</div>';
-
-    /* hour + half-hour grid lines */
-    for(var hr2=_DV_S;hr2<=_DV_E;hr2++){
-      var lineTop=((hr2-_DV_S)*_DV_PX).toFixed(0);
-      h+='<div class="dvVGridLine full" style="top:'+lineTop+'px"></div>';
-      if(hr2<_DV_E){
-        var halfTop=((hr2-_DV_S)*_DV_PX+_DV_PX/2).toFixed(0);
-        h+='<div class="dvVGridLine half" style="top:'+halfTop+'px"></div>';
-      }
-    }
-
-    /* now line */
-    if(isToday&&nowMin>=_DV_S*60&&nowMin<=_DV_E*60){
-      var nowTop=((nowMin-_DV_S*60)/60*_DV_PX).toFixed(1);
-      h+='<div class="dvVNowLine" style="top:'+nowTop+'px"><div class="dvVNowDot"></div></div>';
-    }
-
-    /* booking blocks */
-    var _myUid=currentUser?(currentUser.uid||currentUser.userId||currentUser.id||''):'';
-    bList.forEach(function(b){
-      var sm=timeToMin(b.startTime), em=timeToMin(b.endTime);
-      if(em<=sm||sm<_DV_S*60||em>_DV_E*60+30) return; /* skip out-of-range */
-      var topPx=((sm-_DV_S*60)/60*_DV_PX).toFixed(1);
-      var hPx=Math.max(20,((em-sm)/60*_DV_PX-2)).toFixed(1);
-      var isCoach=b.mode==='coaching', isLock=b.mode==='event_lock';
-      var modeLabel=isCoach?'教學課':isLock?'場地封鎖':b.mode==='group_class'?'團體課':'一般預約';
-      var mem=(b.createdBy&&usersCache[b.createdBy])
-        ||Object.values(usersCache).find(function(x){return (x.displayName||'')===(b.primaryName||'');})
-        ||null;
-      var ntrp=mem?(mem.ntrp||'—'):'—';
-      var pos=mem?(mem.preferredPosition||'—'):'—';
-      var photoURL=mem?(mem.photoURL||mem.lineAvatar||''):'';
-      var courtLabel={hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[b.court]||b.court;
-      var isOwner=(b.createdBy===_myUid);
-      var enc=encodeURIComponent(JSON.stringify({
-        name:b.primaryName||'?', photoURL:photoURL, court:courtLabel, date:b.date,
-        time:b.startTime+'–'+b.endTime, mode:modeLabel,
-        count:b.participantCount||1, isCoach:isCoach,
-        ntrp:ntrp, pos:pos, att:'—',
-        bookingId:b.id, isOwner:isOwner
-      }));
-      /* avatar: circular photo or initial letter */
-      var blockAvatar=photoURL
-        ?('<img src="'+photoURL+'" class="dvVBlockPhoto" onerror="this.style.display=\'none\'" alt="">')
-        :'<div class="dvVBlockInitial">'+(b.primaryName||'?').charAt(0)+'</div>';
-      var cls='dvVBlock'+(isCoach?' is-coaching':'')+(isLock?' is-lock':'');
-      var blockH=parseFloat(hPx);
-      /* show time label only if tall enough */
-      var timeHtml=blockH>=36?'<div class="dvVBlockTime">'+b.startTime+'–'+b.endTime+'</div>':'';
-      h+='<div class="'+cls+'" style="top:'+topPx+'px;height:'+hPx+'px" onclick="event.stopPropagation();_dvShowDetail(\''+enc+'\')">'+
-        blockAvatar+
-        '<div class="dvVBlockName">'+(b.primaryName||'?')+'</div>'+
-        timeHtml+
-      '</div>';
-    });
-
-    h+='</div>'; /* dvVertCourtLane */
-  });
-
-  h+='</div></div>'; /* dvVertGrid, dvVertOuter */
-  el.innerHTML=h;
-
-  /* auto-scroll to current time (or 08:00 on non-today days) */
-  requestAnimationFrame(function(){
-    var outer=el.querySelector('.dvVertOuter');
-    if(!outer) return;
-    var targetMin=isToday?Math.max(nowMin,_DV_S*60+60):(_DV_S*60+120);
-    var scrollPx=Math.max(0,((targetMin-_DV_S*60)/60)*_DV_PX - outer.clientHeight/3);
-    outer.scrollTop=scrollPx;
-  });
-}
-
-/* called on axis scroll — fade avatars + now marker outside visible time window */
-function _dvOnAxisScroll(){
-  var outer=document.getElementById('dvScroll');
-  if(!outer) return;
-  /* dvScrollInner starts at padding-left=16px inside outer — subtract to get content coords */
-  var PAD=16;
-  var contentLeft=outer.scrollLeft-PAD;   /* dvScrollInner position at left edge of viewport */
-  var contentRight=contentLeft+outer.clientWidth-PAD*2; /* -32px for both paddings */
-  /* convert content px → minutes */
-  var visStartMin=Math.max(_DV_S*60, contentLeft/_DV_PX*60+_DV_S*60);
-  var visEndMin  =Math.min(_DV_E*60, contentRight/_DV_PX*60+_DV_S*60);
-  /* ── avatar fade ── */
-  var avatars=document.querySelectorAll('.dvAvatar');
-  for(var i=0;i<avatars.length;i++){
-    var av=avatars[i];
-    var sMin=parseInt(av.dataset.start||0,10);
-    var eMin=parseInt(av.dataset.end||0,10);
-    var active=(eMin>visStartMin&&sMin<visEndMin);
-    av.style.opacity=active?'1':'0.18';
-    av.style.transform=active?'translate(-50%,-50%) scale(1)':'translate(-50%,-50%) scale(0.72)';
-  }
-  /* ── now marker fade — dim when scrolled out of visible area ── */
-  var marker=document.getElementById('dvNowMarker');
-  if(marker){
-    var now=new Date();
-    var nowM=now.getHours()*60+now.getMinutes();
-    var nowPx=(nowM-_DV_S*60)/60*_DV_PX; /* position in content coords */
-    var inView=(nowPx>=contentLeft-20&&nowPx<=contentRight+20);
-    marker.style.opacity=inView?'1':'0';
-  }
-}
-
-function _dvTimeAxis(nowMin){
-  var h='<div class="dvTimeAxis" style="width:'+(_DV_W+32)+'px">';
-  for(var hr=_DV_S;hr<=_DV_E;hr+=2){
-    var px=((hr-_DV_S)*_DV_PX).toFixed(0);
-    var cls='dvTimeTick'+(hr===_DV_S?' tick-first':hr===_DV_E?' tick-last':'');
-    h+='<div class="'+cls+'" style="left:'+px+'px">'+pad(hr)+':00</div>';
-  }
-  if(nowMin>=_DV_S*60&&nowMin<=_DV_E*60){
-    var np=(((nowMin-_DV_S*60)/60)*_DV_PX).toFixed(0);
-    /* id="dvNowMarker" — inside scroll content; scrolls with timeline */
-    h+='<div id="dvNowMarker" class="dvTimeNowWrap" style="left:'+np+'px;transition:opacity 200ms"><div class="dvTimeNowDot"></div><div class="dvTimeNowTick"></div></div>';
-  }
-  h+='</div>';
-  return h;
-}
-
-function _dvCourtBlock(courtId,bookings,nowMin){
-  var isClay=(typeof COURT_SURFACE!=='undefined'&&COURT_SURFACE[courtId]==='clay');
-  var h='<div class="dvCourtWrap'+(isClay?' court-clay':'')+'">';
-  h+=isClay?_clayCourtSVG(COURT_LABELS[courtId].letter):_hardCourtSVG(COURT_LABELS[courtId].letter);
-  h+='<div class="dvOverlayLayer">';
-  bookings.forEach(function(b,i){ h+=_dvAvatar(b,i,bookings.length); });
-  h+='</div></div>';
-  return h;
-}
-
-function _dvAvatar(b,idx,total){
-  var sm=timeToMin(b.startTime), em=timeToMin(b.endTime);
-  var midMin=(sm+em)/2;
-  /* % position within full day range — court is fixed full-width */
-  var lPct=Math.max(2,Math.min(98,((midMin-_DV_S*60)/((_DV_E-_DV_S)*60)*100)));
-  /* stagger multiple avatars on same court vertically */
-  var topPct = total>1 ? (30+idx*20) : 50;
-  var isCoach=b.mode==='coaching', isLock=b.mode==='event_lock';
-  var cls='dvAvatar'+(isCoach?' is-coaching':'')+(isLock?' is-lock':'');
-  var init=(b.primaryName||'?').charAt(0);
-  // Look up member from Firestore cache by displayName or createdBy uid
-  var mem = (b.createdBy && usersCache[b.createdBy])
-    || Object.values(usersCache).find(function(x){ return (x.displayName||'')===(b.primaryName||''); })
-    || null;
-  var ntrp=mem?( mem.ntrp||'—'):'—';
-  var pos=mem?(mem.preferredPosition||'—'):'—';
-  var att='—';
-  var modeLabel=b.mode==='coaching'?'教學課':b.mode==='event_lock'?'場地封鎖':b.mode==='group_class'?'團體課':'一般預約';
-  var enc=encodeURIComponent(JSON.stringify({name:b.primaryName||'?',time:b.startTime+'–'+b.endTime,mode:modeLabel,count:b.participantCount||1,isCoach:isCoach,ntrp:ntrp,pos:pos,att:att}));
-  var smMin=timeToMin(b.startTime), emMin=timeToMin(b.endTime);
-  return '<div class="'+cls+'" data-start="'+smMin+'" data-end="'+emMin+'" style="left:'+lPct.toFixed(1)+'%;top:'+topPct+'%;transition:opacity 180ms,transform 180ms" onclick="event.stopPropagation();_dvShowDetail(\''+enc+'\')">'+init+'</div>';
-}
-
-function _hardCourtSVG(letter){
-  /*
-   * viewBox 100×50 — real tennis court ratio ~2.25:1
-   * preserveAspectRatio="xMidYMid slice" fills fixed 170px height container
-   */
-  var s='<svg viewBox="0 0 100 50" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" style="opacity:0.82">';
-  s+='<defs><clipPath id="cc'+letter+'"><rect x="5" y="5" width="90" height="40"/></clipPath></defs>';
-  s+='<rect x="0" y="0" width="100" height="50" fill="#aacdd2"/>';
-  s+='<rect x="5" y="5" width="90" height="40" fill="#ceeaed"/>';
-  s+='<rect x="5" y="5" width="90" height="12" fill="rgba(255,255,255,0.07)"/>';
-  s+='<g clip-path="url(#cc'+letter+')">';
-  s+='<line x1="5" y1="5" x2="5" y2="45" stroke="white" stroke-width="0.9"/>';
-  s+='<line x1="95" y1="5" x2="95" y2="45" stroke="white" stroke-width="0.9"/>';
-  s+='<line x1="5" y1="5" x2="95" y2="5" stroke="white" stroke-width="0.9"/>';
-  s+='<line x1="5" y1="45" x2="95" y2="45" stroke="white" stroke-width="0.9"/>';
-  s+='<line x1="5" y1="10" x2="95" y2="10" stroke="white" stroke-width="0.65" opacity="0.88"/>';
-  s+='<line x1="5" y1="40" x2="95" y2="40" stroke="white" stroke-width="0.65" opacity="0.88"/>';
-  s+='<line x1="26" y1="10" x2="26" y2="40" stroke="white" stroke-width="0.65" opacity="0.88"/>';
-  s+='<line x1="74" y1="10" x2="74" y2="40" stroke="white" stroke-width="0.65" opacity="0.88"/>';
-  s+='<line x1="26" y1="25" x2="74" y2="25" stroke="white" stroke-width="0.55" opacity="0.72"/>';
-  s+='<line x1="50.7" y1="5" x2="50.7" y2="45" stroke="rgba(0,0,0,0.16)" stroke-width="0.8"/>';
-  s+='<line x1="50" y1="5" x2="50" y2="45" stroke="white" stroke-width="1.4"/>';
-  s+='<rect x="49" y="9.2" width="2" height="1.6" rx="0.5" fill="white" opacity="0.90"/>';
-  s+='<rect x="49" y="39.2" width="2" height="1.6" rx="0.5" fill="white" opacity="0.90"/>';
-  s+='</g>';
-  s+='<text x="6" y="47" font-size="10.8" fill="#e8f2f4" opacity="0.14" stroke="#e8f2f4" stroke-width="1.5" stroke-opacity="0.07" paint-order="stroke fill" font-family="Georgia,serif" font-weight="700">'+letter+'</text>';
-  s+='</svg>';
-  return s;
-}
-
-function _clayCourtSVG(letter){
-  /*
-   * Clay court — warm terracotta palette
-   * run-off: #D9A06F  surface: #EBC3A3  lines: #FFF8EF 0.9
-   * clip ID: cc${letter}k (distinct from hard court cc${letter})
-   */
-  var id='cc'+letter+'k';
-  var s='<svg viewBox="0 0 100 50" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" style="opacity:0.88">';
-  s+='<defs><clipPath id="'+id+'"><rect x="5" y="5" width="90" height="40"/></clipPath></defs>';
-  /* run-off */
-  s+='<rect x="0" y="0" width="100" height="50" fill="#DDB292"/>';
-  /* court surface */
-  s+='<rect x="5" y="5" width="90" height="40" fill="#EDD5BE"/>';
-  /* top sheen */
-  s+='<rect x="5" y="5" width="90" height="12" fill="rgba(255,255,255,0.06)"/>';
-  /* all lines clipped to surface */
-  s+='<g clip-path="url(#'+id+')">';
-  s+='<line x1="5" y1="5" x2="5" y2="45" stroke="#FFF8EF" stroke-width="0.9" opacity="0.90"/>';
-  s+='<line x1="95" y1="5" x2="95" y2="45" stroke="#FFF8EF" stroke-width="0.9" opacity="0.90"/>';
-  s+='<line x1="5" y1="5" x2="95" y2="5" stroke="#FFF8EF" stroke-width="0.9" opacity="0.90"/>';
-  s+='<line x1="5" y1="45" x2="95" y2="45" stroke="#FFF8EF" stroke-width="0.9" opacity="0.90"/>';
-  s+='<line x1="5" y1="10" x2="95" y2="10" stroke="#FFF8EF" stroke-width="0.65" opacity="0.80"/>';
-  s+='<line x1="5" y1="40" x2="95" y2="40" stroke="#FFF8EF" stroke-width="0.65" opacity="0.80"/>';
-  s+='<line x1="26" y1="10" x2="26" y2="40" stroke="#FFF8EF" stroke-width="0.65" opacity="0.80"/>';
-  s+='<line x1="74" y1="10" x2="74" y2="40" stroke="#FFF8EF" stroke-width="0.65" opacity="0.80"/>';
-  s+='<line x1="26" y1="25" x2="74" y2="25" stroke="#FFF8EF" stroke-width="0.55" opacity="0.65"/>';
-  s+='<line x1="50.7" y1="5" x2="50.7" y2="45" stroke="rgba(120,70,35,0.20)" stroke-width="0.8"/>';
-  s+='<line x1="50" y1="5" x2="50" y2="45" stroke="#FFF8EF" stroke-width="1.4" opacity="0.88"/>';
-  s+='<rect x="49" y="9.2" width="2" height="1.6" rx="0.5" fill="#FFF8EF" opacity="0.85"/>';
-  s+='<rect x="49" y="39.2" width="2" height="1.6" rx="0.5" fill="#FFF8EF" opacity="0.85"/>';
-  s+='</g>';
-  /* watermark — warm cream, very faint */
-  s+='<text x="6" y="47" font-size="10.8" fill="#FFF3EA" opacity="0.15" stroke="#FFF3EA" stroke-width="1.5" stroke-opacity="0.07" paint-order="stroke fill" font-family="Georgia,serif" font-weight="700">'+letter+'</text>';
-  s+='</svg>';
-  return s;
+  if(v==='week'){ loadWeekBookings(); }
 }
 
 function _dvShowDetail(enc){
@@ -3885,8 +3540,121 @@ function _dvCloseDetail(){
   },300);
 }
 
-function setCourtSurface(filter){ _courtSurfaceFilter=filter; renderDayView(); }
-function changeDayView(delta){ selectedDate=addDays(selectedDate,delta); renderDayView(); }
+function setCourtSurface(filter){
+  _courtSurfaceFilter=filter;
+  if(currentView==='week') renderWeekList();
+}
+function changeWeekNav(delta){ selectedDate=addDays(selectedDate,delta*7); loadWeekBookings(); }
+
+/* ── Load all bookings for the current week (7 days) ── */
+function loadWeekBookings(){
+  if(!db){ renderWeekList(); return; }
+  var ws=startOfWeek(selectedDate);
+  var startStr=formatDate(ws);
+  var endStr=formatDate(addDays(ws,6));
+  /* range query on date — no composite index needed */
+  db.collection('bookings')
+    .where('date','>=',startStr)
+    .where('date','<=',endStr)
+    .get()
+    .then(function(snap){
+      weekBookingsCache={};
+      snap.docs.forEach(function(d){
+        var b=Object.assign({id:d.id},d.data());
+        if(b.status!=='confirmed') return; /* filter client-side */
+        if(!weekBookingsCache[b.date]) weekBookingsCache[b.date]=[];
+        weekBookingsCache[b.date].push(b);
+      });
+      renderWeekList();
+    })
+    .catch(function(e){
+      console.warn('loadWeekBookings error:',e);
+      weekBookingsCache={};
+      renderWeekList();
+    });
+}
+
+/* ── Render: Week List (7-day booking overview) ── */
+function renderWeekList(){
+  var el=document.getElementById('view-week');
+  if(!el) return;
+  var ws=startOfWeek(selectedDate);
+  var weekDates=Array.from({length:7},function(_,i){ return addDays(ws,i); });
+  var isClay=(_courtSurfaceFilter==='clay');
+  var activeCourts=isClay?['clay_a','clay_b']:['hard_a','hard_b'];
+  var cLabel={hard_a:'HARD A',hard_b:'HARD B',clay_a:'CLAY A',clay_b:'CLAY B'};
+  var myUid=currentUser?(currentUser.uid||currentUser.userId||currentUser.id||''):'';
+
+  var h='';
+  /* week nav */
+  var wsLabel=ws.getFullYear()+'年'+(ws.getMonth()+1)+'月';
+  h+='<div class="wkListNav">'+
+    '<button class="navButton" onclick="changeWeekNav(-1)">‹</button>'+
+    '<span class="wkListNavLabel">'+wsLabel+'</span>'+
+    '<button class="navButton" onclick="changeWeekNav(1)">›</button>'+
+  '</div>';
+  /* surface filter */
+  h+='<div class="dayViewSurfaceTabs'+(isClay?' surface-clay':'')+'" style="margin-bottom:14px">';
+  [{key:'hard',label:'硬地'},{key:'clay',label:'紅土'}].forEach(function(s){
+    var a=_courtSurfaceFilter===s.key;
+    h+='<button class="dayViewSurfaceBtn'+(a?' active':'')+'" onclick="setCourtSurface(\''+s.key+'\')">'+s.label+'</button>';
+  });
+  h+='</div>';
+  /* 7-day list */
+  weekDates.forEach(function(d){
+    var ds=formatDate(d);
+    var isToday=isSameDay(d,today);
+    var dayBookings=((weekBookingsCache[ds]||[])
+      .filter(function(b){ return activeCourts.indexOf(b.court)>=0; })
+      .sort(function(a,b){ return (a.startTime||'').localeCompare(b.startTime||''); }));
+    var dayCls='wkListDay'+(isToday?' today':'');
+    var dayOfWeek=DAYS_TC[d.getDay()];
+    var monthSub=(d.getMonth()+1)+'/'+d.getDate();
+    h+='<div class="'+dayCls+'">'+
+      '<div class="wkListDayHeader">'+
+        '<span class="wkListDayLabel">（'+dayOfWeek+'）</span>'+
+        '<span class="wkListDayNum">'+d.getDate()+'</span>'+
+        '<span class="wkListDaySub">'+monthSub+'</span>'+
+      '</div>'+
+      '<div class="wkListBookings">';
+    if(!dayBookings.length){
+      h+='<div class="wkListEmpty">無預約</div>';
+    } else {
+      dayBookings.forEach(function(b){
+        var u=b.createdBy?usersCache[b.createdBy]:null;
+        if(!u) u=Object.values(usersCache).find(function(x){return (x.displayName||'')===(b.primaryName||'');});
+        var name=u?u.displayName:(b.primaryName||'?');
+        var photoURL=u?(u.photoURL||u.lineAvatar||''):'';
+        var isClayCourt=COURT_SURFACE[b.court]==='clay';
+        var isCoach=b.mode==='coaching';
+        var modeLabel=isCoach?'教學課':b.mode==='event_lock'?'場地封鎖':b.mode==='group_class'?'團體課':'一般預約';
+        var isOwner=(b.createdBy===myUid);
+        var enc=encodeURIComponent(JSON.stringify({
+          name:name, photoURL:photoURL,
+          court:cLabel[b.court]||b.court, date:b.date,
+          time:b.startTime+'–'+b.endTime, mode:modeLabel,
+          count:b.participantCount||1, isCoach:isCoach,
+          ntrp:u?(u.ntrp||'—'):'—', pos:u?(u.preferredPosition||'—'):'—', att:'—',
+          bookingId:b.id, isOwner:isOwner
+        }));
+        var avatarHtml=photoURL
+          ?('<img src="'+photoURL+'" class="wkListAvatar" onerror="this.style.display=\'none\'" alt="">')
+          :'<div class="wkListAvatarInitial'+(isClayCourt?' clay':'')+'">'+name.charAt(0)+'</div>';
+        h+='<div class="wkListCard" onclick="_dvShowDetail(\''+enc+'\')">'+
+          avatarHtml+
+          '<div class="wkListCardInfo">'+
+            '<div class="wkListCardCourt">'+cLabel[b.court]+'</div>'+
+            '<div class="wkListCardTime">'+b.startTime+' – '+b.endTime+'</div>'+
+            '<div class="wkListCardName">'+name+'</div>'+
+          '</div>'+
+          (isCoach?'<span class="wkListCoachBadge">教學</span>':'')+
+        '</div>';
+      });
+    }
+    h+='</div></div>';
+  });
+  el.innerHTML=h;
+}
 
 function selectDate(dateStr){
   selectedDate=new Date(dateStr+'T00:00:00');
@@ -4123,7 +3891,7 @@ function cancelBooking(id){
       showToast('預約已取消');
       _dvCloseDetail();
       loadMyBookings();
-      loadCourtBookings(formatDate(selectedDate));
+      loadWeekBookings();
     })
     .catch(function(e){ console.error('cancelBooking error:',e); showToast('取消失敗：'+e.message); });
 }
@@ -4199,7 +3967,7 @@ function submitBooking(){
   }).then(function(){
     showToast('預約成功 · '+(courtDisplay[court]||court)+' '+start);
     closeBookingForm();
-    if(date===formatDate(selectedDate)) loadCourtBookings(date);
+    loadWeekBookings();
     loadMyBookings();
   }).catch(function(e){
     console.error('submitBooking error:',e);
@@ -4211,10 +3979,10 @@ function submitBooking(){
 
 /* ── Main Render ── */
 function render(){
+  /* Week-list is the primary court view — load 7 days of bookings */
+  loadWeekBookings();
+  /* Keep day-header + court header updated for any legacy calls */
   renderCourtHeader();
-  renderWeekStrip();
-  renderDayHeader();
-  loadCourtBookings(formatDate(selectedDate));
 }
 
 // Startup: auth gate manages when renders fire.
