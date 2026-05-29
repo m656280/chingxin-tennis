@@ -162,12 +162,17 @@ button {
 .dvVertCourtHead.clay { color:var(--color-clay); }
 .dvVertTimeCol { position:relative; }
 .dvVTimeTick { position:absolute; right:6px; font-size:10px; color:var(--color-text-muted); transform:translateY(-50%); line-height:1; white-space:nowrap; font-variant-numeric:lining-nums; }
-.dvVertCourtLane { position:relative; border-left:1px solid var(--color-border-soft); }
-.dvVGridLine { position:absolute; left:0; right:0; height:1px; pointer-events:none; }
-.dvVGridLine.full { background:var(--color-border-soft); }
-.dvVGridLine.half { background:var(--color-border-soft); opacity:0.4; }
-.dvVNowLine { position:absolute; left:0; right:0; height:2px; background:#cc3333; z-index:4; pointer-events:none; border-radius:1px; box-shadow:0 0 4px rgba(204,51,51,0.4); }
-.dvVNowDot { position:absolute; left:-4px; top:-3px; width:8px; height:8px; border-radius:50%; background:#cc3333; }
+.dvVertCourtLane { position:relative; border-left:1px solid var(--color-border-soft); overflow:hidden; }
+/* court SVG background layer */
+.dvVCourtBg { position:absolute; inset:0; z-index:0; pointer-events:none; overflow:hidden; }
+.dvVCourtBg svg { position:absolute; inset:0; width:100%; height:100%; display:block; opacity:0.24; }
+/* time grid lines sit above SVG background */
+.dvVGridLine { position:absolute; left:0; right:0; height:1px; pointer-events:none; z-index:1; }
+.dvVGridLine.full { background:rgba(0,0,0,0.10); }
+.dvVGridLine.half { background:rgba(0,0,0,0.05); }
+/* now line: subtle so it doesn't clash with court artwork */
+.dvVNowLine { position:absolute; left:0; right:0; height:1.5px; background:rgba(204,51,51,0.70); z-index:4; pointer-events:none; }
+.dvVNowDot { position:absolute; left:-3px; top:-2.5px; width:7px; height:7px; border-radius:50%; background:#cc3333; box-shadow:0 0 4px rgba(204,51,51,0.5); }
 .dvVBlock { position:absolute; left:3px; right:3px; border-radius:6px; background:var(--color-hard); padding:3px 5px; overflow:hidden; cursor:pointer; z-index:2; box-shadow:0 1px 6px rgba(0,0,0,0.18); min-height:20px; }
 .dvVBlock:active { opacity:0.75; }
 .dvVBlock.is-coaching { background:var(--color-clay); }
@@ -3592,7 +3597,13 @@ function renderDayView(){
   var isToday=isSameDay(selectedDate,today);
   courtIds.forEach(function(cid){
     var bList=dayB.filter(function(b){return b.court===cid;});
+    var isClayCourt=COURT_SURFACE[cid]==='clay';
     h+='<div class="dvVertCourtLane" style="height:'+TOTAL_H+'px">';
+
+    /* ── court SVG background (decorative, low opacity) ── */
+    h+='<div class="dvVCourtBg">';
+    h+=isClayCourt?_clayCourtSVG(COURT_LABELS[cid].letter):_hardCourtSVG(COURT_LABELS[cid].letter);
+    h+='</div>';
 
     /* hour + half-hour grid lines */
     for(var hr2=_DV_S;hr2<=_DV_E;hr2++){
