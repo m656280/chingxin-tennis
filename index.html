@@ -1845,14 +1845,27 @@ async function initAuth(){
     return;
   }
 
-  // Step 3: get profile
+  // Step 3: get profile (with ID token fallback)
   var profile;
   try {
     profile = await liff.getProfile();
     _liffDbg('getProfile uid', profile.userId);
   } catch(e){
-    _liffDbg('getProfile ERROR', e.message || String(e));
-    _showLiffDebug(); return;
+    _liffDbg('getProfile err', e.message || String(e));
+    // Fallback: decode LIFF ID token (JWT) — works even when getProfile() API fails
+    try {
+      var _idt = liff.getIDToken();
+      if(!_idt) throw new Error('no ID token');
+      var _b64 = _idt.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');
+      while(_b64.length % 4) _b64 += '=';
+      var _pl = JSON.parse(atob(_b64));
+      if(!_pl.sub) throw new Error('sub missing');
+      profile = { userId: _pl.sub, displayName: _pl.name || '', pictureUrl: _pl.picture || '' };
+      _liffDbg('getProfile via IDToken', profile.userId);
+    } catch(e2){
+      _liffDbg('getProfile FAILED', e2.message || String(e2));
+      _showLiffDebug(); return;
+    }
   }
 
   // Step 4: upsert Firestore + route
