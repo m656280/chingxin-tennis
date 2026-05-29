@@ -149,7 +149,9 @@ button {
 .dvDetailCell { background:var(--color-surface); padding:14px 20px; }
 .dvDetailCellLabel { font-size:10px; letter-spacing:0.08em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:4px; }
 .dvDetailCellValue { font-size:15px; font-weight:600; color:var(--color-text-primary); }
-.dvDetailClose { display:block; width:calc(100% - 40px); margin:14px 20px; padding:13px; text-align:center; border-radius:10px; background:var(--color-surface-alt); font-size:13px; letter-spacing:0.06em; color:var(--color-text-secondary); border:none; cursor:pointer; }
+.dvDetailCancelBtn { display:block; width:calc(100% - 40px); margin:14px 20px 0; padding:13px; text-align:center; border-radius:10px; background:#fff0ee; font-size:13px; letter-spacing:0.06em; color:#c0392b; border:none; cursor:pointer; font-weight:500; }
+.dvDetailCancelBtn:active { background:#fdd; }
+.dvDetailClose { display:block; width:calc(100% - 40px); margin:8px 20px 14px; padding:13px; text-align:center; border-radius:10px; background:var(--color-surface-alt); font-size:13px; letter-spacing:0.06em; color:var(--color-text-secondary); border:none; cursor:pointer; }
 
 /* ── Day View: Vertical Grid (courts=columns, time=Y) ── */
 .dvVertOuter { overflow-y:auto; -webkit-overflow-scrolling:touch; max-height:calc(100dvh - 252px); margin:0 -16px; padding:0 16px 16px; scrollbar-width:none; }
@@ -170,6 +172,8 @@ button {
 .dvVBlock:active { opacity:0.75; }
 .dvVBlock.is-coaching { background:var(--color-clay); }
 .dvVBlock.is-lock { background:#2a2a2a; }
+.dvVBlockPhoto { width:20px; height:20px; border-radius:50%; object-fit:cover; display:block; margin-bottom:2px; border:1.5px solid rgba(255,255,255,0.6); flex-shrink:0; }
+.dvVBlockInitial { width:20px; height:20px; border-radius:50%; background:rgba(255,255,255,0.25); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; color:#fff; margin-bottom:2px; flex-shrink:0; }
 .dvVBlockName { font-size:10px; font-weight:700; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .dvVBlockTime { font-size:9px; color:rgba(255,255,255,0.80); white-space:nowrap; overflow:hidden; }
 /* clay day view tint */
@@ -1188,6 +1192,7 @@ button {
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       新增預約
     </button>
+    <div id="bookingsDebugLine" style="font-size:10px;color:var(--color-text-muted);padding:2px 0 6px;letter-spacing:0.03em"></div>
     <div id="bookUpcoming"></div>
   </div>
 
@@ -2235,6 +2240,10 @@ function renderBookings(){
   // 只顯示 currentUser 自己的有效預約（confirmed 且日期 >= 今天）
   const upcoming=source.filter(b=>b.status==='confirmed'&&b.date>=todayStr)
     .sort((a,b)=>a.date.localeCompare(b.date));
+  // Debug info (remove when stable)
+  const myUidStr=currentUser?(currentUser.uid||currentUser.userId||currentUser.id||'—'):'—';
+  const _dbgEl=document.getElementById('bookingsDebugLine');
+  if(_dbgEl){ _dbgEl.textContent='uid: '+myUidStr+' | 撈到: '+source.length+' 筆 | 顯示: '+upcoming.length+' 筆'; }
 
   function courtDisplay(court){ return {hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[court]||court; }
   function cardHtml(b){
@@ -3593,6 +3602,7 @@ function renderDayView(){
     }
 
     /* booking blocks */
+    var _myUid=currentUser?(currentUser.uid||currentUser.userId||currentUser.id||''):'';
     bList.forEach(function(b){
       var sm=timeToMin(b.startTime), em=timeToMin(b.endTime);
       if(em<=sm||sm<_DV_S*60||em>_DV_E*60+30) return; /* skip out-of-range */
@@ -3605,16 +3615,28 @@ function renderDayView(){
         ||null;
       var ntrp=mem?(mem.ntrp||'—'):'—';
       var pos=mem?(mem.preferredPosition||'—'):'—';
+      var photoURL=mem?(mem.photoURL||mem.lineAvatar||''):'';
       var courtLabel={hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[b.court]||b.court;
+      var isOwner=(b.createdBy===_myUid);
       var enc=encodeURIComponent(JSON.stringify({
-        name:b.primaryName||'?', court:courtLabel, date:b.date,
+        name:b.primaryName||'?', photoURL:photoURL, court:courtLabel, date:b.date,
         time:b.startTime+'–'+b.endTime, mode:modeLabel,
-        count:b.participantCount||1, isCoach:isCoach, ntrp:ntrp, pos:pos, att:'—'
+        count:b.participantCount||1, isCoach:isCoach,
+        ntrp:ntrp, pos:pos, att:'—',
+        bookingId:b.id, isOwner:isOwner
       }));
+      /* avatar: circular photo or initial letter */
+      var blockAvatar=photoURL
+        ?('<img src="'+photoURL+'" class="dvVBlockPhoto" onerror="this.style.display=\'none\'" alt="">')
+        :'<div class="dvVBlockInitial">'+(b.primaryName||'?').charAt(0)+'</div>';
       var cls='dvVBlock'+(isCoach?' is-coaching':'')+(isLock?' is-lock':'');
+      var blockH=parseFloat(hPx);
+      /* show time label only if tall enough */
+      var timeHtml=blockH>=36?'<div class="dvVBlockTime">'+b.startTime+'–'+b.endTime+'</div>':'';
       h+='<div class="'+cls+'" style="top:'+topPx+'px;height:'+hPx+'px" onclick="event.stopPropagation();_dvShowDetail(\''+enc+'\')">'+
+        blockAvatar+
         '<div class="dvVBlockName">'+(b.primaryName||'?')+'</div>'+
-        '<div class="dvVBlockTime">'+b.startTime+'–'+b.endTime+'</div>'+
+        timeHtml+
       '</div>';
     });
 
@@ -3802,10 +3824,16 @@ function _dvShowDetail(enc){
   p.className='dvDetailPanel';
   var modeColor=data.isCoach?'var(--color-clay)':'var(--color-hard)';
   var attStr=(data.att&&data.att!=='—')?(data.att+'次'):data.att;
+  /* avatar: photo or initial */
+  var avatarInner = data.photoURL
+    ? '<img src="'+data.photoURL+'" style="width:100%;height:100%;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'" alt="">'
+    : data.name.charAt(0);
+  /* show cancel button if user owns the booking or is admin */
+  var canCancel = data.bookingId && (data.isOwner || isAdminLike());
   p.innerHTML=
     '<div class="dvDetailHandle"></div>'+
     '<div class="dvDetailTop">'+
-      '<div class="dvDetailAvatar'+(data.isCoach?' is-coaching':'')+'" style="border-color:'+modeColor+'">'+data.name.charAt(0)+'</div>'+
+      '<div class="dvDetailAvatar'+(data.isCoach?' is-coaching':'')+'" style="border-color:'+modeColor+';overflow:hidden;padding:0">'+avatarInner+'</div>'+
       '<div><div class="dvDetailName">'+data.name+'</div><div class="dvDetailMode">'+data.mode+'</div></div>'+
     '</div>'+
     '<div class="dvDetailRows">'+
@@ -3816,6 +3844,7 @@ function _dvShowDetail(enc){
       '<div class="dvDetailCell"><div class="dvDetailCellLabel">NTRP</div><div class="dvDetailCellValue">'+data.ntrp+'</div></div>'+
       '<div class="dvDetailCell"><div class="dvDetailCellLabel">常打位置</div><div class="dvDetailCellValue" style="font-size:13px">'+data.pos+'</div></div>'+
     '</div>'+
+    (canCancel?'<button class="dvDetailCancelBtn" onclick="cancelBooking(\''+data.bookingId+'\')">取消預約</button>':'')+
     '<button class="dvDetailClose" onclick="_dvCloseDetail()">關閉</button>';
   document.body.appendChild(p);
   /* animate in */
@@ -3938,16 +3967,20 @@ function showBookingDetail(id){
   if(!b) return;
   var u=b.createdBy?usersCache[b.createdBy]:null;
   var name=u?u.displayName:(b.primaryName||'?');
+  var photoURL=u?(u.photoURL||u.lineAvatar||''):'';
   var courtLabel={hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[b.court]||b.court;
   var modeLabel=b.mode==='coaching'?'教學課':b.mode==='event_lock'?'場地封鎖':b.mode==='group_class'?'團體課':'一般預約';
   var ntrp=u?(u.ntrp||'—'):'—';
   var pos=u?(u.preferredPosition||'—'):'—';
   var isCoach=b.mode==='coaching';
+  var myUid=currentUser?(currentUser.uid||currentUser.userId||currentUser.id||''):'';
+  var isOwner=(b.createdBy===myUid);
   var enc=encodeURIComponent(JSON.stringify({
-    name:name, court:courtLabel, date:b.date,
-    time:b.startTime+'–'+b.endTime,
-    mode:modeLabel, count:b.participantCount||1,
-    isCoach:isCoach, ntrp:ntrp, pos:pos, att:'—'
+    name:name, photoURL:photoURL, court:courtLabel, date:b.date,
+    time:b.startTime+'–'+b.endTime, mode:modeLabel,
+    count:b.participantCount||1, isCoach:isCoach,
+    ntrp:ntrp, pos:pos, att:'—',
+    bookingId:id, isOwner:isOwner
   }));
   _dvShowDetail(enc);
 }
@@ -4013,20 +4046,38 @@ function loadCourtBookings(dateStr){
 /* ── Load My Bookings from Firestore ── */
 function loadMyBookings(){
   if(!db||!currentUser){ renderBookings(); renderManage(); return; }
+  var myUid=currentUser.uid||currentUser.userId||currentUser.id||'';
+  /* No .orderBy() here — avoids composite-index requirement; sort client-side */
   db.collection('bookings')
-    .where('createdBy','==',currentUser.uid||currentUser.userId||currentUser.id||'')
-    .orderBy('date','asc')
+    .where('createdBy','==',myUid)
     .get()
     .then(function(snap){
-      myBookingsFirestore=snap.docs.map(function(d){ return Object.assign({id:d.id},d.data()); });
+      var results=snap.docs.map(function(d){ return Object.assign({id:d.id},d.data()); });
+      results.sort(function(a,b){ return (a.date||'').localeCompare(b.date||''); });
+      myBookingsFirestore=results;
+      console.log('[loadMyBookings] uid:',myUid,'| found:',results.length);
       renderBookings();
       renderManage();
     })
     .catch(function(e){
-      console.warn('loadMyBookings error:',e);
-      myBookingsFirestore=[];
-      renderBookings();
-      renderManage();
+      console.warn('[loadMyBookings] error:',e.code,e.message);
+      /* Fallback: fetch all confirmed and filter client-side */
+      db.collection('bookings').where('status','==','confirmed').get()
+        .then(function(snap2){
+          var all=snap2.docs.map(function(d){ return Object.assign({id:d.id},d.data()); });
+          var mine=all.filter(function(b){ return b.createdBy===myUid; });
+          mine.sort(function(a,b){ return (a.date||'').localeCompare(b.date||''); });
+          myBookingsFirestore=mine;
+          console.log('[loadMyBookings fallback] uid:',myUid,'| mine:',mine.length,'/ total:',all.length);
+          renderBookings();
+          renderManage();
+        })
+        .catch(function(e2){
+          console.warn('[loadMyBookings fallback error]',e2);
+          myBookingsFirestore=[];
+          renderBookings();
+          renderManage();
+        });
     });
 }
 
@@ -4034,12 +4085,14 @@ function loadMyBookings(){
 function cancelBooking(id){
   if(!confirm('確認取消此預約？')) return;
   if(!db){ showToast('無法連線，請稍後再試'); return; }
-  db.collection('bookings').doc(id).update({status:'cancelled',updatedAt:TS()})
+  db.collection('bookings').doc(id).delete()
     .then(function(){
       showToast('預約已取消');
+      _dvCloseDetail();
       loadMyBookings();
+      loadCourtBookings(formatDate(selectedDate));
     })
-    .catch(function(e){ console.error('cancelBooking error:',e); showToast('取消失敗，請稍後再試'); });
+    .catch(function(e){ console.error('cancelBooking error:',e); showToast('取消失敗：'+e.message); });
 }
 
 /* ── Booking Form ── */
