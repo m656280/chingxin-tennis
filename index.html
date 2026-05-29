@@ -2093,8 +2093,7 @@ function startNowLineTicker(){
   if(_nowTickInterval) clearInterval(_nowTickInterval);
   _nowTickInterval=setInterval(function(){
     if(currentView!=='week'||!isSameDay(selectedDate,today)) return;
-    var we=isWeekend(selectedDate);
-    var openMin=timeToMin(we?'05:30':'17:30');
+    var openMin=timeToMin(getGridOpen());
     var now=new Date();
     var nowMin=now.getHours()*60+now.getMinutes();
     var nl=document.querySelector('.timeGridWrapper .nowLine');
@@ -2106,8 +2105,10 @@ function startNowLineTicker(){
 }
 
 /* ── Week / Grid Helpers ── */
-function getDaySlots(weekend){
-  const open=weekend?'05:30':'17:30';
+/* Grid always starts at 06:00 so daytime bookings are not squeezed to slot 0 */
+function getGridOpen(){ return '06:00'; }
+function getDaySlots(){
+  const open=getGridOpen();
   const out=[]; let cur=timeToMin(open);
   while(cur<timeToMin('24:00')){ out.push(minToTime(cur)); cur+=SLOT_MIN; }
   return out;
@@ -2149,8 +2150,8 @@ function renderDayHeader(){
 /* ── Render: Time Grid ── */
 function renderGrid(){
   const we=isWeekend(selectedDate);
-  const open=we?'05:30':'17:30';
-  const slots=getDaySlots(we);
+  const open=getGridOpen();
+  const slots=getDaySlots();
   const grid=document.getElementById('grid');
   grid.style.gridTemplateRows='repeat('+slots.length+', '+SLOT_HEIGHT+'px)';
   let html='<div class="courtDividers" style="grid-template-rows:repeat('+slots.length+','+SLOT_HEIGHT+'px)">'+
@@ -2240,10 +2241,18 @@ function renderBookings(){
   // 只顯示 currentUser 自己的有效預約（confirmed 且日期 >= 今天）
   const upcoming=source.filter(b=>b.status==='confirmed'&&b.date>=todayStr)
     .sort((a,b)=>a.date.localeCompare(b.date));
-  // Debug info (remove when stable)
+  // Debug info
   const myUidStr=currentUser?(currentUser.uid||currentUser.userId||currentUser.id||'—'):'—';
+  const myNameStr=currentUser?(currentUser.displayName||currentUser.name||'—'):'—';
+  const createdByList=[...new Set(source.map(b=>b.createdBy).filter(Boolean))].join(', ')||'（無）';
   const _dbgEl=document.getElementById('bookingsDebugLine');
-  if(_dbgEl){ _dbgEl.textContent='uid: '+myUidStr+' | 撈到: '+source.length+' 筆 | 顯示: '+upcoming.length+' 筆'; }
+  if(_dbgEl){
+    _dbgEl.innerHTML=
+      'uid: <b>'+myUidStr+'</b><br>'+
+      'name: '+myNameStr+'<br>'+
+      'bookings 總筆數: '+source.length+'　顯示: '+upcoming.length+'<br>'+
+      'createdBy: '+createdByList;
+  }
 
   function courtDisplay(court){ return {hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[court]||court; }
   function cardHtml(b){
@@ -4046,39 +4055,52 @@ function loadCourtBookings(dateStr){
 /* ── Load My Bookings from Firestore ── */
 function loadMyBookings(){
   if(!db||!currentUser){ renderBookings(); renderManage(); return; }
-  var myUid=currentUser.uid||currentUser.userId||currentUser.id||'';
-  /* No .orderBy() here — avoids composite-index requirement; sort client-side */
-  db.collection('bookings')
-    .where('createdBy','==',myUid)
-    .get()
-    .then(function(snap){
-      var results=snap.docs.map(function(d){ return Object.assign({id:d.id},d.data()); });
-      results.sort(function(a,b){ return (a.date||'').localeCompare(b.date||''); });
-      myBookingsFirestore=results;
-      console.log('[loadMyBookings] uid:',myUid,'| found:',results.length);
-      renderBookings();
-      renderManage();
-    })
-    .catch(function(e){
-      console.warn('[loadMyBookings] error:',e.code,e.message);
-      /* Fallback: fetch all confirmed and filter client-side */
-      db.collection('bookings').where('status','==','confirmed').get()
-        .then(function(snap2){
-          var all=snap2.docs.map(function(d){ return Object.assign({id:d.id},d.data()); });
-          var mine=all.filter(function(b){ return b.createdBy===myUid; });
-          mine.sort(function(a,b){ return (a.date||'').localeCompare(b.date||''); });
-          myBookingsFirestore=mine;
-          console.log('[loadMyBookings fallback] uid:',myUid,'| mine:',mine.length,'/ total:',all.length);
-          renderBookings();
-          renderManage();
-        })
-        .catch(function(e2){
-          console.warn('[loadMyBookings fallback error]',e2);
-          myBookingsFirestore=[];
-          renderBookings();
-          renderManage();
-        });
+  var myUid=(currentUser.uid||currentUser.userId||currentUser.id||'').trim();
+  var myName=(currentUser.displayName||currentUser.name||'').trim();
+
+  /* Run two queries in parallel: by createdBy uid AND by primaryName.
+     Merge and deduplicate by doc id. No .orderBy() to avoid composite-index. */
+  var q1=db.collection('bookings').where('createdBy','==',myUid).get();
+  var q2=myName
+    ? db.collection('bookings').where('primaryName','==',myName).get()
+    : Promise.resolve({docs:[]});
+
+  Promise.all([q1,q2]).then(function(snaps){
+    var seen={}, merged=[];
+    snaps.forEach(function(snap){
+      snap.docs.forEach(function(d){
+        if(!seen[d.id]){ seen[d.id]=true; merged.push(Object.assign({id:d.id},d.data())); }
+      });
     });
+    merged.sort(function(a,b){ return (a.date||'').localeCompare(b.date||''); });
+    myBookingsFirestore=merged;
+    console.log('[loadMyBookings] uid:',myUid,'| name:',myName,'| total found:',merged.length,
+      '| createdBy matches:',snaps[0].docs.length,'| name matches:',snaps[1].docs.length);
+    renderBookings();
+    renderManage();
+  }).catch(function(e){
+    console.warn('[loadMyBookings] parallel query error:',e.code,e.message);
+    /* Fallback: fetch ALL bookings and filter client-side */
+    db.collection('bookings').get()
+      .then(function(snap){
+        var all=snap.docs.map(function(d){ return Object.assign({id:d.id},d.data()); });
+        var mine=all.filter(function(b){
+          return b.createdBy===myUid || (myName && b.primaryName===myName);
+        });
+        mine.sort(function(a,b){ return (a.date||'').localeCompare(b.date||''); });
+        myBookingsFirestore=mine;
+        console.log('[loadMyBookings fallback] uid:',myUid,'| mine:',mine.length,'/ total:',all.length,
+          '| createdBy list:',[...new Set(all.map(function(b){return b.createdBy;}).filter(Boolean))]);
+        renderBookings();
+        renderManage();
+      })
+      .catch(function(e2){
+        console.warn('[loadMyBookings fallback error]',e2);
+        myBookingsFirestore=[];
+        renderBookings();
+        renderManage();
+      });
+  });
 }
 
 /* ── Cancel Booking ── */
