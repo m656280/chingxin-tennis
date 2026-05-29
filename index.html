@@ -2410,21 +2410,45 @@ function _renderMembersTab(el){
     return;
   }
   var html='<div style="padding:0 2px">';
-  members.forEach(function(m){
-    var initials=(m.displayName||'?').charAt(0);
-    var avatarHtml=m.lineAvatar
-      ?'<img src="'+m.lineAvatar+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'" alt="">'
-      :'<svg width="40" height="40" viewBox="0 0 40 40"><rect width="40" height="40" rx="20" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="16" font-family="serif">'+initials+'</text></svg>';
-    var roleLabel=ROLE_LABEL[m.role]||m.role||'會員';
-    html+='<div class="memberCard">'+
-      '<div class="memberAvatar">'+avatarHtml+'</div>'+
-      '<div class="memberInfo">'+
-        '<div class="memberName">'+_esc(m.displayName||'未知')+'</div>'+
-        '<div class="memberMeta">'+(m.ntrp?'NTRP '+m.ntrp+' · ':'')+(m.preferredPosition?_esc(m.preferredPosition):'')+'</div>'+
-      '</div>'+
-      '<div class="memberBadge'+(m.role==='coach'?' coach':'')+'">'+roleLabel+'</div>'+
-    '</div>';
-  });
+  if(isAdminLike()){
+    // ── 進階視圖（owner / admin）──
+    members.forEach(function(m){
+      var initials=(m.displayName||'?').charAt(0);
+      var avatarSrc=m.photoURL||m.lineAvatar||'';
+      var avatarHtml=avatarSrc
+        ?'<img src="'+avatarSrc+'" style="width:44px;height:44px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display=\'none\'" alt="">'
+        :'<svg width="44" height="44" viewBox="0 0 44 44" style="flex-shrink:0"><rect width="44" height="44" rx="22" fill="#d4c9b5"/><text x="22" y="29" text-anchor="middle" fill="#8a7f6e" font-size="17" font-family="serif">'+initials+'</text></svg>';
+      var roleLabel=ROLE_LABEL[m.role]||m.role||'會員';
+      var ntrpLine=m.ntrp?'<span style="font-size:11px;color:var(--color-text-muted)">NTRP '+_esc(String(m.ntrp))+'</span>':'';
+      var uidLine='<span style="font-size:10px;color:var(--color-text-muted);word-break:break-all">'+_esc(m.userId||m.uid||'')+'</span>';
+      html+='<div class="memberCard" style="align-items:flex-start;gap:12px">'+
+        '<div class="memberAvatar" style="margin-top:2px">'+avatarHtml+'</div>'+
+        '<div class="memberInfo" style="flex:1;min-width:0">'+
+          '<div class="memberName">'+_esc(m.displayName||'未知')+'</div>'+
+          '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:3px">'+ntrpLine+'</div>'+
+          '<div style="margin-top:4px">'+uidLine+'</div>'+
+        '</div>'+
+        '<div class="memberBadge'+(m.role==='coach'?' coach':'')+'">'+roleLabel+'</div>'+
+      '</div>';
+    });
+  } else {
+    // ── 簡單視圖（一般 member）── 維持原本不變
+    members.forEach(function(m){
+      var initials=(m.displayName||'?').charAt(0);
+      var avatarHtml=m.lineAvatar
+        ?'<img src="'+m.lineAvatar+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'" alt="">'
+        :'<svg width="40" height="40" viewBox="0 0 40 40"><rect width="40" height="40" rx="20" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="16" font-family="serif">'+initials+'</text></svg>';
+      var roleLabel=ROLE_LABEL[m.role]||m.role||'會員';
+      html+='<div class="memberCard">'+
+        '<div class="memberAvatar">'+avatarHtml+'</div>'+
+        '<div class="memberInfo">'+
+          '<div class="memberName">'+_esc(m.displayName||'未知')+'</div>'+
+          '<div class="memberMeta">'+(m.ntrp?'NTRP '+m.ntrp+' · ':'')+(m.preferredPosition?_esc(m.preferredPosition):'')+'</div>'+
+        '</div>'+
+        '<div class="memberBadge'+(m.role==='coach'?' coach':'')+'">'+roleLabel+'</div>'+
+      '</div>';
+    });
+  }
   html+='</div>';
   el.innerHTML+=html;
 }
