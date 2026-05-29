@@ -1654,6 +1654,9 @@ function _renderProfileSheet(){
       '<button class="authLogoutBtn" ' +
            'style="width:100%;text-align:center;padding:12px 0;border-radius:10px" ' +
            'onclick="closeProfile();_doLogout()">登出</button>' +
+    '</div>' +
+    '<div style="margin-top:12px;padding:8px 4px;font-size:10px;color:var(--color-text-muted);word-break:break-all;line-height:1.6">' +
+      'uid: ' + (u.uid || u.userId || '—') +
     '</div>';
 }
 
@@ -1728,7 +1731,14 @@ async function _tryResumeSession(){
     }
     var d = snap.data();
     console.log('[AUTH] resume uid:', uid, '| data:', JSON.stringify({role:d.role, status:d.status, approved:d.approved}));
-    // Always route through _routeByStatus — it handles canEnter check and shows debug panel
+
+    // Update lastLoginAt (fire-and-forget — don't block routing on this)
+    if(db){
+      db.collection('members').doc(uid).update({
+        lastLoginAt: firebase.firestore.FieldValue.serverTimestamp(),
+      }).catch(function(e){ console.warn('[AUTH] lastLoginAt update failed:', e.message); });
+    }
+
     var profile = { userId: uid, displayName: d.displayName || '', pictureUrl: d.photoURL || '' };
     _routeByStatus(d, profile);
     return true;
