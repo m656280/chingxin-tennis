@@ -2416,17 +2416,20 @@ function _renderMembersTab(el){
       var initials=(m.displayName||'?').charAt(0);
       var avatarSrc=m.photoURL||m.lineAvatar||'';
       var avatarHtml=avatarSrc
-        ?'<img src="'+avatarSrc+'" style="width:44px;height:44px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display=\'none\'" alt="">'
+        ?'<img src="'+avatarSrc+'" style="width:44px;height:44px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1px solid var(--color-border-soft)" onerror="this.style.display=\'none\'" alt="">'
         :'<svg width="44" height="44" viewBox="0 0 44 44" style="flex-shrink:0"><rect width="44" height="44" rx="22" fill="#d4c9b5"/><text x="22" y="29" text-anchor="middle" fill="#8a7f6e" font-size="17" font-family="serif">'+initials+'</text></svg>';
       var roleLabel=ROLE_LABEL[m.role]||m.role||'會員';
-      var ntrpLine=m.ntrp?'<span style="font-size:11px;color:var(--color-text-muted)">NTRP '+_esc(String(m.ntrp))+'</span>':'';
-      var uidLine='<span style="font-size:10px;color:var(--color-text-muted);word-break:break-all">'+_esc(m.userId||m.uid||'')+'</span>';
-      html+='<div class="memberCard" style="align-items:flex-start;gap:12px">'+
-        '<div class="memberAvatar" style="margin-top:2px">'+avatarHtml+'</div>'+
-        '<div class="memberInfo" style="flex:1;min-width:0">'+
-          '<div class="memberName">'+_esc(m.displayName||'未知')+'</div>'+
-          '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:3px">'+ntrpLine+'</div>'+
-          '<div style="margin-top:4px">'+uidLine+'</div>'+
+      var rawUid=m.userId||m.uid||'';
+      var shortUid=rawUid.length>12?rawUid.slice(0,12)+'…':rawUid;
+      var meta2=[];
+      if(m.ntrp) meta2.push('NTRP '+_esc(String(m.ntrp)));
+      html+='<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--color-border-soft)">'+
+        '<div style="flex-shrink:0">'+avatarHtml+'</div>'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:14px;font-weight:500;color:var(--color-text-primary)">'+_esc(m.displayName||'未知')+'</div>'+
+          '<div style="font-size:11px;color:var(--color-text-muted);margin-top:2px">'+
+            (meta2.length?meta2.join(' · '):'')+'</div>'+
+          '<div style="font-size:10px;color:var(--color-text-muted);margin-top:2px;opacity:0.7">'+_esc(shortUid)+'</div>'+
         '</div>'+
         '<div class="memberBadge'+(m.role==='coach'?' coach':'')+'">'+roleLabel+'</div>'+
       '</div>';
