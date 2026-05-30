@@ -1428,6 +1428,9 @@ button {
     <span style="width:32px"></span>
   </div>
   <div class="formSection">
+    <div id="finVoidWarning" style="display:none;margin-bottom:14px;padding:10px 12px;border-radius:8px;background:rgba(243,156,18,0.10);border:1px solid rgba(243,156,18,0.38);font-size:13px;color:#c8860a;line-height:1.45">
+      此筆紀錄已作廢，若儲存將重新啟用。
+    </div>
     <div class="formRow">
       <label class="formLabel">類型</label>
       <select class="formSelect" id="finFormType" onchange="_finToggleYearRow()">
@@ -4049,6 +4052,8 @@ function _finPopulateYearSelect(selectedYear){
 function openFinanceForm(){
   if(!_isFinanceAdmin()){ showToast('僅管理員可新增紀錄'); return; }
   _finEditId = null;
+  var voidWarn = document.getElementById('finVoidWarning');
+  if(voidWarn) voidWarn.style.display = 'none';
   document.getElementById('financeFormTitle').textContent = '新增財務紀錄';
   _finPopulateMemberSelect('');
   document.getElementById('finFormType').value = 'annual';
@@ -4063,6 +4068,8 @@ function openFinanceForm(){
 
 function closeFinanceForm(){
   _finEditId = null;
+  var voidWarn = document.getElementById('finVoidWarning');
+  if(voidWarn) voidWarn.style.display = 'none';
   document.getElementById('financeFormSheet').classList.remove('open');
   document.getElementById('sheetBackdrop').classList.remove('open');
 }
@@ -4149,6 +4156,9 @@ function submitEditFinanceRecord(type, member, date, amount, note, membershipYea
   var _msType2   = (type==='annual'||type==='monthly') ? type : '';
   var _mYear2    = (_msType2==='annual') ? (membershipYear||null) : null;
   var _msExpiry2 = _calcMembershipExpiry(_msType2, date, _mYear2);
+  // 若原紀錄為 void，儲存時重新啟用
+  var _origRec = financeRecords.find(function(r){ return r.id===_finEditId; });
+  var _wasVoid = _origRec && (_origRec.status || 'active') === 'void';
   const upd = {
     type:              type,
     memberId:          member || '',
@@ -4162,6 +4172,7 @@ function submitEditFinanceRecord(type, member, date, amount, note, membershipYea
     membershipExpiry:  _msExpiry2,
     updatedAt:         TS(),
   };
+  if(_wasVoid) upd.status = 'active';   // 重新啟用
   db.collection('financialRecords').doc(_finEditId).update(upd)
     .then(function(){
       // 同步寫入 members/{uid} 會籍資料
@@ -4185,10 +4196,14 @@ function submitEditFinanceRecord(type, member, date, amount, note, membershipYea
         rec.date=date; rec.amount=amount; rec.note=note||'';
         rec.membershipType=_msType2; rec.membershipYear=_mYear2; rec.membershipExpiry=_msExpiry2;
         rec.updatedAt=upd.updatedAt;
+        if(_wasVoid) rec.status = 'active';
       }
       closeFinanceForm();
       renderFinance();
-      showToast('已更新紀錄');
+      _updateManageNavBadge();
+      var manScreen = document.getElementById('screen-manage');
+      if(manScreen && manScreen.classList.contains('active')){ renderManage(); }
+      showToast(_wasVoid ? '已重新啟用並更新紀錄' : '已更新紀錄');
     })
     .catch(function(e){
       console.error('submitEditFinanceRecord error:', e);
@@ -4211,6 +4226,9 @@ function editFinanceRecord(id){
   _finPopulateMemberSelect(rec.memberId || '');
   _finPopulateYearSelect(rec.membershipYear || null);
   _finToggleYearRow();
+  // 若此紀錄已作廢，顯示警告
+  var voidWarn = document.getElementById('finVoidWarning');
+  if(voidWarn) voidWarn.style.display = ((rec.status || 'active') === 'void') ? '' : 'none';
   document.getElementById('sheetBackdrop').classList.add('open');
   document.getElementById('financeFormSheet').classList.add('open');
 }
