@@ -2477,6 +2477,10 @@ function _renderMembersTab(el){
           (m.realName?'<div style="font-size:11px;color:var(--color-text-muted);margin-top:1px">LINE：'+_esc(m.displayName||'')+'</div>':'')+
           '<div style="font-size:11px;color:var(--color-text-muted);margin-top:2px">'+
             (meta2.length?meta2.join(' · '):'')+'</div>'+
+          (m.membershipType&&m.membershipExpiry?
+            '<div style="font-size:11px;color:var(--color-text-muted);margin-top:2px">'+
+              (m.membershipType==='annual'?'年費':'月費')+' · 有效至 '+_esc(m.membershipExpiry)+
+            '</div>':'')+
           '<div style="font-size:10px;color:var(--color-text-muted);margin-top:2px;opacity:0.7">'+_esc(shortUid)+'</div>'+
         '</div>'+
         '<div class="memberBadge'+(m.role==='coach'?' coach':'')+'">'+roleLabel+'</div>'+
@@ -2621,12 +2625,17 @@ function _renderMemberListInTab(){
     var meta=[];
     if(m.ntrp) meta.push(_esc(_ntrpDisplay(m.ntrp)));
     if(m.preferredPosition) meta.push(_esc(m.preferredPosition));
+    var msLabel=m.membershipType==='annual'?'年費會員':m.membershipType==='monthly'?'月費會員':'';
     html+='<div class="memberCard">'+
       '<div class="memberAvatar">'+avatarHtml+'</div>'+
       '<div class="memberInfo">'+
         '<div class="memberName">'+_esc(m.realName||m.displayName||'未知')+'</div>'+
         (m.realName?'<div style="font-size:11px;color:var(--color-text-muted);margin-top:1px">'+_esc(m.displayName||'')+'</div>':'')+
         (meta.length?'<div class="memberMeta">'+meta.join(' · ')+'</div>':'')+
+        (msLabel&&m.membershipExpiry?
+          '<div style="font-size:11px;color:var(--color-text-muted);margin-top:2px">'+
+            msLabel+' · 有效至 '+_esc(m.membershipExpiry)+
+          '</div>':'')+
       '</div>'+
       '<div class="memberBadge'+(m.role==='coach'?' coach':'')+'">'+roleLabel+'</div>'+
     '</div>';
@@ -3804,6 +3813,24 @@ function exportFinanceCSV(){
   showToast('已匯出 '+filename);
 }
 
+/* ── Finance: 會籍到期日計算 ── */
+function _calcMembershipExpiry(membershipType, dateStr){
+  // dateStr: YYYY-MM-DD（來自 date input）
+  // return: YYYY/MM/DD（與 expireDate 格式一致）
+  if(!dateStr||!membershipType) return '';
+  var parts=dateStr.split('-');
+  var y=parseInt(parts[0],10), mo=parseInt(parts[1],10), d=parseInt(parts[2],10);
+  if(!y||!mo||!d) return '';
+  if(membershipType==='annual'){
+    return y+'/12/31';
+  } else if(membershipType==='monthly'){
+    mo+=1;
+    if(mo>12){ mo=1; y+=1; }
+    return y+'/'+String(mo).padStart(2,'0')+'/'+String(d).padStart(2,'0');
+  }
+  return '';
+}
+
 /* ── Finance: Form ── */
 function _finPopulateMemberSelect(selectedId){
   const sel = document.getElementById('finFormMember');
@@ -3859,6 +3886,9 @@ function submitFinanceRecord(){
     var _mObj = member ? usersCache[member] : null;
     var _mDisplayName = _mObj ? (_mObj.displayName || _mObj.name || '') : '';
     var _mRealName    = _mObj ? (_mObj.realName || '') : '';
+    // 會籍計算（annual / monthly 才產生）
+    var _msType   = (type==='annual'||type==='monthly') ? type : '';
+    var _msExpiry = _calcMembershipExpiry(_msType, date);
     const rec = {
       type:              type,
       memberId:          member || '',
@@ -3868,6 +3898,8 @@ function submitFinanceRecord(){
       date:              date,
       amount:            amount,
       note:              note || '',
+      membershipType:    _msType,
+      membershipExpiry:  _msExpiry,
       createdByUid:      creatorUid,
       createdByName:     creatorName,
       createdAt:         TS(),
@@ -3875,6 +3907,20 @@ function submitFinanceRecord(){
     };
     db.collection('financialRecords').add(rec)
       .then(function(docRef){
+        // 同步寫入 members/{uid} 會籍資料
+        if(member && _msType && _msExpiry){
+          db.collection('members').doc(member).update({
+            membershipType:   _msType,
+            membershipExpiry: _msExpiry,
+            expireDate:       _msExpiry,
+            updatedAt:        TS(),
+          }).catch(function(e){ console.warn('membershipSync error:',e); });
+          if(usersCache[member]){
+            usersCache[member].membershipType   = _msType;
+            usersCache[member].membershipExpiry = _msExpiry;
+            usersCache[member].expireDate       = _msExpiry;
+          }
+        }
         // optimistic local update — onSnapshot will reconcile
         financeRecords.push(Object.assign({}, rec, {id: docRef.id, member: _mDisplayName}));
         closeFinanceForm();
@@ -3894,6 +3940,9 @@ function submitEditFinanceRecord(type, member, date, amount, note){
   var _mObj2 = member ? usersCache[member] : null;
   var _mDisplayName2 = _mObj2 ? (_mObj2.displayName || _mObj2.name || '') : '';
   var _mRealName2    = _mObj2 ? (_mObj2.realName || '') : '';
+  // 會籍計算
+  var _msType2   = (type==='annual'||type==='monthly') ? type : '';
+  var _msExpiry2 = _calcMembershipExpiry(_msType2, date);
   const upd = {
     type:              type,
     memberId:          member || '',
@@ -3902,15 +3951,33 @@ function submitEditFinanceRecord(type, member, date, amount, note){
     date:              date,
     amount:            amount,
     note:              note || '',
+    membershipType:    _msType2,
+    membershipExpiry:  _msExpiry2,
     updatedAt:         TS(),
   };
   db.collection('financialRecords').doc(_finEditId).update(upd)
     .then(function(){
+      // 同步寫入 members/{uid} 會籍資料
+      if(member && _msType2 && _msExpiry2){
+        db.collection('members').doc(member).update({
+          membershipType:   _msType2,
+          membershipExpiry: _msExpiry2,
+          expireDate:       _msExpiry2,
+          updatedAt:        TS(),
+        }).catch(function(e){ console.warn('membershipSync error:',e); });
+        if(usersCache[member]){
+          usersCache[member].membershipType   = _msType2;
+          usersCache[member].membershipExpiry = _msExpiry2;
+          usersCache[member].expireDate       = _msExpiry2;
+        }
+      }
       var rec = financeRecords.find(function(r){ return r.id===_finEditId; });
       if(rec){
         rec.type=type; rec.member=_mDisplayName2; rec.memberDisplayName=_mDisplayName2;
         rec.memberRealName=_mRealName2; rec.memberId=member||'';
-        rec.date=date; rec.amount=amount; rec.note=note||''; rec.updatedAt=upd.updatedAt;
+        rec.date=date; rec.amount=amount; rec.note=note||'';
+        rec.membershipType=_msType2; rec.membershipExpiry=_msExpiry2;
+        rec.updatedAt=upd.updatedAt;
       }
       closeFinanceForm();
       renderFinance();
