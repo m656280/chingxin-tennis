@@ -1579,7 +1579,7 @@ function _showMainApp(){
   startNowLineTicker();
   renderBookings();
   renderManage();
-  renderFinance();
+  loadFinanceRecords();   // sets up Firestore listener; will call renderFinance() when data arrives
   loadUsersCache();
   loadMyBookings();
 }
@@ -1652,17 +1652,39 @@ function _renderProfileSheet(){
   }
 
   // ── Active ─────────────────────────────────────────────────────────
-  var _avatarSrc  = u.photoURL || _defaultAvatar;
-  var _roleLabel  = _roleLabels[u.role] || u.role || '會員';
-  // Look up extra fields from Firestore cache (ntrp, preferredPosition, expireDate)
-  var _fsM = usersCache[u.uid || u.userId] || {};
-  var _extraRows = '';
+  var _avatarSrc   = u.photoURL || _defaultAvatar;
+  var _roleLabel   = _roleLabels[u.role] || u.role || '會員';
+  var _fsM         = usersCache[u.uid || u.userId] || {};
+  var _realName    = _fsM.realName || '';
+  var _displayName = u.displayName || '未命名';
+  var _primaryName = _realName || _displayName;
+  var _safeVal     = function(v){ return _esc(v).replace(/"/g,'&quot;'); };
+
+  // ── 資訊卡 rows ────────────────────────────────────────────────────
+  var _infoRows = '';
+  _infoRows += '<div class="sheetRow"><span class="sheetRowLabel">會員角色</span><span class="sheetRowValue">' + _roleLabel + '</span></div>';
+  _infoRows += '<div class="sheetRow"><span class="sheetRowLabel">正式姓名</span><span class="sheetRowValue">' +
+    (_realName ? _esc(_realName) : '<span style="color:var(--color-text-muted);font-style:italic">未設定</span>') + '</span></div>';
   if(_fsM.ntrp)
-    _extraRows += '<div class="sheetRow"><span class="sheetRowLabel">NTRP</span><span class="sheetRowValue">' + _fsM.ntrp + '</span></div>';
+    _infoRows += '<div class="sheetRow"><span class="sheetRowLabel">NTRP</span><span class="sheetRowValue">' + _esc(String(_fsM.ntrp)) + '</span></div>';
   if(_fsM.preferredPosition)
-    _extraRows += '<div class="sheetRow"><span class="sheetRowLabel">擅長位置</span><span class="sheetRowValue">' + _fsM.preferredPosition + '</span></div>';
+    _infoRows += '<div class="sheetRow"><span class="sheetRowLabel">擅長位置</span><span class="sheetRowValue">' + _esc(_fsM.preferredPosition) + '</span></div>';
   if(_fsM.expireDate)
-    _extraRows += '<div class="sheetRow"><span class="sheetRowLabel">會費到期日</span><span class="sheetRowValue">' + String(_fsM.expireDate).replace(/\//g,' / ') + '</span></div>';
+    _infoRows += '<div class="sheetRow"><span class="sheetRowLabel">會費到期日</span><span class="sheetRowValue">' + String(_fsM.expireDate).replace(/\//g,' / ') + '</span></div>';
+  _infoRows += '<div class="sheetRow"><span class="sheetRowLabel">LINE 暱稱</span><span class="sheetRowValue" style="color:var(--color-text-muted)">' + _esc(_displayName) + '</span></div>';
+
+  // ── 正式姓名未設定提示 ─────────────────────────────────────────────
+  var _rnPrompt = !_realName
+    ? '<div style="margin:10px 20px 0;padding:10px 14px;background:rgba(184,92,74,0.07);border-radius:8px;font-size:12px;color:#8C4637;line-height:1.6">請補上正式姓名，供財務紀錄使用。</div>'
+    : '';
+
+  // ── 編輯區下拉選項 ─────────────────────────────────────────────────
+  var _ntrpOpts = ['','2.5','3.0','3.5','4.0','4.5','5.0'].map(function(v){
+    return '<option value="'+v+'"'+(String(_fsM.ntrp||'')===v?' selected':'')+'>'+(v||'— 未選擇 —')+'</option>';
+  }).join('');
+  var _posOpts = ['','底線型 / 後場','網前型','全場','雙打後場','雙打網前'].map(function(v){
+    return '<option value="'+v+'"'+(_fsM.preferredPosition===v?' selected':'')+'>'+(v||'— 未選擇 —')+'</option>';
+  }).join('');
 
   body.innerHTML =
     '<div class="sheetUserRow">' +
@@ -1672,14 +1694,36 @@ function _renderProfileSheet(){
       '</div>' +
       '<div class="sheetUserInfo">' +
         '<div class="sheetNameRow">' +
-          '<span class="sheetUserName" id="profileDisplayName">' + (u.displayName || '未命名') + '</span>' +
+          '<span class="sheetUserName" id="profileDisplayName">' + _esc(_primaryName) + '</span>' +
         '</div>' +
         '<span class="sheetMemberBadge" id="profileBadge">' + _roleLabel + '</span>' +
       '</div>' +
     '</div>' +
+    _rnPrompt +
     '<div class="sheetSection">' +
-      '<div class="sheetRow"><span class="sheetRowLabel">會員角色</span><span class="sheetRowValue">' + _roleLabel + '</span></div>' +
-      _extraRows +
+      _infoRows +
+    '</div>' +
+    '<div class="sheetSection">' +
+      '<details>' +
+        '<summary style="cursor:pointer;font-size:13px;letter-spacing:0.04em;color:var(--color-text-secondary);list-style:none;padding:8px 0;user-select:none">編輯個人資料 ›</summary>' +
+        '<div style="padding-top:4px">' +
+          '<div class="settingsRow" style="border-bottom:none">' +
+            '<label class="settingsLabel">正式姓名</label>' +
+            '<input class="settingsInput" id="profEditRealName" type="text" placeholder="請輸入正式姓名" value="' + _safeVal(_realName) + '">' +
+          '</div>' +
+          '<div class="settingsRow" style="border-bottom:none">' +
+            '<label class="settingsLabel">NTRP</label>' +
+            '<select class="settingsSelect" id="profEditNtrp">' + _ntrpOpts + '</select>' +
+          '</div>' +
+          '<div class="settingsRow" style="border-bottom:none">' +
+            '<label class="settingsLabel">擅長位置</label>' +
+            '<select class="settingsSelect" id="profEditPosition">' + _posOpts + '</select>' +
+          '</div>' +
+          '<div style="padding:8px 0 4px">' +
+            '<button class="saveBtn" style="width:100%" onclick="saveProfileEdit()">儲存</button>' +
+          '</div>' +
+        '</div>' +
+      '</details>' +
     '</div>' +
     '<div class="sheetSection">' +
       '<div class="sheetRow sheetNavRow" onclick="openNotifications()">' +
@@ -1746,6 +1790,8 @@ function _canEnter(d){
   if(!d) return false;
   var role   = d.role   || '';
   var status = d.status || '';
+  // hard block: deleted/blocked members can never enter regardless of role
+  if(status === 'deleted' || status === 'blocked') return false;
   // role-based: owner / admin always enter regardless of status field
   if(role === 'owner' || role === 'admin') return true;
   // status-based: active OR approved (both mean "cleared by admin")
@@ -1995,6 +2041,7 @@ function _routeByStatus(d, profile){
   };
   if(canEnter){ _showMainApp(); return; }
   if(s === 'resigned'){ _showAuthGate('resigned'); return; }
+  if(s === 'deleted'){  _showAuthGate('resigned'); return; }
   if(s === 'blocked'){  _showAuthGate('blocked');  return; }
   if(s === 'rejected'){ _showAuthGate('rejected'); return; }
   _showAuthGate('pending');
@@ -2319,7 +2366,7 @@ function renderManage(){
   var html='<div class="manageTabs">';
   TABS.forEach(function(t){
     var active=_manageTab===t.key;
-    var label=(t.key==='pending'&&pendingCount>0)?'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#e74c3c;margin-right:5px;vertical-align:middle"></span>'+t.label:t.label;
+    var label=(t.key==='pending'&&pendingCount>0)?t.label+'<span style="display:inline-block;min-width:16px;height:16px;border-radius:8px;background:#e74c3c;color:#fff;font-size:10px;font-weight:700;line-height:16px;padding:0 4px;text-align:center;margin-left:5px;vertical-align:middle">'+pendingCount+'</span>':t.label;
     html+='<button class="manageTabBtn'+(active?' active':'')+'" onclick="_manageTab=\''+t.key+'\';renderManage()">'+label+'</button>';
   });
   html+='</div>';
@@ -2399,6 +2446,19 @@ function _esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').re
 
 /* ── 會員管理 tab ── */
 function _renderMembersTab(el){
+  // ── [DEBUG] 臨時診斷面板 ──
+  var _cu=currentUser||{};
+  var _myId=_cu.uid||_cu.userId||'(null)';
+  var _cuRole=_cu.role||'(undefined)';
+  var _adminResult=isAdminLike();
+  var _cacheRole=(usersCache[_myId]&&usersCache[_myId].role)||'(not in cache)';
+  el.innerHTML+='<pre style="font-size:10px;line-height:1.6;background:#1a1a1a;color:#06C755;padding:10px 12px;border-radius:8px;margin-bottom:12px;white-space:pre-wrap;word-break:break-all">'+
+    '[DEBUG] currentUser.uid:  '+_myId+'\n'+
+    '[DEBUG] currentUser.role: '+_cuRole+'\n'+
+    '[DEBUG] isAdminLike():    '+_adminResult+'\n'+
+    '[DEBUG] cache role:       '+_cacheRole+
+  '</pre>';
+  // ── end debug ──
   var ROLE_LABEL={owner:'擁有者',admin:'管理員',coach:'教練',annual_member:'年費會員',monthly_member:'月費會員',member:'會員'};
   var members=Object.values(usersCache).filter(function(m){
     return m.status==='approved' || m.status==='active';
@@ -2413,7 +2473,7 @@ function _renderMembersTab(el){
   if(isAdminLike()){
     // ── 進階視圖（owner / admin）──
     members.forEach(function(m){
-      var initials=(m.displayName||'?').charAt(0);
+      var initials=(m.realName||m.displayName||'?').charAt(0);
       var avatarSrc=m.photoURL||m.lineAvatar||'';
       var avatarHtml=avatarSrc
         ?'<img src="'+avatarSrc+'" style="width:44px;height:44px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1px solid var(--color-border-soft)" onerror="this.style.display=\'none\'" alt="">'
@@ -2423,28 +2483,83 @@ function _renderMembersTab(el){
       var shortUid=rawUid.length>12?rawUid.slice(0,12)+'…':rawUid;
       var meta2=[];
       if(m.ntrp) meta2.push('NTRP '+_esc(String(m.ntrp)));
-      html+='<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--color-border-soft)">'+
+      html+='<div style="display:flex;align-items:center;gap:12px;padding:12px 0 4px 0">'+
         '<div style="flex-shrink:0">'+avatarHtml+'</div>'+
         '<div style="flex:1;min-width:0">'+
-          '<div style="font-size:14px;font-weight:500;color:var(--color-text-primary)">'+_esc(m.displayName||'未知')+'</div>'+
+          '<div style="font-size:14px;font-weight:500;color:var(--color-text-primary)">'+_esc(m.realName||m.displayName||'未知')+'</div>'+
+          (m.realName?'<div style="font-size:11px;color:var(--color-text-muted);margin-top:1px">LINE：'+_esc(m.displayName||'')+'</div>':'')+
           '<div style="font-size:11px;color:var(--color-text-muted);margin-top:2px">'+
             (meta2.length?meta2.join(' · '):'')+'</div>'+
           '<div style="font-size:10px;color:var(--color-text-muted);margin-top:2px;opacity:0.7">'+_esc(shortUid)+'</div>'+
         '</div>'+
         '<div class="memberBadge'+(m.role==='coach'?' coach':'')+'">'+roleLabel+'</div>'+
       '</div>'+
-      '<div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 0 12px 56px;border-bottom:1px solid var(--color-border-soft);margin-top:-12px">'+
-        '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="alert(\'功能尚未開放\')">封鎖</button>'+
-        '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="alert(\'功能尚未開放\')">設為會員</button>'+
-        '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="alert(\'功能尚未開放\')">設為教練</button>'+
-        '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="alert(\'功能尚未開放\')">設為管理員</button>'+
-        '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid #e74c3c;background:transparent;color:#e74c3c;cursor:pointer" onclick="alert(\'功能尚未開放\')">刪除</button>'+
-      '</div>';
+      (rawUid===_myId
+        ? '<div style="padding:4px 0 16px 56px"><span style="font-size:11px;color:var(--color-text-muted);letter-spacing:0.5px">YOU &nbsp;永久</span></div>'
+        : '<div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 0 16px 56px">'+
+            '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="blockMember(\''+rawUid+'\')">封鎖</button>'+
+            '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="setMemberRole(\''+rawUid+'\',\'member\')">設為會員</button>'+
+            '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="setMemberRole(\''+rawUid+'\',\'coach\')">設為教練</button>'+
+            (_cuRole==='owner'?'<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="setMemberRole(\''+rawUid+'\',\'admin\')">設為管理員</button>':'')+
+            '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid #e74c3c;background:transparent;color:#e74c3c;cursor:pointer" onclick="removeMember(\''+rawUid+'\')">離會</button>'+
+          '</div>');
     });
+    // ── 已離會 Accordion ──
+    var deleted=Object.values(usersCache).filter(function(m){ return m.status==='deleted'; });
+    if(deleted.length){
+      deleted.sort(function(a,b){ return (a.displayName||'').localeCompare(b.displayName||'','zh-Hant'); });
+      html+='<details style="margin-top:20px;border-top:1px solid var(--color-border-soft);padding-top:14px">'+
+        '<summary style="cursor:pointer;font-size:12px;font-weight:600;letter-spacing:0.06em;color:var(--color-text-muted);padding:4px 0;user-select:none">'+
+          '已離會會員（'+deleted.length+'）</summary>'+
+        '<div style="margin-top:10px">';
+      deleted.forEach(function(m){
+        var initials=(m.realName||m.displayName||'?').charAt(0);
+        var avatarSrc=m.photoURL||m.lineAvatar||'';
+        var dUid=m.userId||m.uid||'';
+        var avatarHtml=avatarSrc
+          ?'<img src="'+avatarSrc+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0;opacity:0.45" onerror="this.style.display=\'none\'" alt="">'
+          :'<svg width="40" height="40" viewBox="0 0 40 40" style="flex-shrink:0;opacity:0.45"><rect width="40" height="40" rx="20" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="15" font-family="serif">'+initials+'</text></svg>';
+        html+='<div style="display:flex;align-items:center;gap:12px;padding:8px 0">'+
+          '<div style="flex-shrink:0">'+avatarHtml+'</div>'+
+          '<div style="flex:1;min-width:0">'+
+            '<div style="font-size:14px;color:var(--color-text-muted)">'+_esc(m.realName||m.displayName||'未知')+'</div>'+
+            '<div style="font-size:10px;color:var(--color-text-muted);opacity:0.6;margin-top:2px">已離會</div>'+
+          '</div>'+
+          '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="restoreMember(\''+dUid+'\')">恢復會員</button>'+
+        '</div>';
+      });
+      html+='</div></details>';
+    }
+    // ── 已封鎖 Accordion ──
+    var blockedList=Object.values(usersCache).filter(function(m){ return m.status==='blocked'; });
+    if(blockedList.length){
+      blockedList.sort(function(a,b){ return (a.displayName||'').localeCompare(b.displayName||'','zh-Hant'); });
+      html+='<details style="margin-top:16px;border-top:1px solid var(--color-border-soft);padding-top:14px">'+
+        '<summary style="cursor:pointer;font-size:12px;font-weight:600;letter-spacing:0.06em;color:var(--color-text-muted);padding:4px 0;user-select:none">'+
+          '已封鎖會員（'+blockedList.length+'）</summary>'+
+        '<div style="margin-top:10px">';
+      blockedList.forEach(function(m){
+        var initials=(m.realName||m.displayName||'?').charAt(0);
+        var avatarSrc=m.photoURL||m.lineAvatar||'';
+        var bUid=m.userId||m.uid||'';
+        var avatarHtml=avatarSrc
+          ?'<img src="'+avatarSrc+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0;opacity:0.45" onerror="this.style.display=\'none\'" alt="">'
+          :'<svg width="40" height="40" viewBox="0 0 40 40" style="flex-shrink:0;opacity:0.45"><rect width="40" height="40" rx="20" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="15" font-family="serif">'+initials+'</text></svg>';
+        html+='<div style="display:flex;align-items:center;gap:12px;padding:8px 0">'+
+          '<div style="flex-shrink:0">'+avatarHtml+'</div>'+
+          '<div style="flex:1;min-width:0">'+
+            '<div style="font-size:14px;color:var(--color-text-muted)">'+_esc(m.realName||m.displayName||'未知')+'</div>'+
+            '<div style="font-size:10px;color:var(--color-text-muted);opacity:0.6;margin-top:2px">已封鎖</div>'+
+          '</div>'+
+          '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="unblockMember(\''+bUid+'\')">解除封鎖</button>'+
+        '</div>';
+      });
+      html+='</div></details>';
+    }
   } else {
-    // ── 簡單視圖（一般 member）── 維持原本不變
+    // ── 簡單視圖（一般 member）──
     members.forEach(function(m){
-      var initials=(m.displayName||'?').charAt(0);
+      var initials=(m.realName||m.displayName||'?').charAt(0);
       var avatarHtml=m.lineAvatar
         ?'<img src="'+m.lineAvatar+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'" alt="">'
         :'<svg width="40" height="40" viewBox="0 0 40 40"><rect width="40" height="40" rx="20" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="16" font-family="serif">'+initials+'</text></svg>';
@@ -2452,7 +2567,7 @@ function _renderMembersTab(el){
       html+='<div class="memberCard">'+
         '<div class="memberAvatar">'+avatarHtml+'</div>'+
         '<div class="memberInfo">'+
-          '<div class="memberName">'+_esc(m.displayName||'未知')+'</div>'+
+          '<div class="memberName">'+_esc(m.realName||m.displayName||'未知')+'</div>'+
           '<div class="memberMeta">'+(m.ntrp?'NTRP '+m.ntrp+' · ':'')+(m.preferredPosition?_esc(m.preferredPosition):'')+'</div>'+
         '</div>'+
         '<div class="memberBadge'+(m.role==='coach'?' coach':'')+'">'+roleLabel+'</div>'+
@@ -2707,6 +2822,103 @@ function reOpenRejected(userId){
     .catch(function(e){ console.error('reOpenRejected error:',e); showToast('操作失敗，請稍後再試'); });
 }
 
+/* ── Remove Member (離會) ── */
+function removeMember(userId){
+  if(!db){showToast('無法連線，請稍後再試');return;}
+  var target=usersCache[userId];
+  if(!target){showToast('找不到此會員');return;}
+  if(target.role==='owner'){showToast('擁有者無法離會');return;}
+  var operator=_currentRole();
+  if(operator==='admin'&&(target.role==='owner'||target.role==='admin')){showToast('管理員無法操作此身份');return;}
+  if(!confirm('確定讓「'+(target.displayName||userId)+'」離會？\n（資料保留，可隨時恢復）'))return;
+  db.collection('members').doc(userId).update({status:'deleted',approved:false,deletedAt:TS()})
+    .then(function(){
+      if(usersCache[userId]){usersCache[userId].status='deleted';usersCache[userId].approved=false;}
+      showToast('已標記離會');
+      renderManage();
+    })
+    .catch(function(e){console.error('removeMember error:',e);showToast('操作失敗，請稍後再試');});
+}
+
+/* ── Block Member (封鎖) ── */
+function blockMember(userId){
+  if(!db){showToast('無法連線，請稍後再試');return;}
+  var target=usersCache[userId];
+  if(!target){showToast('找不到此會員');return;}
+  if(target.role==='owner'){showToast('擁有者無法被封鎖');return;}
+  var operator=_currentRole();
+  if(operator==='admin'&&(target.role==='owner'||target.role==='admin')){showToast('管理員無法操作此身份');return;}
+  if(!confirm('確定封鎖「'+(target.displayName||userId)+'」？\n（封鎖後將無法登入）'))return;
+  db.collection('members').doc(userId).update({status:'blocked',approved:false,blockedAt:TS()})
+    .then(function(){
+      if(usersCache[userId]){usersCache[userId].status='blocked';usersCache[userId].approved=false;}
+      showToast('已封鎖');
+      renderManage();
+    })
+    .catch(function(e){console.error('blockMember error:',e);showToast('操作失敗，請稍後再試');});
+}
+
+/* ── Unblock Member (解除封鎖) ── */
+function unblockMember(userId){
+  if(!db){showToast('無法連線，請稍後再試');return;}
+  var target=usersCache[userId];
+  if(!target){showToast('找不到此會員');return;}
+  if(!confirm('確定解除封鎖「'+(target.displayName||userId)+'」？'))return;
+  db.collection('members').doc(userId).update({status:'approved',approved:true,unblockedAt:TS()})
+    .then(function(){
+      if(usersCache[userId]){usersCache[userId].status='approved';usersCache[userId].approved=true;}
+      showToast('已解除封鎖');
+      renderManage();
+    })
+    .catch(function(e){console.error('unblockMember error:',e);showToast('操作失敗，請稍後再試');});
+}
+
+/* ── Restore Member (恢復會員) ── */
+function restoreMember(userId){
+  if(!db){showToast('無法連線，請稍後再試');return;}
+  var target=usersCache[userId];
+  if(!target){showToast('找不到此會員');return;}
+  if(!confirm('確定恢復「'+(target.displayName||userId)+'」的會員資格？'))return;
+  db.collection('members').doc(userId).update({status:'approved',approved:true,restoredAt:TS()})
+    .then(function(){
+      if(usersCache[userId]){usersCache[userId].status='approved';usersCache[userId].approved=true;}
+      showToast('已恢復會員資格');
+      renderManage();
+    })
+    .catch(function(e){console.error('restoreMember error:',e);showToast('操作失敗，請稍後再試');});
+}
+
+/* ── Member Role Switch ── */
+function setMemberRole(userId, newRole){
+  if(!db){showToast('無法連線，請稍後再試');return;}
+  var operator=_currentRole();
+  if(!operator){showToast('請先登入');return;}
+  var target=usersCache[userId];
+  if(!target){showToast('找不到此會員');return;}
+  var targetRole=target.role||'member';
+  // owner cannot be downgraded by anyone
+  if(targetRole==='owner'){showToast('擁有者身份無法變更');return;}
+  // admin cannot operate on owner (defensive; YOU 永久 already blocks self)
+  if(operator==='admin'&&targetRole==='owner'){showToast('管理員無法操作擁有者');return;}
+  // only owner can promote to admin
+  if(newRole==='admin'&&operator!=='owner'){showToast('僅擁有者可設定管理員');return;}
+  // admin cap check
+  if(newRole==='admin'){
+    var cur=Object.values(usersCache).filter(function(m){return m.role==='admin';}).length;
+    if(cur>=8){showToast('管理員已達上限（8位）');return;}
+  }
+  var LBL={member:'會員',coach:'教練',admin:'管理員'};
+  if(!confirm('確定將「'+(target.displayName||userId)+'」設為'+(LBL[newRole]||newRole)+'？'))return;
+  db.collection('members').doc(userId).update({role:newRole,updatedAt:TS()})
+    .then(function(){
+      if(usersCache[userId])usersCache[userId].role=newRole;
+      if(currentUser&&(currentUser.uid===userId||currentUser.userId===userId))currentUser.role=newRole;
+      showToast('已設為'+(LBL[newRole]||newRole));
+      renderManage();
+    })
+    .catch(function(e){console.error('setMemberRole error:',e);showToast('操作失敗，請稍後再試');});
+}
+
 /* ── Announcements: Load ── */
 function loadAnnouncements(){
   if(!db) return;
@@ -2775,7 +2987,7 @@ function openCoachAssign(coachId){
   var existingStudents=coach.coachStudents&&typeof coach.coachStudents==='object'&&!Array.isArray(coach.coachStudents)
     ?Object.keys(coach.coachStudents):[];
   var available=Object.values(usersCache).filter(function(m){
-    return m.role&&m.role!=='pending'&&m.role!=='blocked'&&existingStudents.indexOf(m.userId)<0&&m.userId!==coachId;
+    return m.role&&m.role!=='pending'&&m.role!=='blocked'&&m.status!=='deleted'&&m.status!=='blocked'&&existingStudents.indexOf(m.userId)<0&&m.userId!==coachId;
   });
   if(!available.length){showToast('沒有可指派的會員');return;}
   var el=document.getElementById('manageContent');
@@ -2987,7 +3199,7 @@ function _renderExpiringSoon(){
   var members = Object.values(usersCache).map(function(m){
     return {
       id:         m.userId,
-      name:       m.displayName || '',
+      name:       m.realName || m.displayName || '',
       status:     m.status || '',
       expireDate: m.expireDate || null,
       expirePaid: m.expirePaid || false,
@@ -2996,7 +3208,7 @@ function _renderExpiringSoon(){
   });
   var list = members.filter(function(m){
     var s = m.status || '';
-    if(s === 'pending' || s === 'blocked' || s === 'resigned') return false;
+    if(s === 'pending' || s === 'blocked' || s === 'resigned' || s === 'deleted') return false;
     if(!m.expireDate) return false;
     if(m.expirePaid) return false;
     var exp = new Date(m.expireDate.replace(/\//g,'-')+'T00:00:00');
@@ -3112,12 +3324,15 @@ function _renderFinDetail(source, isAdmin, fmt){
     var isOut = r.type==='expense';
     var editedPart = r.updatedByName?' · 修改：'+r.updatedByName:'';
     var dateMeta = r.date+(r.createdByName?' · 登記：'+r.createdByName:'')+editedPart;
-    // Check if member has since resigned — look up by displayName in usersCache
-    var memberObj = r.member
-      ? Object.values(usersCache).find(function(x){ return (x.displayName||'')===r.member; })
-      : null;
-    var resignedTag = (memberObj&&memberObj.status==='resigned')
+    // Look up member by id (reliable); fallback to displayName match for legacy records
+    var memberObj = r.memberId
+      ? (usersCache[r.memberId] || null)
+      : (r.member ? Object.values(usersCache).find(function(x){ return (x.displayName||'')===r.member; }) : null);
+    var _ms=memberObj?memberObj.status:null;
+    var resignedTag = (_ms==='resigned')
       ? '<span style="font-size:9.5px;letter-spacing:0.05em;color:#8C4637;background:rgba(130,65,52,0.09);padding:2px 7px;border-radius:99px;margin-left:6px;vertical-align:middle">已退會</span>'
+      : (_ms==='deleted')
+      ? '<span style="font-size:9.5px;letter-spacing:0.05em;color:#8C4637;background:rgba(130,65,52,0.09);padding:2px 7px;border-radius:99px;margin-left:6px;vertical-align:middle">已離會</span>'
       : '';
     var delIcon = isAdmin
       ? '<button class="finDeleteIcon" onclick="event.stopPropagation();deleteFinanceRecord(\''+r.id+'\')" title="刪除">'
@@ -3126,7 +3341,7 @@ function _renderFinDetail(source, isAdmin, fmt){
       : '';
     html += '<div class="financeRecord" style="align-items:flex-start">'
       + '<div class="finRecordLeft financeRecordLeft" onclick="editFinanceRecord(\''+r.id+'\')">'
-        + '<div class="financeRecordName">'+(r.member||'—')+resignedTag+'</div>'
+        + '<div class="financeRecordName">'+(r.memberRealName||r.member||'—')+resignedTag+'</div>'
         + (r.note?'<div class="finRecordNote">'+r.note+'</div>':'')
         + '<div class="finRecordDateMeta">'+dateMeta+'</div>'
       + '</div>'
@@ -3408,15 +3623,18 @@ function closeFinCategory(){
 function deleteFinanceRecord(id){
   if(!_isFinanceAdmin()){ showToast('僅管理員可刪除紀錄'); return; }
   if(!confirm('確定刪除此筆財務紀錄？')) return;
-  // try local array first, then MOCK (const array is still mutable)
-  const fi = financeRecords.findIndex(function(r){ return r.id===id; });
-  if(fi > -1){
-    financeRecords.splice(fi, 1);
-  } else {
-    showToast('紀錄不存在');
-  }
-  renderFinance();
-  showToast('紀錄已刪除');
+  if(!db){ showToast('無法連線，請稍後再試'); return; }
+  db.collection('financialRecords').doc(id).delete()
+    .then(function(){
+      const fi = financeRecords.findIndex(function(r){ return r.id===id; });
+      if(fi > -1) financeRecords.splice(fi, 1);
+      renderFinance();
+      showToast('紀錄已刪除');
+    })
+    .catch(function(e){
+      console.error('deleteFinanceRecord error:', e);
+      showToast('刪除失敗，請稍後再試');
+    });
 }
 
 /* ── Finance: Export CSV ── */
@@ -3463,16 +3681,17 @@ function exportFinanceCSV(){
 }
 
 /* ── Finance: Form ── */
-function _finPopulateMemberSelect(selectedName){
+function _finPopulateMemberSelect(selectedId){
   const sel = document.getElementById('finFormMember');
   sel.innerHTML = '<option value="">— 選擇會員 / 備註用 —</option>';
-  const list = Object.values(usersCache).filter(function(u){ return u.role !== 'blocked'; });
+  const list = Object.values(usersCache).filter(function(u){ return u.role !== 'blocked' && u.status !== 'deleted' && u.status !== 'blocked'; });
   list.forEach(function(u){
+    const uid  = u.userId || u.uid || '';
     const name = u.displayName || u.name || '';
-    if(!name) return;
+    if(!uid || !name) return;
     const opt = document.createElement('option');
-    opt.value = name; opt.textContent = name;
-    if(name === selectedName) opt.selected = true;
+    opt.value = uid; opt.textContent = u.realName ? (u.realName + '（' + name + '）') : name;
+    if(uid === selectedId) opt.selected = true;
     sel.appendChild(opt);
   });
 }
@@ -3509,43 +3728,74 @@ function submitFinanceRecord(){
   if(_finEditId){
     submitEditFinanceRecord(type, member, date, amount, note);
   } else {
-    const creatorName = currentUser
-      ? (currentUser.displayName || currentUser.name || '')
-      : 'Maverick 小狸';
+    if(!db){ showToast('無法連線，請稍後再試'); return; }
+    const creatorName = currentUser ? (currentUser.displayName || currentUser.name || '') : '';
+    const creatorUid  = currentUser ? (currentUser.uid || currentUser.userId || '') : '';
+    // member = userId (option value); look up display info directly
+    var _mObj = member ? usersCache[member] : null;
+    var _mDisplayName = _mObj ? (_mObj.displayName || _mObj.name || '') : '';
+    var _mRealName    = _mObj ? (_mObj.realName || '') : '';
     const rec = {
-      id: 'f'+(Date.now()),
-      year: _finYear,
-      type: type, member: member, date: date, amount: amount, note: note,
-      createdByName: creatorName,
-      updatedByName: null, updatedAt: null,
+      type:              type,
+      memberId:          member || '',
+      memberDisplayName: _mDisplayName,
+      memberRealName:    _mRealName,
+      year:              _finYear,
+      date:              date,
+      amount:            amount,
+      note:              note || '',
+      createdByUid:      creatorUid,
+      createdByName:     creatorName,
+      createdAt:         TS(),
+      updatedAt:         null,
     };
-    financeRecords.push(rec);
-    closeFinanceForm();
-    renderFinance();
-    showToast('紀錄已儲存');
+    db.collection('financialRecords').add(rec)
+      .then(function(docRef){
+        // optimistic local update — onSnapshot will reconcile
+        financeRecords.push(Object.assign({}, rec, {id: docRef.id, member: _mDisplayName}));
+        closeFinanceForm();
+        renderFinance();
+        showToast('紀錄已儲存');
+      })
+      .catch(function(e){
+        console.error('submitFinanceRecord error:', e);
+        showToast('儲存失敗，請稍後再試');
+      });
   }
 }
 
 function submitEditFinanceRecord(type, member, date, amount, note){
-  const editorName = currentUser
-    ? (currentUser.displayName || currentUser.name || '')
-    : 'Maverick 小狸';
-  const updatedAt = new Date().toISOString().slice(0,10);
-
-  var rec = financeRecords.find(function(r){ return r.id===_finEditId; });
-  if(!rec){ showToast('找不到紀錄'); return; }
-
-  rec.type   = type;
-  rec.member = member;
-  rec.date   = date;
-  rec.amount = amount;
-  rec.note   = note;
-  rec.updatedByName = editorName;
-  rec.updatedAt     = updatedAt;
-
-  closeFinanceForm();
-  renderFinance();
-  showToast('已更新紀錄');
+  if(!db){ showToast('無法連線，請稍後再試'); return; }
+  // member = userId (option value); look up display info directly
+  var _mObj2 = member ? usersCache[member] : null;
+  var _mDisplayName2 = _mObj2 ? (_mObj2.displayName || _mObj2.name || '') : '';
+  var _mRealName2    = _mObj2 ? (_mObj2.realName || '') : '';
+  const upd = {
+    type:              type,
+    memberId:          member || '',
+    memberDisplayName: _mDisplayName2,
+    memberRealName:    _mRealName2,
+    date:              date,
+    amount:            amount,
+    note:              note || '',
+    updatedAt:         TS(),
+  };
+  db.collection('financialRecords').doc(_finEditId).update(upd)
+    .then(function(){
+      var rec = financeRecords.find(function(r){ return r.id===_finEditId; });
+      if(rec){
+        rec.type=type; rec.member=_mDisplayName2; rec.memberDisplayName=_mDisplayName2;
+        rec.memberRealName=_mRealName2; rec.memberId=member||'';
+        rec.date=date; rec.amount=amount; rec.note=note||''; rec.updatedAt=upd.updatedAt;
+      }
+      closeFinanceForm();
+      renderFinance();
+      showToast('已更新紀錄');
+    })
+    .catch(function(e){
+      console.error('submitEditFinanceRecord error:', e);
+      showToast('更新失敗，請稍後再試');
+    });
 }
 
 /* ── Finance: Edit ── */
@@ -3560,7 +3810,7 @@ function editFinanceRecord(id){
   document.getElementById('finFormDate').value   = rec.date   || '';
   document.getElementById('finFormAmount').value = rec.amount || '';
   document.getElementById('finFormNote').value   = rec.note   || '';
-  _finPopulateMemberSelect(rec.member || '');
+  _finPopulateMemberSelect(rec.memberId || '');
   document.getElementById('sheetBackdrop').classList.add('open');
   document.getElementById('financeFormSheet').classList.add('open');
 }
@@ -3575,23 +3825,24 @@ function renderMembers(filter){
   var list = Object.values(usersCache)
     .filter(function(m){
       var s = m.status || '';
-      return s !== 'pending' && s !== 'blocked' && s !== 'rejected';
+      return s !== 'pending' && s !== 'blocked' && s !== 'rejected' && s !== 'deleted';
     })
     .filter(function(m){
-      return !f || (m.displayName||'').toLowerCase().includes(f)
+      return !f || (m.realName||'').toLowerCase().includes(f)
+                || (m.displayName||'').toLowerCase().includes(f)
                 || String(m.ntrp||'').includes(f)
                 || (m.preferredPosition||'').toLowerCase().includes(f);
     })
     .sort(function(a,b){
       if(a.role==='coach' && b.role!=='coach') return -1;
       if(b.role==='coach' && a.role!=='coach') return  1;
-      return (a.displayName||'').localeCompare(b.displayName||'','zh');
+      return (a.realName||a.displayName||'').localeCompare(b.realName||b.displayName||'','zh');
     });
   if(!list.length){
     el.innerHTML = '<div class="emptyState"><div class="emptyStateIcon">—</div>目前無會員資料</div>';
   } else {
     el.innerHTML = list.map(function(m){
-      var initials=(m.displayName||'?').charAt(0);
+      var initials=(m.realName||m.displayName||'?').charAt(0);
       var isCoach=m.role==='coach';
       var avatarHtml=m.photoURL
         ?'<img src="'+m.photoURL+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'" alt="">'
@@ -3599,7 +3850,7 @@ function renderMembers(filter){
       return '<div class="memberCard" onclick="showMemberDetail(\''+m.userId+'\')" style="cursor:pointer">'+
         '<div class="memberAvatar">'+avatarHtml+'</div>'+
         '<div class="memberInfo">'+
-          '<div class="memberName">'+(m.displayName||'未知')+'</div>'+
+          '<div class="memberName">'+(m.realName||m.displayName||'未知')+'</div>'+
           '<div class="memberMeta">'+(m.ntrp?'NTRP '+m.ntrp+' · ':'')+(m.preferredPosition||'—')+'</div>'+
         '</div>'+
         '<span class="memberBadge'+(isCoach?' coach':'')+'">'+((ROLE_BADGE[m.role])||'會員')+'</span>'+
@@ -4047,6 +4298,34 @@ function saveSettings(){
   closeSettings();
 }
 
+/* ── Profile Edit: save realName / ntrp / preferredPosition ── */
+function saveProfileEdit(){
+  var realName = (document.getElementById('profEditRealName') ||{}).value || '';
+  var ntrp     = (document.getElementById('profEditNtrp')     ||{}).value || '';
+  var position = (document.getElementById('profEditPosition') ||{}).value || '';
+  if(!currentUser){ showToast('請先登入'); return; }
+  if(!db){ showToast('無法連線，請稍後再試'); return; }
+  var uid = currentUser.uid || currentUser.userId || '';
+  if(!uid){ showToast('找不到使用者'); return; }
+  db.collection('members').doc(uid).update({
+    realName:          realName,
+    ntrp:              ntrp,
+    preferredPosition: position,
+    updatedAt:         TS(),
+  })
+  .then(function(){
+    // optimistic local update — onSnapshot will reconcile
+    if(currentUser){ currentUser.realName=realName; currentUser.ntrp=ntrp; currentUser.preferredPosition=position; }
+    if(usersCache[uid]){ usersCache[uid].realName=realName; usersCache[uid].ntrp=ntrp; usersCache[uid].preferredPosition=position; }
+    showToast('個人資料已儲存');
+    _renderProfileSheet();
+  })
+  .catch(function(e){
+    console.error('saveProfileEdit error:', e);
+    showToast('儲存失敗，請稍後再試');
+  });
+}
+
 /* ── Notifications Sheet ── */
 function openNotifications(){
   renderNotifications();
@@ -4102,6 +4381,30 @@ function showBookingDetail(id){
 function showMemberDetail(uid){
   var m=usersCache[uid]; if(!m) return;
   showToast(m.displayName+(m.ntrp?' · NTRP '+m.ntrp:'')+(m.preferredPosition?' · '+m.preferredPosition:''));
+}
+
+/* ── Load Finance Records from Firestore (real-time listener) ── */
+// Collection: financialRecords (Firestore)
+// Local cache: financeRecords[] — kept in sync; render functions read from here unchanged
+function loadFinanceRecords(){
+  if(!db) return;
+  db.collection('financialRecords')
+    .onSnapshot(function(snap){
+      financeRecords = snap.docs.map(function(d){
+        var data = d.data();
+        return Object.assign({}, data, {
+          id:     d.id,
+          member: data.memberDisplayName || data.memberName || data.member || '',  // normalize for render functions
+        });
+      });
+      // Re-render finance screen if it is currently active
+      var finScreen = document.getElementById('screen-finance');
+      if(finScreen && finScreen.classList.contains('active')){
+        renderFinance();
+      }
+    }, function(e){
+      console.warn('[loadFinanceRecords] Firestore error:', e);
+    });
 }
 
 /* ── Load Users Cache from Firestore (real-time) ── */
@@ -4232,7 +4535,7 @@ function openBookingForm(){
   if(bfSel){
     var opts='<option value="">— 自己 —</option>';
     Object.values(usersCache).forEach(function(m){
-      if(m.role&&m.role!=='pending'&&m.role!=='blocked')
+      if(m.role&&m.role!=='pending'&&m.role!=='blocked'&&m.status!=='deleted'&&m.status!=='blocked')
         opts+='<option value="'+m.userId+'">'+m.displayName+'</option>';
     });
     bfSel.innerHTML=opts;
