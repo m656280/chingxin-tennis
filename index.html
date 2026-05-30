@@ -2166,6 +2166,7 @@ let currentUser = null;
 let usersCache = {};          // uid → user doc
 let courtBookingsFirestore = null;  // null = not yet loaded; [] = loaded but empty
 let weekBookingsCache = [];         // all confirmed bookings for current week view
+let monthBookingsCache = [];        // all confirmed bookings for current month view
 let myBookingsFirestore = null;     // null = not yet loaded; [] = loaded but empty
 let pendingUsersFirestore = [];
 let unsubMyBookings = null;
@@ -2535,15 +2536,14 @@ function renderMonthView(){
     if(isT) cls+=' today';
     if(isSel) cls+=' selected';
     if(isWe) cls+=' weekend';
-    const dayBookings=(courtBookingsFirestore||[]).filter(b=>b.date===ds);
+    const dayBookings=(monthBookingsCache||[]).filter(b=>b.date===ds);
     html+='<button class="'+cls+'" onclick="selectDate(\''+ds+'\');setView(\'week\',document.getElementById(\'btnWeek\'))">'
       +'<span class="monthCellNum">'+d+'</span>';
     if(dayBookings.length>0){
       html+='<div class="monthDots">';
       dayBookings.slice(0,3).forEach(b=>{
-        const isLock=b.mode==='event_lock';
-        const isCoach=b.mode==='coaching'||b.mode==='group_class';
-        const dotCls=isLock?'dot-event':(isCoach?'dot-coach':(COURT_SURFACE[b.court]==='clay'?'dot-clay':'dot-hard'));
+        const nm=_normaliseMode(b.mode);
+        const dotCls=nm==='event_lock'?'dot-event':(nm==='teaching'||nm==='group_class'?'dot-coach':(COURT_SURFACE[b.court]==='clay'?'dot-clay':'dot-hard'));
         html+='<span class="monthDot '+dotCls+'"></span>';
       });
       html+='</div>';
@@ -4658,7 +4658,7 @@ function setView(v, el){
   document.getElementById('view-month').style.display=v==='month'?'block':'none';
   document.querySelectorAll('.switcherOption').forEach(b=>b.classList.remove('active'));
   el.classList.add('active');
-  if(v==='month') renderMonthView();
+  if(v==='month') loadMonthBookings();
   if(v==='week') render();
 }
 
@@ -5396,6 +5396,29 @@ function loadCourtBookings(dateStr){
     });
 }
 
+/* ── Load Month Bookings from Firestore ── */
+function loadMonthBookings(){
+  if(!db){ renderMonthView(); return; }
+  var year  = selectedDate.getFullYear();
+  var month = selectedDate.getMonth(); // 0-based
+  var firstDs = formatDate(new Date(year, month, 1));
+  var lastDs  = formatDate(new Date(year, month+1, 0));
+  db.collection('bookings')
+    .where('date','>=',firstDs)
+    .where('date','<=',lastDs)
+    .where('status','==','confirmed')
+    .get()
+    .then(function(snap){
+      monthBookingsCache = snap.docs.map(function(d){ return Object.assign({id:d.id},d.data()); });
+      renderMonthView();
+    })
+    .catch(function(e){
+      console.warn('loadMonthBookings error:',e);
+      monthBookingsCache = [];
+      renderMonthView();
+    });
+}
+
 /* ── Load My Bookings from Firestore ── */
 function loadMyBookings(){
   if(!db||!currentUser){ renderBookings(); renderManage(); return; }
@@ -5456,6 +5479,7 @@ function cancelBooking(id){
       _dvCloseDetail();
       loadMyBookings();
       loadWeekBookings();
+      loadMonthBookings();
     })
     .catch(function(e){ console.error('cancelBooking error:',e); showToast('取消失敗：'+e.message); });
 }
@@ -5475,6 +5499,7 @@ function leaveBooking(id){
     _dvCloseDetail();
     loadMyBookings();
     loadWeekBookings();
+    loadMonthBookings();
   }).catch(function(e){ console.error('leaveBooking error:',e); showToast('退出失敗：'+e.message); });
 }
 
@@ -5741,6 +5766,7 @@ function submitBooking(){
         closeBookingForm();
         loadWeekBookings();
         loadMyBookings();
+        loadMonthBookings();
       });
     })
     .catch(function(e){
