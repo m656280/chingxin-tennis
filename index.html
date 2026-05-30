@@ -2089,6 +2089,9 @@ let myBookingsFirestore = null;     // null = not yet loaded; [] = loaded but em
 let pendingUsersFirestore = [];
 let unsubMyBookings = null;
 let _manageTab = 'pending';   // 'pending' | 'members' | 'coach' | 'adminSettings' | 'announcements'
+let _memberSearch='';        // member directory: text search
+let _memberNtrpFilter='';    // member directory: NTRP filter
+let _memberPosFilter='';     // member directory: position filter
 let _coachTabSelected = null; // manage: currently viewed coach uid
 let announcementsCache = [];  // manage: announcements from Firestore
 let financeRecords = [];      // local array; Firestore layer can be added later
@@ -2349,7 +2352,7 @@ function renderManage(){
 
   var ALL_TABS=[
     {key:'pending',       label:'待審核',   show:adminLike},
-    {key:'members',       label:'會員管理', show:adminLike},
+    {key:'members',       label:adminLike?'會員管理':'會員名單', show:true},
     {key:'coach',         label:'教練管理', show:isCoach||adminLike},
     {key:'adminSettings', label:'管理員設定',show:adminLike},
     {key:'announcements', label:'公告',     show:true},
@@ -2554,25 +2557,92 @@ function _renderMembersTab(el){
       html+='</div></details>';
     }
   } else {
-    // ── 簡單視圖（一般 member）──
-    members.forEach(function(m){
-      var initials=(m.realName||m.displayName||'?').charAt(0);
-      var avatarHtml=m.lineAvatar
-        ?'<img src="'+m.lineAvatar+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'" alt="">'
-        :'<svg width="40" height="40" viewBox="0 0 40 40"><rect width="40" height="40" rx="20" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="16" font-family="serif">'+initials+'</text></svg>';
-      var roleLabel=ROLE_LABEL[m.role]||m.role||'會員';
-      html+='<div class="memberCard">'+
-        '<div class="memberAvatar">'+avatarHtml+'</div>'+
-        '<div class="memberInfo">'+
-          '<div class="memberName">'+_esc(m.realName||m.displayName||'未知')+'</div>'+
-          '<div class="memberMeta">'+(m.ntrp?'NTRP '+m.ntrp+' · ':'')+(m.preferredPosition?_esc(m.preferredPosition):'')+'</div>'+
+    // ── 會員名錄視圖（一般 member，含搜尋 / 篩選）──
+    var _sv=function(v){ return (v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+    html+=
+      '<div style="margin-bottom:14px">'+
+        '<input type="text" id="memberDirSearch"'+
+          ' placeholder="搜尋姓名、暱稱、NTRP、位置…"'+
+          ' style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-primary);font-size:13px;outline:none"'+
+          ' value="'+_sv(_memberSearch)+'"'+
+          ' oninput="_memberSearch=this.value;_renderMemberListInTab()">'+
+        '<div style="display:flex;gap:8px;margin-top:8px">'+
+          '<select id="memberDirNtrp"'+
+            ' style="flex:1;padding:6px 8px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-primary);font-size:12px"'+
+            ' onchange="_memberNtrpFilter=this.value;_renderMemberListInTab()">'+
+            '<option value="">全部 NTRP</option>'+
+            '<option value="2.0"'+(_memberNtrpFilter==='2.0'?' selected':'')+'>2.0</option>'+
+            '<option value="2.5"'+(_memberNtrpFilter==='2.5'?' selected':'')+'>2.5</option>'+
+            '<option value="3.0"'+(_memberNtrpFilter==='3.0'?' selected':'')+'>3.0</option>'+
+            '<option value="3.5"'+(_memberNtrpFilter==='3.5'?' selected':'')+'>3.5</option>'+
+            '<option value="4.0+"'+(_memberNtrpFilter==='4.0+'?' selected':'')+'>4.0+</option>'+
+          '</select>'+
+          '<select id="memberDirPos"'+
+            ' style="flex:1;padding:6px 8px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-primary);font-size:12px"'+
+            ' onchange="_memberPosFilter=this.value;_renderMemberListInTab()">'+
+            '<option value="">全部位置</option>'+
+            '<option value="前場"'+(_memberPosFilter==='前場'?' selected':'')+'>前場</option>'+
+            '<option value="後場"'+(_memberPosFilter==='後場'?' selected':'')+'>後場</option>'+
+            '<option value="雙打"'+(_memberPosFilter==='雙打'?' selected':'')+'>雙打</option>'+
+            '<option value="全能"'+(_memberPosFilter==='全能'?' selected':'')+'>全能</option>'+
+          '</select>'+
         '</div>'+
-        '<div class="memberBadge'+(m.role==='coach'?' coach':'')+'">'+roleLabel+'</div>'+
-      '</div>';
-    });
+      '</div>'+
+      '<div id="memberDirList"></div>';
   }
   html+='</div>';
   el.innerHTML+=html;
+  if(!isAdminLike()) _renderMemberListInTab();
+}
+
+/* ── 會員名錄：即時過濾列表 ── */
+function _renderMemberListInTab(){
+  var el=document.getElementById('memberDirList');
+  if(!el) return;
+  var f=(_memberSearch||'').toLowerCase();
+  var ROLE_LABEL={owner:'擁有者',admin:'管理員',coach:'教練',annual_member:'年費會員',monthly_member:'月費會員',member:'會員'};
+  var list=Object.values(usersCache).filter(function(m){
+    return m.status==='approved'||m.status==='active';
+  }).filter(function(m){
+    if(f&&!(m.realName||'').toLowerCase().includes(f)&&
+         !(m.displayName||'').toLowerCase().includes(f)&&
+         !String(m.ntrp||'').toLowerCase().includes(f)&&
+         !(m.preferredPosition||'').toLowerCase().includes(f)) return false;
+    if(_memberNtrpFilter){
+      if(_memberNtrpFilter==='4.0+'){if(parseFloat(m.ntrp||0)<4.0) return false;}
+      else{if(String(m.ntrp||'')!==_memberNtrpFilter) return false;}
+    }
+    if(_memberPosFilter&&(m.preferredPosition||'')!==_memberPosFilter) return false;
+    return true;
+  }).sort(function(a,b){
+    return (a.realName||a.displayName||'').localeCompare(b.realName||b.displayName||'','zh-Hant');
+  });
+  if(!list.length){
+    el.innerHTML='<div class="emptyState"><div class="emptyStateIcon">—</div>沒有符合條件的會員</div>';
+    return;
+  }
+  var html='';
+  list.forEach(function(m){
+    var initials=(m.realName||m.displayName||'?').charAt(0);
+    var avatarSrc=m.photoURL||m.lineAvatar||'';
+    var avatarHtml=avatarSrc
+      ?'<img src="'+avatarSrc+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display=\'none\'" alt="">'
+      :'<svg width="40" height="40" viewBox="0 0 40 40" style="flex-shrink:0"><rect width="40" height="40" rx="20" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="16" font-family="serif">'+initials+'</text></svg>';
+    var roleLabel=ROLE_LABEL[m.role]||m.role||'會員';
+    var meta=[];
+    if(m.ntrp) meta.push('NTRP '+_esc(String(m.ntrp)));
+    if(m.preferredPosition) meta.push(_esc(m.preferredPosition));
+    html+='<div class="memberCard">'+
+      '<div class="memberAvatar">'+avatarHtml+'</div>'+
+      '<div class="memberInfo">'+
+        '<div class="memberName">'+_esc(m.realName||m.displayName||'未知')+'</div>'+
+        (m.realName?'<div style="font-size:11px;color:var(--color-text-muted);margin-top:1px">'+_esc(m.displayName||'')+'</div>':'')+
+        (meta.length?'<div class="memberMeta">'+meta.join(' · ')+'</div>':'')+
+      '</div>'+
+      '<div class="memberBadge'+(m.role==='coach'?' coach':'')+'">'+roleLabel+'</div>'+
+    '</div>';
+  });
+  el.innerHTML=html;
 }
 
 /* ── 教練管理 tab ── */
