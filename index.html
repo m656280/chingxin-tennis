@@ -2819,13 +2819,6 @@ function _renderAdminSettingsTab(el){
 
   var adminList = all.filter(function(m){ return m.role==='admin'; })
     .sort(function(a,b){ return (a.displayName||'').localeCompare(b.displayName||'','zh-Hant'); });
-  var promotable = isOwner
-    ? all.filter(function(m){
-        var s = m.status || '';
-        var canEnterMember = (s==='active' || s==='approved' || m.approved===true);
-        return canEnterMember && m.role!=='owner' && m.role!=='admin';
-      }).sort(function(a,b){ return (a.displayName||'').localeCompare(b.displayName||'','zh-Hant'); })
-    : [];
   var adminCount  = adminList.length;
   var adminRemain = MAX_ADMIN - adminCount;
 
@@ -2869,36 +2862,8 @@ function _renderAdminSettingsTab(el){
     });
   }
 
-  // ── Promote (owner only)
-  if(isOwner){
-    html+='<div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--color-border-soft)">'+
-      '<div style="font-size:12px;font-weight:600;color:var(--color-text-secondary);margin-bottom:10px">升級為管理員</div>';
-    if(adminRemain<=0){
-      html+='<div style="font-size:13px;color:var(--color-text-muted)">管理員已達上限（'+MAX_ADMIN+'位）</div>';
-    } else if(!promotable.length){
-      html+='<div style="font-size:13px;color:var(--color-text-muted)">目前沒有可升級的活躍會員</div>';
-    } else {
-      html+='<div style="display:flex;gap:8px;align-items:center">'+
-        '<select id="promoteSelectUid" style="flex:1;padding:9px 10px;border:1px solid var(--color-border);border-radius:8px;font-size:13px;background:var(--color-bg);color:var(--color-text-primary)">'+
-        '<option value="">— 選擇會員 —</option>';
-      promotable.forEach(function(m){
-        html+='<option value="'+m.userId+'">'+_esc(m.displayName||m.userId)+'</option>';
-      });
-      html+='</select>'+
-        '<button class="adminToggleBtn" style="flex-shrink:0" onclick="_promoteToAdmin()">升級</button>'+
-      '</div>';
-    }
-    html+='</div>';
-  }
-
   html+='</div>';
   el.innerHTML+=html;
-}
-
-function _promoteToAdmin(){
-  var sel=document.getElementById('promoteSelectUid');
-  if(!sel||!sel.value){ showToast('請選擇會員'); return; }
-  setAdminRole(sel.value,true);
 }
 
 /* ── 未讀公告 Badge 管理 ── */
