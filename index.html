@@ -616,6 +616,11 @@ button {
 .manageTabBtn.active {
   border-bottom-color:var(--color-text-primary); color:var(--color-text-primary);
 }
+.manageTabDot {
+  display:inline-block; width:7px; height:7px; border-radius:50%;
+  background:#e74c3c; margin-right:4px; vertical-align:middle;
+  position:relative; top:-1px; flex-shrink:0;
+}
 
 /* ── Announcement Card ── */
 .announcCard {
@@ -2380,14 +2385,21 @@ function renderManage(){
   }
 
   // ── Tab bar ──
-  var pendingCount=Object.values(usersCache).filter(function(m){return m.status==='pending';}).length;
+  var pendingCount = Object.values(usersCache).filter(function(m){return m.status==='pending';}).length;
+  var announcCount = _generateSystemAnnouncements().length + announcementsCache.filter(function(a){
+    if(!a.updatedAt) return false;
+    var ts = a.updatedAt.toDate ? a.updatedAt.toDate().getTime() : (typeof a.updatedAt==='number' ? a.updatedAt : 0);
+    return ts > _announceLastReadTs;
+  }).length;
   var html='<div class="manageTabs">';
   TABS.forEach(function(t){
-    var active=_manageTab===t.key;
-    var label=(t.key==='pending'&&pendingCount>0)?t.label+'<span style="display:inline-block;min-width:16px;height:16px;border-radius:8px;background:#e74c3c;color:#fff;font-size:10px;font-weight:700;line-height:16px;padding:0 4px;text-align:center;margin-left:5px;vertical-align:middle">'+pendingCount+'</span>':t.label;
-    html+='<button class="manageTabBtn'+(active?' active':'')+'" onclick="_manageTab=\''+t.key+'\';renderManage()">'+label+'</button>';
+    var active = _manageTab === t.key;
+    var dot = '';
+    if(t.key==='pending' && pendingCount > 0) dot = '<span class="manageTabDot"></span>';
+    if(t.key==='announcements' && announcCount > 0) dot = '<span class="manageTabDot"></span>';
+    html += '<button class="manageTabBtn'+(active?' active':'')+'" onclick="_manageTab=\''+t.key+'\';renderManage()">'+dot+t.label+'</button>';
   });
-  html+='</div>';
+  html += '</div>';
   el.innerHTML=html;
 
   // ── Tab content ──
@@ -2871,6 +2883,7 @@ function _markAnnouncementsRead(){
   _updateManageNavBadge();
 }
 function _getManageBadgeCount(){
+  var pendingCount = Object.values(usersCache).filter(function(m){ return m.status==='pending'; }).length;
   var sysCount = _generateSystemAnnouncements().length;
   var unreadNormal = announcementsCache.filter(function(a){
     if(!a.updatedAt) return false;
@@ -2878,7 +2891,7 @@ function _getManageBadgeCount(){
            : (typeof a.updatedAt === 'number' ? a.updatedAt : 0);
     return ts > _announceLastReadTs;
   }).length;
-  return sysCount + unreadNormal;
+  return pendingCount + sysCount + unreadNormal;
 }
 function _updateManageNavBadge(){
   var badge = document.getElementById('manageBadge');
