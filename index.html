@@ -1463,6 +1463,11 @@ button {
       <input class="formInput" id="finFormNote" type="text" placeholder="">
     </div>
     <button class="primaryBtn" onclick="submitFinanceRecord()">儲存紀錄</button>
+    <div id="finOwnerDeleteZone" style="display:none;margin-top:20px;padding-top:16px;border-top:1px solid var(--color-border-soft)">
+      <button onclick="permanentDeleteFinanceRecord()" style="width:100%;padding:11px;border-radius:8px;border:1px solid rgba(231,76,60,0.45);background:transparent;color:#c0392b;font-size:13px;cursor:pointer;letter-spacing:0.02em">
+        永久刪除此筆紀錄
+      </button>
+    </div>
   </div>
 </div>
 
@@ -3950,6 +3955,33 @@ function deleteFinanceRecord(id){
     });
 }
 
+/* ── Finance: Permanent Delete（Owner Only，僅限已作廢紀錄）── */
+function permanentDeleteFinanceRecord(){
+  if(_currentRole() !== 'owner'){ showToast('僅 Owner 可永久刪除紀錄'); return; }
+  if(!_finEditId){ showToast('找不到紀錄'); return; }
+  var rec = financeRecords.find(function(r){ return r.id===_finEditId; });
+  if(!rec){ showToast('找不到紀錄'); return; }
+  if((rec.status || 'active') !== 'void'){ showToast('只能永久刪除已作廢的紀錄'); return; }
+  if(!confirm('此操作會永久刪除 Firestore 資料，無法復原。\n\n確定刪除？')) return;
+  if(!db){ showToast('無法連線，請稍後再試'); return; }
+  var deleteId = _finEditId;
+  db.collection('financialRecords').doc(deleteId).delete()
+    .then(function(){
+      var fi = financeRecords.findIndex(function(r){ return r.id===deleteId; });
+      if(fi > -1) financeRecords.splice(fi, 1);
+      closeFinanceForm();
+      renderFinance();
+      _updateManageNavBadge();
+      var manScreen = document.getElementById('screen-manage');
+      if(manScreen && manScreen.classList.contains('active')){ renderManage(); }
+      showToast('紀錄已永久刪除');
+    })
+    .catch(function(e){
+      console.error('permanentDeleteFinanceRecord error:', e);
+      showToast('刪除失敗，請稍後再試');
+    });
+}
+
 /* ── Finance: Export CSV ── */
 function exportFinanceCSV(){
   if(!_isFinanceAdmin()){ showToast('僅管理員可匯出'); return; }
@@ -4054,6 +4086,8 @@ function openFinanceForm(){
   _finEditId = null;
   var voidWarn = document.getElementById('finVoidWarning');
   if(voidWarn) voidWarn.style.display = 'none';
+  var ownerDeleteZone = document.getElementById('finOwnerDeleteZone');
+  if(ownerDeleteZone) ownerDeleteZone.style.display = 'none';
   document.getElementById('financeFormTitle').textContent = '新增財務紀錄';
   _finPopulateMemberSelect('');
   document.getElementById('finFormType').value = 'annual';
@@ -4070,6 +4104,8 @@ function closeFinanceForm(){
   _finEditId = null;
   var voidWarn = document.getElementById('finVoidWarning');
   if(voidWarn) voidWarn.style.display = 'none';
+  var ownerDeleteZone = document.getElementById('finOwnerDeleteZone');
+  if(ownerDeleteZone) ownerDeleteZone.style.display = 'none';
   document.getElementById('financeFormSheet').classList.remove('open');
   document.getElementById('sheetBackdrop').classList.remove('open');
 }
@@ -4227,8 +4263,12 @@ function editFinanceRecord(id){
   _finPopulateYearSelect(rec.membershipYear || null);
   _finToggleYearRow();
   // 若此紀錄已作廢，顯示警告
+  var recIsVoid = (rec.status || 'active') === 'void';
   var voidWarn = document.getElementById('finVoidWarning');
-  if(voidWarn) voidWarn.style.display = ((rec.status || 'active') === 'void') ? '' : 'none';
+  if(voidWarn) voidWarn.style.display = recIsVoid ? '' : 'none';
+  // 永久刪除區塊：僅 void 紀錄 + owner 可見
+  var ownerDeleteZone = document.getElementById('finOwnerDeleteZone');
+  if(ownerDeleteZone) ownerDeleteZone.style.display = (recIsVoid && _currentRole() === 'owner') ? '' : 'none';
   document.getElementById('sheetBackdrop').classList.add('open');
   document.getElementById('financeFormSheet').classList.add('open');
 }
