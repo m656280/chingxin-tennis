@@ -817,6 +817,24 @@ button {
   margin-bottom:2px;
 }
 
+/* ── Week Grid View ── */
+.wkSurfaceRow { display:flex; gap:6px; padding:10px 0 12px; }
+.wkSurfaceBtn { padding:5px 16px; border-radius:99px; border:1px solid var(--color-border); background:var(--color-surface-alt); font-size:12px; letter-spacing:0.04em; color:var(--color-text-muted); cursor:pointer; transition:all 150ms ease; }
+.wkSurfaceBtn.active { background:var(--color-text-primary); color:var(--color-surface); border-color:var(--color-text-primary); }
+.wkDayRow { padding:10px 0; border-bottom:1px solid var(--color-border-soft); }
+.wkDayRow:last-child { border-bottom:none; }
+.wkDayLabel { font-size:11.5px; font-weight:600; letter-spacing:0.06em; color:var(--color-text-muted); margin-bottom:7px; text-transform:uppercase; }
+.wkDayRow.wkToday .wkDayLabel { color:var(--color-now); }
+.wkNoBookings { font-size:12px; color:var(--color-text-muted); padding:2px 0 2px 2px; opacity:0.6; }
+.wkCard { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px; background:var(--color-surface); border:1px solid var(--color-border-soft); margin-bottom:5px; cursor:pointer; transition:opacity 150ms; }
+.wkCard:last-child { margin-bottom:0; }
+.wkCard:active { opacity:0.65; }
+.wkCard.wkCardClay { border-left:2px solid var(--color-clay); }
+.wkCardCourt { font-size:10px; font-weight:700; letter-spacing:0.08em; color:var(--color-text-muted); flex-shrink:0; min-width:46px; }
+.wkCardTime { font-size:12px; color:var(--color-text-secondary); flex-shrink:0; white-space:nowrap; }
+.wkCardName { font-size:13px; color:var(--color-text-primary); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.wkCardMode { font-size:10px; color:var(--color-text-muted); flex-shrink:0; }
+
 /* ── Finance Stage 3C ── */
 .finRecordLeft { cursor:pointer; }
 .finRecordLeft:active { opacity:0.65; }
@@ -1156,8 +1174,7 @@ button {
       </div>
       <div class="courtSwitcherWrap">
         <div class="switcherGroup">
-          <button class="switcherOption active" id="btnDay" onclick="setView('day',this)">日</button>
-          <button class="switcherOption" id="btnWeek" onclick="setView('week',this)">週</button>
+          <button class="switcherOption active" id="btnWeek" onclick="setView('week',this)">週</button>
           <button class="switcherOption" id="btnMonth" onclick="setView('month',this)">月</button>
         </div>
       </div>
@@ -1167,23 +1184,19 @@ button {
     <div id="view-day"></div>
 
     <!-- Week view -->
-    <div id="view-week" style="display:none">
+    <div id="view-week">
       <div class="weekStrip">
         <div class="weekHeader">
           <button class="navButton" onclick="changeWeek(-1)" aria-label="上一週">‹</button>
           <span class="monthLabel" id="weekMonthLabel"></span>
           <button class="navButton" onclick="changeWeek(1)" aria-label="下一週">›</button>
         </div>
-        <div class="chips" id="chips"></div>
       </div>
-      <div class="dayHeader">
-        <span class="dayLabelMain" id="dayLabel"></span>
-        <span class="dayMeta" id="dayMeta"></span>
+      <div class="wkSurfaceRow">
+        <button class="wkSurfaceBtn active" id="wkBtnHard" onclick="setCourtSurface('hard')">硬地</button>
+        <button class="wkSurfaceBtn" id="wkBtnClay" onclick="setCourtSurface('clay')">紅土</button>
       </div>
-      <div class="timeGridWrapper">
-        <div class="courtHeader" id="courtHeader"></div>
-        <div class="grid" id="grid"></div>
-      </div>
+      <div id="weekGridContent"></div>
     </div>
 
     <!-- Month view -->
@@ -1591,7 +1604,6 @@ function _showMainApp(){
     if(navImg) navImg.src = currentUser.photoURL;
   }
   render();
-  renderDayView();
   startNowLineTicker();
   renderBookings();
   renderManage();
@@ -2094,12 +2106,13 @@ const SLOT_MIN = 30;
 /* ── State ── */
 const today = new Date();
 let selectedDate = new Date(today);
-let currentView = 'day';
+let currentView = 'week';
 let _courtSurfaceFilter = 'hard'; // 'hard' | 'clay'
 /* Firebase state — null = use mock data fallback */
 let currentUser = null;
 let usersCache = {};          // uid → user doc
 let courtBookingsFirestore = null;  // null = not yet loaded; [] = loaded but empty
+let weekBookingsCache = [];         // all confirmed bookings for current week view
 let myBookingsFirestore = null;     // null = not yet loaded; [] = loaded but empty
 let pendingUsersFirestore = [];
 let unsubMyBookings = null;
@@ -2232,16 +2245,82 @@ function renderCourtHeader(){
 
 /* ── Render: Week Strip ── */
 function renderWeekStrip(){
-  const ws=startOfWeek(selectedDate);
-  const dates=Array.from({length:7},(_,i)=>addDays(ws,i));
-  document.getElementById('weekMonthLabel').textContent=formatMonthYear(dates[3]);
-  document.getElementById('chips').innerHTML=dates.map(d=>{
-    const sel=isSameDay(d,selectedDate),tod=isSameDay(d,today),we=isWeekend(d);
-    const cls=['chip',sel?'selected':'',tod?'today':'',we?'weekend':''].filter(Boolean).join(' ');
-    return '<button class="'+cls+'" onclick="selectDate(\''+formatDate(d)+'\')">'+
-      '<span class="chipDayLabel">（'+DAYS_TC[d.getDay()]+'）</span>'+
-      '<span class="chipDateNum">'+d.getDate()+'</span></button>';
-  }).join('');
+  var ws = startOfWeek(selectedDate);
+  var dates = Array.from({length:7}, function(_,i){ return addDays(ws,i); });
+  document.getElementById('weekMonthLabel').textContent = formatMonthYear(dates[3]);
+}
+
+/* ── Load Week Bookings from Firestore ── */
+function loadWeekBookings(){
+  var ws = startOfWeek(selectedDate);
+  var we = addDays(ws, 6);
+  var startStr = formatDate(ws);
+  var endStr   = formatDate(we);
+  if(!db){ weekBookingsCache = []; renderWeekGrid(); return; }
+  db.collection('bookings')
+    .where('date','>=',startStr)
+    .where('date','<=',endStr)
+    .get()
+    .then(function(snap){
+      weekBookingsCache = snap.docs
+        .map(function(d){ return Object.assign({id:d.id},d.data()); })
+        .filter(function(b){ return b.status === 'confirmed'; });
+      renderWeekGrid();
+    })
+    .catch(function(e){
+      console.warn('loadWeekBookings error:',e);
+      weekBookingsCache = [];
+      renderWeekGrid();
+    });
+}
+
+/* ── Render: Week Grid（日清單卡片）── */
+function renderWeekGrid(){
+  var el = document.getElementById('weekGridContent');
+  if(!el) return;
+  var ws = startOfWeek(selectedDate);
+  var isClay = _courtSurfaceFilter === 'clay';
+  var courts = isClay ? ['clay_a','clay_b'] : ['hard_a','hard_b'];
+
+  // 更新 surface 按鈕 active 狀態
+  var btnHard = document.getElementById('wkBtnHard');
+  var btnClay = document.getElementById('wkBtnClay');
+  if(btnHard) btnHard.classList.toggle('active', !isClay);
+  if(btnClay) btnClay.classList.toggle('active',  isClay);
+
+  var html = '';
+  for(var i = 0; i < 7; i++){
+    var d = addDays(ws, i);
+    var ds = formatDate(d);
+    var isToday = isSameDay(d, today);
+    var dayBs = weekBookingsCache.filter(function(b){
+      return b.date === ds && courts.indexOf(b.court) >= 0;
+    }).sort(function(a,b){ return a.startTime.localeCompare(b.startTime); });
+
+    var dateLabel = (d.getMonth()+1)+'/'+d.getDate()+'（'+DAYS_TC[d.getDay()]+'）'+(isToday?' · 今天':'');
+    html += '<div class="wkDayRow'+(isToday?' wkToday':'')+'">';
+    html += '<div class="wkDayLabel">'+dateLabel+'</div>';
+
+    if(!dayBs.length){
+      html += '<div class="wkNoBookings">—</div>';
+    } else {
+      dayBs.forEach(function(b){
+        var u = b.createdBy ? usersCache[b.createdBy] : null;
+        var name = u ? (u.realName||u.displayName||'—') : (b.primaryName||'—');
+        var courtLabel = COURT_LABELS[b.court].surface+' '+COURT_LABELS[b.court].letter;
+        var isClayC = COURT_SURFACE[b.court]==='clay';
+        var modeLabel = (b.mode && b.mode!=='normal') ? MODE_LABELS[b.mode]||b.mode : '';
+        html += '<div class="wkCard'+(isClayC?' wkCardClay':'')+'" onclick="showBookingDetail(\''+b.id+'\')">'+
+          '<span class="wkCardCourt">'+courtLabel+'</span>'+
+          '<span class="wkCardTime">'+b.startTime+'–'+b.endTime+'</span>'+
+          '<span class="wkCardName">'+_esc(name)+'</span>'+
+          (modeLabel?'<span class="wkCardMode">'+modeLabel+'</span>':'')+
+        '</div>';
+      });
+    }
+    html += '</div>';
+  }
+  el.innerHTML = html;
 }
 
 /* ── Render: Day Header ── */
@@ -4335,14 +4414,12 @@ function showTab(name, el){
 
 function setView(v, el){
   currentView=v;
-  document.getElementById('view-day').style.display=v==='day'?'block':'none';
   document.getElementById('view-week').style.display=v==='week'?'block':'none';
   document.getElementById('view-month').style.display=v==='month'?'block':'none';
   document.querySelectorAll('.switcherOption').forEach(b=>b.classList.remove('active'));
   el.classList.add('active');
   if(v==='month') renderMonthView();
   if(v==='week') render();
-  if(v==='day') renderDayView();
 }
 
 /* ── Day View ── */
@@ -4679,7 +4756,7 @@ function _dvCloseDetail(){
   },300);
 }
 
-function setCourtSurface(filter){ _courtSurfaceFilter=filter; renderDayView(); }
+function setCourtSurface(filter){ _courtSurfaceFilter=filter; if(currentView==='week') render(); else if(currentView==='month') renderMonthView(); }
 function changeDayView(delta){ selectedDate=addDays(selectedDate,delta); renderDayView(); }
 
 function selectDate(dateStr){
@@ -4795,7 +4872,7 @@ function showToast(msg){
 
 /* ── Booking Detail (tap event on court grid) ── */
 function showBookingDetail(id){
-  var source=courtBookingsFirestore||[];
+  var source = weekBookingsCache.length ? weekBookingsCache : (courtBookingsFirestore||[]);
   var b=source.find(function(x){ return x.id===id; });
   if(!b) return;
   var u=b.createdBy?usersCache[b.createdBy]:null;
@@ -4887,7 +4964,7 @@ function loadUsersCache(){
     }
 
     renderMembers('');
-    renderGrid();
+    if(currentView==='week') renderWeekGrid();
     _updateManageNavBadge();
     if(document.getElementById('screen-manage') &&
        document.getElementById('screen-manage').classList.contains('active')){
@@ -4962,7 +5039,7 @@ function cancelBooking(id){
       showToast('預約已取消');
       _dvCloseDetail();
       loadMyBookings();
-      loadCourtBookings(formatDate(selectedDate));
+      loadWeekBookings();
     })
     .catch(function(e){ console.error('cancelBooking error:',e); showToast('取消失敗：'+e.message); });
 }
@@ -5038,7 +5115,7 @@ function submitBooking(){
   }).then(function(){
     showToast('預約成功 · '+(courtDisplay[court]||court)+' '+start);
     closeBookingForm();
-    if(date===formatDate(selectedDate)) loadCourtBookings(date);
+    loadWeekBookings();
     loadMyBookings();
   }).catch(function(e){
     console.error('submitBooking error:',e);
@@ -5050,10 +5127,8 @@ function submitBooking(){
 
 /* ── Main Render ── */
 function render(){
-  renderCourtHeader();
   renderWeekStrip();
-  renderDayHeader();
-  loadCourtBookings(formatDate(selectedDate));
+  loadWeekBookings();
 }
 
 // Startup: auth gate manages when renders fire.
