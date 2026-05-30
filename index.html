@@ -4056,9 +4056,10 @@ function _finPopulateYearSelect(selectedYear){
   var sel = document.getElementById('finFormYear');
   if(!sel) return;
   var cur = new Date().getFullYear();
+  var defaultYear = selectedYear ? parseInt(selectedYear,10) : (cur >= 2026 && cur <= 2046 ? cur : 2026);
   var html = '';
-  for(var y = cur - 1; y <= cur + 3; y++){
-    var sel_ = (y === (selectedYear ? parseInt(selectedYear,10) : cur)) ? ' selected' : '';
+  for(var y = 2026; y <= 2046; y++){
+    var sel_ = (y === defaultYear) ? ' selected' : '';
     html += '<option value="'+y+'"'+sel_+'>'+y+' 年度</option>';
   }
   sel.innerHTML = html;
