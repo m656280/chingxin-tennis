@@ -2489,14 +2489,17 @@ function _renderMembersTab(el){
             '<span style="font-size:11px;color:var(--color-text-muted);letter-spacing:0.5px;padding:4px 0">YOU &nbsp;永久</span>'+
             '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="editMemberRealName(\''+rawUid+'\')">編輯姓名</button>'+
           '</div>'
-        : '<div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 0 16px 56px">'+
-            '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="editMemberRealName(\''+rawUid+'\')">編輯姓名</button>'+
-            '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="blockMember(\''+rawUid+'\')">封鎖</button>'+
-            '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="setMemberRole(\''+rawUid+'\',\'member\')">設為會員</button>'+
-            '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="setMemberRole(\''+rawUid+'\',\'coach\')">設為教練</button>'+
-            (_cuRole==='owner'?'<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="setMemberRole(\''+rawUid+'\',\'admin\')">設為管理員</button>':'')+
-            '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid #e74c3c;background:transparent;color:#e74c3c;cursor:pointer" onclick="removeMember(\''+rawUid+'\')">離會</button>'+
-          '</div>');
+        : '<details style="padding:4px 0 16px 56px">'+
+            '<summary style="cursor:pointer;font-size:11px;color:var(--color-text-muted);list-style:none;display:inline-flex;align-items:center;padding:4px 8px;border-radius:6px;border:1px solid var(--color-border);user-select:none">管理 ›</summary>'+
+            '<div style="display:flex;flex-wrap:wrap;gap:6px;padding-top:8px">'+
+              '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="editMemberRealName(\''+rawUid+'\')">編輯姓名</button>'+
+              '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="setMemberRole(\''+rawUid+'\',\'member\')">設為會員</button>'+
+              '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="setMemberRole(\''+rawUid+'\',\'coach\')">設為教練</button>'+
+              (_cuRole==='owner'?'<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="setMemberRole(\''+rawUid+'\',\'admin\')">設為管理員</button>':'')+
+              '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="blockMember(\''+rawUid+'\')">封鎖</button>'+
+              '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid #e74c3c;background:transparent;color:#e74c3c;cursor:pointer" onclick="removeMember(\''+rawUid+'\')">離會</button>'+
+            '</div>'+
+          '</details>');
     });
     // ── 已離會 Accordion ──
     var deleted=Object.values(usersCache).filter(function(m){ return m.status==='deleted'; });
