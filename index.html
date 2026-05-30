@@ -2469,6 +2469,9 @@ function _calcMemberFeeStatus(m){
   var hasFeeRecord = financeRecords.some(function(r){
     return (r.type==='annual'||r.type==='monthly') && r.memberId===uid;
   });
+  // Fallback：若 member doc 已有 membershipExpiry，代表曾經有繳費紀錄
+  // 解決 financeRecords 尚未載入或 memberId 不符時的誤判
+  if(!hasFeeRecord) hasFeeRecord = !!(m.membershipExpiry || m.expireDate);
   if(!hasFeeRecord){
     return {typeLabel:'', status:'none', statusLabel:'尚未建立繳費紀錄', expireStr:''};
   }
@@ -2916,7 +2919,9 @@ function _generateSystemAnnouncements(){
     var s = m.status || '';
     if(s !== 'approved' && s !== 'active') return;
     var uid = m.userId || m.uid || '';
-    if(!uid || _hasFee[uid]) return;
+    if(!uid) return;
+    // 雙重判斷：financeRecords 比對 OR member doc 已有 membershipExpiry
+    if(_hasFee[uid] || m.membershipExpiry || m.expireDate) return;
     var name = _esc(m.realName || m.displayName || uid);
     items.push({type:'system', dot:'gray', title: name + ' 尚未建立繳費紀錄', _sort: 1000});
   });
@@ -4740,6 +4745,11 @@ function loadFinanceRecords(){
       var finScreen = document.getElementById('screen-finance');
       if(finScreen && finScreen.classList.contains('active')){
         renderFinance();
+      }
+      // Re-render manage screen if active (so member badges update once finance data arrives)
+      var manScreen = document.getElementById('screen-manage');
+      if(manScreen && manScreen.classList.contains('active')){
+        renderManage();
       }
     }, function(e){
       console.warn('[loadFinanceRecords] Firestore error:', e);
