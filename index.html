@@ -827,6 +827,10 @@ button {
   cursor:pointer; transition:all 150ms ease; margin-top:2px;
 }
 .finDeleteIcon:hover { background:rgba(184,92,74,0.10); color:var(--color-clay); }
+.finStatusBadge { display:inline-block; font-size:10px; border-radius:4px; padding:1px 6px; white-space:nowrap; margin-top:2px; }
+.finStatusBadge.refund { background:rgba(243,156,18,0.12); border:1px solid rgba(243,156,18,0.40); color:#c8860a; }
+.finStatusBadge.void   { background:rgba(150,150,150,0.10); border:1px solid rgba(150,150,150,0.35); color:#888; }
+.finRecordVoid { opacity:0.45; }
 
 /* ── Finance Stage 3B: header left-align on finance tab ── */
 .header.fin-header-left { justify-content:flex-start; }
@@ -2479,29 +2483,29 @@ function _esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').re
 function _calcMemberFeeStatus(m){
   var uid = m.userId || m.uid || '';
   var hasFeeRecord = financeRecords.some(function(r){
-    return (r.type==='annual'||r.type==='monthly') && r.memberId===uid;
+    return (r.type==='annual'||r.type==='monthly') && r.memberId===uid && (r.status||'active') !== 'void';
   });
   // Fallback：若 member doc 已有 membershipExpiry，代表曾經有繳費紀錄
   // 解決 financeRecords 尚未載入或 memberId 不符時的誤判
   if(!hasFeeRecord) hasFeeRecord = !!(m.membershipExpiry || m.expireDate);
   if(!hasFeeRecord){
-    return {typeLabel:'', status:'none', statusLabel:'尚未建立繳費紀錄', expireStr:''};
+    return {typeLabel:'', status:'none', statusLabel:'尚未建立繳費紀錄'};
   }
   var typeLabel = m.membershipType==='annual' ? '年費會員'
                : m.membershipType==='monthly' ? '月費會員' : '';
   var expStr = m.membershipExpiry || m.expireDate || '';
-  if(!expStr){ return {typeLabel:typeLabel, status:'paid', statusLabel:'已繳清', expireStr:''}; }
+  if(!expStr){ return {typeLabel:typeLabel, status:'paid', statusLabel:'已繳清'}; }
   var todayFS = new Date(); todayFS.setHours(0,0,0,0);
   var exp = new Date(expStr.replace(/\//g,'-')+'T00:00:00');
-  if(isNaN(exp.getTime())){ return {typeLabel:typeLabel, status:'paid', statusLabel:'已繳清', expireStr:''}; }
+  if(isNaN(exp.getTime())){ return {typeLabel:typeLabel, status:'paid', statusLabel:'已繳清'}; }
   var diff = Math.floor((exp-todayFS)/86400000);
   if(diff < 0)
-    return {typeLabel:typeLabel, status:'overdue',  statusLabel:'已到期 '+Math.abs(diff)+' 天', expireStr:''};
+    return {typeLabel:typeLabel, status:'overdue',  statusLabel:'已到期 '+Math.abs(diff)+' 天'};
   if(diff === 0)
-    return {typeLabel:typeLabel, status:'expiring', statusLabel:'今日到期', expireStr:''};
+    return {typeLabel:typeLabel, status:'expiring', statusLabel:'即將到期｜今日到期'};
   if(diff <= 30)
-    return {typeLabel:typeLabel, status:'expiring', statusLabel:'剩餘 '+diff+' 天', expireStr:''};
-  return {typeLabel:typeLabel, status:'paid', statusLabel:'已繳清', expireStr:expStr};
+    return {typeLabel:typeLabel, status:'expiring', statusLabel:'即將到期｜剩餘 '+diff+' 天'};
+  return {typeLabel:typeLabel, status:'paid', statusLabel:'已繳清｜有效至 '+expStr};
 }
 function _memberFeeStatusHtml(m){
   var fs = _calcMemberFeeStatus(m);
@@ -2510,9 +2514,6 @@ function _memberFeeStatusHtml(m){
     lines.push('<span class="feeTypeBadge">🏷 '+fs.typeLabel+'</span>');
   }
   lines.push('<span class="feeStatusBadge '+fs.status+'">'+fs.statusLabel+'</span>');
-  if(fs.status === 'paid' && fs.expireStr){
-    lines.push('<span style="font-size:10px;color:var(--color-text-muted)">有效至 '+fs.expireStr+'</span>');
-  }
   return '<div style="display:flex;flex-direction:column;gap:3px">'+lines.join('')+'</div>';
 }
 
@@ -2532,6 +2533,23 @@ function _renderMembersTab(el){
   }
   var html='<div style="padding:0 2px">';
   if(isAdminLike()){
+    // ── 未繳費快速區塊（admin only：無紀錄 + 已到期）──
+    var unpaidMembers = members.filter(function(m){
+      var s = _calcMemberFeeStatus(m).status;
+      return s === 'none' || s === 'overdue';
+    });
+    if(unpaidMembers.length){
+      html += '<div style="background:rgba(231,76,60,0.06);border:1px solid rgba(231,76,60,0.22);border-radius:10px;padding:10px 12px;margin-bottom:16px">';
+      html += '<div style="font-size:11px;font-weight:600;letter-spacing:0.07em;color:#c0392b;margin-bottom:8px">未繳費會員（'+unpaidMembers.length+'）</div>';
+      unpaidMembers.forEach(function(m){
+        var fs = _calcMemberFeeStatus(m);
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;gap:8px">';
+        html += '<span style="font-size:13px;color:var(--color-text-primary);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_esc(m.realName||m.displayName||'未知')+'</span>';
+        html += '<span class="feeStatusBadge '+fs.status+'">'+fs.statusLabel+'</span>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
     // ── 進階視圖（owner / admin）──
     members.forEach(function(m){
       var initials=(m.realName||m.displayName||'?').charAt(0);
@@ -2926,7 +2944,7 @@ function _generateSystemAnnouncements(){
   // 1. 尚未建立繳費紀錄（priority 1000，🔴）
   var _hasFee = {};
   financeRecords.forEach(function(r){
-    if((r.type==='annual'||r.type==='monthly') && r.memberId) _hasFee[r.memberId] = true;
+    if((r.type==='annual'||r.type==='monthly') && r.memberId && (r.status||'active') !== 'void') _hasFee[r.memberId] = true;
   });
   members.forEach(function(m){
     var s = m.status || '';
@@ -3420,8 +3438,15 @@ function renderFinance(){
     return (r.year || parseInt(r.date.slice(0,4),10)) === _finYear;
   });
 
-  // Stats
-  const sumT = function(type){ return source.filter(function(r){return r.type===type;}).reduce(function(a,r){return a+r.amount;},0); };
+  // Stats（void 不列入；refund 扣除）
+  const sumT = function(type){
+    return source.filter(function(r){ return r.type===type; }).reduce(function(a,r){
+      var st = r.status || 'active';
+      if(st === 'void') return a;
+      if(st === 'refund') return a - r.amount;
+      return a + r.amount;
+    }, 0);
+  };
   const annual  = sumT('annual');
   const monthly = sumT('monthly');
   const donate  = sumT('donate');
@@ -3619,16 +3644,25 @@ function _renderFinDetail(source, isAdmin, fmt){
       : (_ms==='deleted')
       ? '<span style="font-size:9.5px;letter-spacing:0.05em;color:#8C4637;background:rgba(130,65,52,0.09);padding:2px 7px;border-radius:99px;margin-left:6px;vertical-align:middle">已離會</span>'
       : '';
-    var delIcon = isAdmin
-      ? '<button class="finDeleteIcon" onclick="event.stopPropagation();deleteFinanceRecord(\''+r.id+'\')" title="刪除">'
+    var recStatus = r.status || 'active';
+    var isVoid = recStatus === 'void';
+    var isRefund = recStatus === 'refund';
+    var statusBadge = isVoid
+      ? '<span class="finStatusBadge void">已作廢</span>'
+      : isRefund
+      ? '<span class="finStatusBadge refund">已退費</span>'
+      : '';
+    var delIcon = (isAdmin && !isVoid)
+      ? '<button class="finDeleteIcon" onclick="event.stopPropagation();deleteFinanceRecord(\''+r.id+'\')" title="作廢">'
         + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>'
         + '</button>'
       : '';
-    html += '<div class="financeRecord" style="align-items:flex-start">'
+    html += '<div class="financeRecord'+(isVoid?' finRecordVoid':'')+'" style="align-items:flex-start">'
       + '<div class="finRecordLeft financeRecordLeft" onclick="editFinanceRecord(\''+r.id+'\')">'
         + '<div class="financeRecordName">'+(r.memberRealName||r.member||'—')+resignedTag+'</div>'
         + (r.note?'<div class="finRecordNote">'+r.note+'</div>':'')
         + '<div class="finRecordDateMeta">'+dateMeta+'</div>'
+        + statusBadge
       + '</div>'
       + '<div class="finRecordRight">'
         + '<div class="financeRecordAmt'+(isOut?' out':'')+'">'+fmt(r.amount)+'</div>'
@@ -3868,10 +3902,14 @@ function openFinCategory(type){
         && (r.year || parseInt(r.date.slice(0,4),10)) === _finYear;
   });
   const fmt = function(n){ return 'NT$ '+(n).toLocaleString(); };
-  const total = records.reduce(function(a,r){ return a+r.amount; }, 0);
+  // void 不列入統計；refund 扣除
+  const activeRecords = records.filter(function(r){ return (r.status||'active') !== 'void'; });
+  const total = activeRecords.reduce(function(a,r){
+    return (r.status||'active') === 'refund' ? a - r.amount : a + r.amount;
+  }, 0);
 
   let html = '<div class="finCategorySummary">';
-  html += '<span style="font-size:11px;color:var(--color-text-muted);letter-spacing:0.06em">共 '+records.length+' 筆</span>';
+  html += '<span style="font-size:11px;color:var(--color-text-muted);letter-spacing:0.06em">共 '+activeRecords.length+' 筆</span>';
   html += '<span style="font-family:var(--font-body);font-size:19px;font-weight:600;letter-spacing:0">'+fmt(total)+'</span>';
   html += '</div>';
 
@@ -3880,9 +3918,15 @@ function openFinCategory(type){
   } else {
     const sorted = records.slice().sort(function(a,b){ return b.date.localeCompare(a.date); });
     sorted.forEach(function(r){
-      html += '<div class="finCategoryRecord">'
+      var rSt = r.status || 'active';
+      var catStatusBadge = rSt === 'void'
+        ? '<span class="finStatusBadge void">已作廢</span> '
+        : rSt === 'refund'
+        ? '<span class="finStatusBadge refund">已退費</span> '
+        : '';
+      html += '<div class="finCategoryRecord'+(rSt==='void'?' finRecordVoid':'')+'">'
         + '<div class="financeRecordLeft">'
-          + '<div class="financeRecordName">'+(r.member||'—')+'</div>'
+          + '<div class="financeRecordName">'+catStatusBadge+(r.member||'—')+'</div>'
           + '<div class="financeRecordMeta">'+r.date+(r.note?' · '+r.note:'')+'</div>'
           + (r.createdByName ? '<div class="financeRecordMeta" style="opacity:0.65">登記：'+r.createdByName+'</div>' : '')
         + '</div>'
@@ -3904,21 +3948,21 @@ function closeFinCategory(){
   document.getElementById('sheetBackdrop').classList.remove('open');
 }
 
-/* ── Finance: Delete ── */
+/* ── Finance: Void（軟刪除，保留 Firestore 資料）── */
 function deleteFinanceRecord(id){
-  if(!_isFinanceAdmin()){ showToast('僅管理員可刪除紀錄'); return; }
-  if(!confirm('確定刪除此筆財務紀錄？')) return;
+  if(!_isFinanceAdmin()){ showToast('僅管理員可作廢紀錄'); return; }
+  if(!confirm('要將此筆紀錄作廢嗎？\n\n作廢後仍保留記錄，但不列入統計，也不視為有效繳費。')) return;
   if(!db){ showToast('無法連線，請稍後再試'); return; }
-  db.collection('financialRecords').doc(id).delete()
+  db.collection('financialRecords').doc(id).update({ status: 'void', voidedAt: TS() })
     .then(function(){
-      const fi = financeRecords.findIndex(function(r){ return r.id===id; });
-      if(fi > -1) financeRecords.splice(fi, 1);
+      var rec = financeRecords.find(function(r){ return r.id===id; });
+      if(rec){ rec.status = 'void'; }
       renderFinance();
-      showToast('紀錄已刪除');
+      showToast('紀錄已作廢');
     })
     .catch(function(e){
-      console.error('deleteFinanceRecord error:', e);
-      showToast('刪除失敗，請稍後再試');
+      console.error('voidFinanceRecord error:', e);
+      showToast('操作失敗，請稍後再試');
     });
 }
 
@@ -4082,6 +4126,7 @@ function submitFinanceRecord(){
       createdByName:     creatorName,
       createdAt:         TS(),
       updatedAt:         null,
+      status:            'active',
     };
     db.collection('financialRecords').add(rec)
       .then(function(docRef){
