@@ -137,7 +137,7 @@ button {
 /* detail panel (bottom sheet) */
 .dvDetailBackdrop { position:fixed; inset:0; background:rgba(0,0,0,0); z-index:180; transition:background 220ms; pointer-events:none; }
 .dvDetailBackdrop.open { background:rgba(0,0,0,0.28); pointer-events:auto; }
-.dvDetailPanel { position:fixed; bottom:0; left:0; right:0; background:var(--color-surface); border-radius:18px 18px 0 0; padding:0 0 env(safe-area-inset-bottom,16px); z-index:181; transform:translateY(100%); transition:transform 280ms cubic-bezier(0.32,0.72,0,1); box-shadow:0 -4px 32px rgba(0,0,0,0.14); }
+.dvDetailPanel { position:fixed; bottom:0; left:0; right:0; background:var(--color-surface); border-radius:18px 18px 0 0; padding:0 0 env(safe-area-inset-bottom,16px); z-index:181; transform:translateY(100%); transition:transform 280ms cubic-bezier(0.32,0.72,0,1); box-shadow:0 -4px 32px rgba(0,0,0,0.14); max-height:88dvh; overflow-y:auto; }
 .dvDetailPanel.open { transform:translateY(0); }
 .dvDetailHandle { width:36px; height:4px; border-radius:2px; background:var(--color-border); margin:10px auto 0; }
 .dvDetailTop { display:flex; align-items:center; gap:14px; padding:16px 20px 12px; }
@@ -152,6 +152,22 @@ button {
 .dvDetailCancelBtn { display:block; width:calc(100% - 40px); margin:14px 20px 0; padding:13px; text-align:center; border-radius:10px; background:#fff0ee; font-size:13px; letter-spacing:0.06em; color:#c0392b; border:none; cursor:pointer; font-weight:500; }
 .dvDetailCancelBtn:active { background:#fdd; }
 .dvDetailClose { display:block; width:calc(100% - 40px); margin:8px 20px 14px; padding:13px; text-align:center; border-radius:10px; background:var(--color-surface-alt); font-size:13px; letter-spacing:0.06em; color:var(--color-text-secondary); border:none; cursor:pointer; }
+/* ── Attendance list in teaching detail modal ── */
+.dvAttSection { margin:0 20px; padding:12px 0 0; }
+.dvAttSectionLabel { font-size:10px; letter-spacing:0.08em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:8px; }
+.dvAttRow { display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid var(--color-border-soft); }
+.dvAttRow:last-child { border-bottom:none; }
+.dvAttName { flex:1; font-size:13px; color:var(--color-text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dvAttBtns { display:flex; gap:3px; flex-shrink:0; }
+.dvAttBtn { font-size:10px; padding:3px 8px; border-radius:99px; border:1px solid var(--color-border); color:var(--color-text-muted); cursor:pointer; transition:all 120ms; -webkit-tap-highlight-color:transparent; }
+.dvAttBtn.att-present { background:rgba(107,138,107,0.14); border-color:#6b8a6b; color:#3d6b3d; font-weight:600; }
+.dvAttBtn.att-absent  { background:rgba(184,74,74,0.10);   border-color:#c06060; color:#a83232; font-weight:600; }
+.dvAttBtn.att-excused { background:rgba(184,140,74,0.12);  border-color:#b89040; color:#8a6020; font-weight:600; }
+.dvAttBadge { font-size:10px; padding:3px 9px; border-radius:99px; }
+.dvAttBadge.att-present { background:rgba(107,138,107,0.14); color:#3d6b3d; font-weight:600; }
+.dvAttBadge.att-absent  { background:rgba(184,74,74,0.10);   color:#a83232; font-weight:600; }
+.dvAttBadge.att-excused { background:rgba(184,140,74,0.12);  color:#8a6020; font-weight:600; }
+.dvAttBadge.att-none    { background:var(--color-border-soft); color:var(--color-text-muted); }
 
 /* ── Day View: Vertical Grid (courts=columns, time=Y) ── */
 .dvVertOuter { overflow-y:auto; -webkit-overflow-scrolling:touch; max-height:calc(100dvh - 252px); margin:0 -16px; padding:0 16px 16px; scrollbar-width:none; }
@@ -2398,14 +2414,26 @@ function renderWeekGrid(){
       var topPx = (sm/60)*HOUR_PX;
       var hPx   = Math.max(16, (em-sm)/60*HOUR_PX - 2);
 
-      var u    = b.createdBy ? usersCache[b.createdBy] : null;
-      var name = u ? (u.realName||u.displayName||'—') : (b.primaryName||'—');
+      var nm      = _normaliseMode(b.mode);
+      var isTeach = (nm === 'teaching');
+      var name, photoURL;
+      if(isTeach && b.coachId && usersCache[b.coachId]){
+        var _coach = usersCache[b.coachId];
+        name     = _coach.realName||_coach.displayName||b.coachName||'教練';
+        photoURL = _coach.photoURL||_coach.lineAvatar||'';
+      } else {
+        var _u   = b.createdBy ? usersCache[b.createdBy] : null;
+        name     = _u ? (_u.realName||_u.displayName||'—') : (b.primaryName||b.coachName||'—');
+        photoURL = _u ? (_u.photoURL||_u.lineAvatar||'') : '';
+      }
+      var students = Array.isArray(b.students) ? b.students : [];
       var pls  = Array.isArray(b.players) ? b.players : (b.createdBy ? [b.createdBy] : []);
-      var cap  = b.capacity || null;
-      var cnt  = pls.length || b.participantCount || 1;
-      var nm   = _normaliseMode(b.mode);
+      var cnt  = isTeach ? (students.length || pls.length || 1) : (pls.length || b.participantCount || 1);
+      var cap  = isTeach ? null : (b.capacity || null);
       var ml   = (nm && nm!=='general') ? (MODE_LABELS[nm]||'') : '';
-      var cs   = cap ? (cnt+'/'+cap) : (cnt>1 ? cnt+'人' : '');
+      var cs   = isTeach
+        ? (students.length > 0 ? students.length+'位學生' : '')
+        : (cap ? (cnt+'/'+cap) : (cnt>1 ? cnt+'人' : ''));
       var meta = [ml,cs].filter(Boolean).join(' · ');
 
       // Wider columns — can show more content at smaller heights
@@ -4699,34 +4727,56 @@ function renderDayView(){
       if(em<=sm||sm<_DV_S*60||em>_DV_E*60+30) return; /* skip out-of-range */
       var topPx=((sm-_DV_S*60)/60*_DV_PX).toFixed(1);
       var hPx=Math.max(20,((em-sm)/60*_DV_PX-2)).toFixed(1);
-      var isCoach=b.mode==='coaching', isLock=b.mode==='event_lock';
-      var modeLabel=isCoach?'教學課':isLock?'場地封鎖':b.mode==='group_class'?'團體課':'一般預約';
-      var mem=(b.createdBy&&usersCache[b.createdBy])
-        ||Object.values(usersCache).find(function(x){return (x.displayName||'')===(b.primaryName||'');})
-        ||null;
+      var _dvNm    = _normaliseMode(b.mode);
+      var _dvTeach = (_dvNm === 'teaching');
+      var isLock   = (b.mode === 'event_lock');
+      var modeLabel= MODE_LABELS[_dvNm] || _dvNm || '一般預約';
+      /* For teaching: use coach as the display person */
+      var dvName, dvPhoto, mem;
+      if(_dvTeach && b.coachId && usersCache[b.coachId]){
+        mem     = usersCache[b.coachId];
+        dvName  = mem.realName||mem.displayName||b.coachName||'教練';
+        dvPhoto = mem.photoURL||mem.lineAvatar||'';
+      } else {
+        mem     = (b.createdBy&&usersCache[b.createdBy])
+          ||Object.values(usersCache).find(function(x){return (x.displayName||'')===(b.primaryName||'');})
+          ||null;
+        dvName  = _dvTeach ? (b.coachName||b.primaryName||'教練') : (b.primaryName||'?');
+        dvPhoto = mem?(mem.photoURL||mem.lineAvatar||''):'';
+      }
       var ntrp=mem?(mem.ntrp||'—'):'—';
       var pos=mem?(mem.preferredPosition||'—'):'—';
-      var photoURL=mem?(mem.photoURL||mem.lineAvatar||''):'';
       var courtLabel={hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[b.court]||b.court;
       var isOwner=(b.createdBy===_myUid);
+      var dvStudents = Array.isArray(b.students) ? b.students : [];
+      var dvPlayers  = Array.isArray(b.players)  ? b.players  : (b.createdBy?[b.createdBy]:[]);
       var enc=encodeURIComponent(JSON.stringify({
-        name:b.primaryName||'?', photoURL:photoURL, court:courtLabel, date:b.date,
+        name:dvName, photoURL:dvPhoto, court:courtLabel, date:b.date,
         time:b.startTime+'–'+b.endTime, mode:modeLabel,
-        count:b.participantCount||1, isCoach:isCoach,
+        count:_dvTeach ? dvStudents.length : (dvPlayers.length||b.participantCount||1),
+        capacity: _dvTeach ? null : (b.capacity||null),
+        playerNames: dvPlayers.map(function(uid){ var pu=usersCache[uid]; return pu?(pu.realName||pu.displayName||uid):uid; }),
+        isCoach:_dvTeach,
+        coachId: b.coachId||'',
+        coachName: dvName,
+        studentIds: dvStudents,
+        studentNames: dvStudents.map(function(uid){ var su=usersCache[uid]; return su?(su.realName||su.displayName||uid):uid; }),
+        attendance: b.attendance||{},
         ntrp:ntrp, pos:pos, att:'—',
-        bookingId:b.id, isOwner:isOwner
+        bookingId:b.id, isOwner:isOwner,
+        isInPlayers: dvPlayers.indexOf(_myUid)>=0
       }));
       /* avatar: circular photo or initial letter */
-      var blockAvatar=photoURL
-        ?('<img src="'+photoURL+'" class="dvVBlockPhoto" onerror="this.style.display=\'none\'" alt="">')
-        :'<div class="dvVBlockInitial">'+(b.primaryName||'?').charAt(0)+'</div>';
-      var cls='dvVBlock'+(isCoach?' is-coaching':'')+(isLock?' is-lock':'');
+      var blockAvatar=dvPhoto
+        ?('<img src="'+dvPhoto+'" class="dvVBlockPhoto" onerror="this.style.display=\'none\'" alt="">')
+        :'<div class="dvVBlockInitial">'+dvName.charAt(0)+'</div>';
+      var cls='dvVBlock'+(_dvTeach?' is-coaching':'')+(isLock?' is-lock':'');
       var blockH=parseFloat(hPx);
       /* show time label only if tall enough */
       var timeHtml=blockH>=36?'<div class="dvVBlockTime">'+b.startTime+'–'+b.endTime+'</div>':'';
       h+='<div class="'+cls+'" style="top:'+topPx+'px;height:'+hPx+'px" onclick="event.stopPropagation();_dvShowDetail(\''+enc+'\')">'+
         blockAvatar+
-        '<div class="dvVBlockName">'+(b.primaryName||'?')+'</div>'+
+        '<div class="dvVBlockName">'+_esc(dvName)+'</div>'+
         timeHtml+
       '</div>';
     });
@@ -4913,55 +4963,103 @@ function _dvShowDetail(enc){
   var p=document.createElement('div');
   p.id='dvDetailPanel';
   p.className='dvDetailPanel';
-  var modeColor=data.isCoach?'var(--color-clay)':'var(--color-hard)';
-  /* avatar: photo or initial */
+  var isTeach    = !!data.isCoach;
+  var modeColor  = isTeach ? 'var(--color-clay)' : 'var(--color-hard)';
+  /* avatar */
   var avatarInner = data.photoURL
     ? '<img src="'+data.photoURL+'" style="width:100%;height:100%;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'" alt="">'
-    : data.name.charAt(0);
-  /* cancel / leave button */
-  var myUidNow = currentUser?(currentUser.uid||currentUser.userId||currentUser.id||''):'';
+    : (data.name||'?').charAt(0);
+  /* cancel / leave */
   var canCancel = data.bookingId && (data.isOwner || isAdminLike());
-  var canLeave  = data.bookingId && data.isInPlayers && !data.isOwner && !isAdminLike();
-  /* player count string */
-  var countStr = data.capacity
-    ? (data.count+' / '+data.capacity+' 人')
-    : (data.count+'人');
-  /* players row */
+  var canLeave  = data.bookingId && data.isInPlayers && !data.isOwner && !isAdminLike() && !isTeach;
+
+  // ── Common info grid ──
+  var countStr = isTeach
+    ? (data.count > 0 ? data.count+'位學生' : '—')
+    : (data.capacity ? (data.count+' / '+data.capacity+' 人') : (data.count+'人'));
+
+  var infoRows =
+    '<div class="dvDetailCell"><div class="dvDetailCellLabel">場地</div><div class="dvDetailCellValue">'+(data.court||'—')+'</div></div>'+
+    '<div class="dvDetailCell"><div class="dvDetailCellLabel">日期</div><div class="dvDetailCellValue" style="font-size:13px">'+(data.date||'—')+'</div></div>'+
+    '<div class="dvDetailCell"><div class="dvDetailCellLabel">時間</div><div class="dvDetailCellValue" style="font-size:13px">'+data.time+'</div></div>'+
+    '<div class="dvDetailCell"><div class="dvDetailCellLabel">'+(isTeach?'學生':'人數')+'</div><div class="dvDetailCellValue">'+countStr+'</div></div>';
+
+  /* title / note (non-teaching) */
+  var titleHtml = (!isTeach && data.title)
+    ? '<div class="dvDetailCell" style="grid-column:1/-1"><div class="dvDetailCellLabel">課程名稱</div><div class="dvDetailCellValue">'+_esc(data.title)+'</div></div>'
+    : '';
+  var noteHtml = data.note
+    ? '<div class="dvDetailCell" style="grid-column:1/-1"><div class="dvDetailCellLabel">備註</div><div class="dvDetailCellValue" style="font-size:12.5px">'+_esc(data.note)+'</div></div>'
+    : '';
+
+  /* players row (non-teaching) */
   var playersHtml = '';
-  if(Array.isArray(data.playerNames) && data.playerNames.length > 0){
+  if(!isTeach && Array.isArray(data.playerNames) && data.playerNames.length > 0){
     playersHtml = '<div class="dvDetailCell" style="grid-column:1/-1">'+
       '<div class="dvDetailCellLabel">參與者</div>'+
       '<div class="dvDetailCellValue" style="font-size:12.5px;line-height:1.7">'+
         data.playerNames.map(function(n){ return _esc(n); }).join('、')+
       '</div></div>';
   }
-  /* title / note rows */
-  var titleHtml = data.title
-    ? '<div class="dvDetailCell" style="grid-column:1/-1"><div class="dvDetailCellLabel">課程名稱</div><div class="dvDetailCellValue">'+_esc(data.title)+'</div></div>'
-    : '';
-  var noteHtml = data.note
-    ? '<div class="dvDetailCell" style="grid-column:1/-1"><div class="dvDetailCellLabel">備註</div><div class="dvDetailCellValue" style="font-size:12.5px">'+_esc(data.note)+'</div></div>'
-    : '';
+
+  // ── Teaching: attendance list ──
+  var attHtml = '';
+  if(isTeach){
+    var students    = Array.isArray(data.studentIds)   ? data.studentIds   : [];
+    var studNames   = Array.isArray(data.studentNames) ? data.studentNames : [];
+    var attendance  = (data.attendance && typeof data.attendance==='object') ? data.attendance : {};
+    var canManage   = !!data.canManageAtt;
+    var bId = data.bookingId || '';
+
+    var ATT_LABELS = { present:'出席', absent:'缺席', excused:'請假' };
+
+    if(students.length === 0){
+      attHtml = '<div class="dvAttSection"><div class="dvAttSectionLabel">學生</div><div style="font-size:13px;color:var(--color-text-muted);padding-bottom:8px">尚未指定學生</div></div>';
+    } else {
+      var rows = '';
+      students.forEach(function(uid, idx){
+        var sName = studNames[idx] || uid;
+        var status = attendance[uid] || '';
+        if(canManage){
+          // show 3 toggle buttons
+          var btns = ['present','absent','excused'].map(function(s){
+            var active = (status === s) ? ' att-'+s : '';
+            var safeUid = uid.replace(/[^a-zA-Z0-9_]/g,'');
+            return '<button class="dvAttBtn'+active+'" onclick="updateAttendance(\''+bId+'\',\''+uid+'\',\''+s+'\')" aria-label="'+ATT_LABELS[s]+'">'+ATT_LABELS[s]+'</button>';
+          }).join('');
+          rows += '<div class="dvAttRow"><span class="dvAttName">'+_esc(sName)+'</span><div class="dvAttBtns">'+btns+'</div></div>';
+        } else {
+          // read-only badge
+          var badgeCls = status ? 'att-'+status : 'att-none';
+          var badgeTxt = status ? (ATT_LABELS[status]||status) : '未記錄';
+          rows += '<div class="dvAttRow"><span class="dvAttName">'+_esc(sName)+'</span><span class="dvAttBadge '+badgeCls+'">'+badgeTxt+'</span></div>';
+        }
+      });
+      attHtml = '<div class="dvAttSection"><div class="dvAttSectionLabel">學生出席</div>'+rows+'</div>';
+    }
+
+    /* title / note for teaching */
+    if(data.title)
+      attHtml += '<div style="padding:10px 20px 0"><div style="font-size:10px;letter-spacing:0.08em;color:var(--color-text-muted);text-transform:uppercase;margin-bottom:4px">課程名稱</div><div style="font-size:13.5px;color:var(--color-text-primary)">'+_esc(data.title)+'</div></div>';
+    if(data.note)
+      attHtml += '<div style="padding:10px 20px 0"><div style="font-size:10px;letter-spacing:0.08em;color:var(--color-text-muted);text-transform:uppercase;margin-bottom:4px">備註</div><div style="font-size:13px;color:var(--color-text-secondary)">'+_esc(data.note)+'</div></div>';
+  }
+
   p.innerHTML=
     '<div class="dvDetailHandle"></div>'+
     '<div class="dvDetailTop">'+
-      '<div class="dvDetailAvatar'+(data.isCoach?' is-coaching':'')+'" style="border-color:'+modeColor+';overflow:hidden;padding:0">'+avatarInner+'</div>'+
-      '<div><div class="dvDetailName">'+_esc(data.name)+'</div><div class="dvDetailMode">'+_esc(data.mode)+'</div></div>'+
+      '<div class="dvDetailAvatar'+(isTeach?' is-coaching':'')+'" style="border-color:'+modeColor+';overflow:hidden;padding:0">'+avatarInner+'</div>'+
+      '<div>'+
+        '<div class="dvDetailName">'+_esc(data.name)+'</div>'+
+        '<div class="dvDetailMode">'+_esc(data.mode)+(isTeach?' · 教練':'')+'</div>'+
+      '</div>'+
     '</div>'+
-    '<div class="dvDetailRows">'+
-      '<div class="dvDetailCell"><div class="dvDetailCellLabel">場地</div><div class="dvDetailCellValue">'+(data.court||'—')+'</div></div>'+
-      '<div class="dvDetailCell"><div class="dvDetailCellLabel">日期</div><div class="dvDetailCellValue" style="font-size:13px">'+(data.date||'—')+'</div></div>'+
-      '<div class="dvDetailCell"><div class="dvDetailCellLabel">時間</div><div class="dvDetailCellValue" style="font-size:13px">'+data.time+'</div></div>'+
-      '<div class="dvDetailCell"><div class="dvDetailCellLabel">人數</div><div class="dvDetailCellValue">'+countStr+'</div></div>'+
-      playersHtml+
-      titleHtml+
-      noteHtml+
-    '</div>'+
+    '<div class="dvDetailRows">'+infoRows+playersHtml+titleHtml+noteHtml+'</div>'+
+    attHtml+
     (canCancel?'<button class="dvDetailCancelBtn" onclick="cancelBooking(\''+data.bookingId+'\')">取消預約</button>':'')+
     (canLeave?'<button class="dvDetailCancelBtn" onclick="leaveBooking(\''+data.bookingId+'\')">退出預約</button>':'')+
     '<button class="dvDetailClose" onclick="_dvCloseDetail()">關閉</button>';
   document.body.appendChild(p);
-  /* animate in */
   requestAnimationFrame(function(){
     bd.classList.add('open');
     p.classList.add('open');
@@ -4977,6 +5075,37 @@ function _dvCloseDetail(){
     if(p&&p.parentNode) p.parentNode.removeChild(p);
     if(bd&&bd.parentNode) bd.parentNode.removeChild(bd);
   },300);
+}
+
+/* ── Update student attendance on a teaching booking ── */
+function updateAttendance(bookingId, studentUid, status){
+  if(!db){ showToast('無法連線'); return; }
+  // Only coach or admin may update
+  var myUid = currentUser?(currentUser.uid||currentUser.userId||currentUser.id||''):'';
+  var srcB = weekBookingsCache.find(function(b){ return b.id===bookingId; })
+          || (courtBookingsFirestore||[]).find(function(b){ return b.id===bookingId; });
+  if(srcB && srcB.coachId && srcB.coachId!==myUid && !isAdminLike()){
+    showToast('只有教練或管理員可修改出席狀態'); return;
+  }
+  var updateObj = {};
+  updateObj['attendance.'+studentUid] = status;
+  updateObj['updatedAt'] = TS();
+  db.collection('bookings').doc(bookingId).update(updateObj)
+    .then(function(){
+      showToast('出席已更新');
+      // Patch local caches so re-open is instant (no round-trip)
+      [weekBookingsCache, courtBookingsFirestore||[]].forEach(function(arr){
+        var b = arr.find(function(x){ return x.id===bookingId; });
+        if(b){
+          if(!b.attendance || typeof b.attendance!=='object') b.attendance={};
+          b.attendance[studentUid] = status;
+        }
+      });
+      teachingBookings = null; // invalidate coach stats cache
+      // Re-open detail modal with updated data
+      showBookingDetail(bookingId);
+    })
+    .catch(function(e){ showToast('更新失敗：'+e.message); });
 }
 
 function setCourtSurface(filter){ _courtSurfaceFilter=filter; if(currentView==='week') render(); else if(currentView==='month') renderMonthView(); }
@@ -5098,34 +5227,56 @@ function showBookingDetail(id){
   var source = weekBookingsCache.length ? weekBookingsCache : (courtBookingsFirestore||[]);
   var b=source.find(function(x){ return x.id===id; });
   if(!b) return;
-  var u=b.createdBy?usersCache[b.createdBy]:null;
-  var name=u?(u.realName||u.displayName):(b.primaryName||'?');
-  var photoURL=u?(u.photoURL||u.lineAvatar||''):'';
-  var courtLabel={hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[b.court]||b.court;
-  var normMode = _normaliseMode(b.mode);
+  var normMode  = _normaliseMode(b.mode);
   var modeLabel = MODE_LABELS[normMode] || normMode || '一般預約';
-  var ntrp=u?(u.ntrp||'—'):'—';
-  var pos=u?(u.preferredPosition||'—'):'—';
-  var isCoach=(normMode==='teaching'||normMode==='groupClass');
-  var myUid=currentUser?(currentUser.uid||currentUser.userId||currentUser.id||''):'';
-  var isOwner=(b.createdBy===myUid);
-  // Build player name list from players[] array (fallback to creator only)
-  var players = Array.isArray(b.players) ? b.players : (b.createdBy ? [b.createdBy] : []);
-  var cap = b.capacity || null;
-  var playerNames = players.map(function(uid){
-    var pu = usersCache[uid];
-    return pu ? (pu.realName||pu.displayName||uid) : uid;
-  });
-  var isInPlayers = players.indexOf(myUid) >= 0;
+  var isTeach   = (normMode === 'teaching');
+  var myUid     = currentUser?(currentUser.uid||currentUser.userId||currentUser.id||''):'';
+  var isOwner   = (b.createdBy===myUid);
+  var courtLabel= {hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[b.court]||b.court;
+
+  // ── Name / photo: for teaching, show coach; otherwise show creator ──
+  var name, photoURL, ntrp, pos;
+  if(isTeach && b.coachId && usersCache[b.coachId]){
+    var _c = usersCache[b.coachId];
+    name     = _c.realName||_c.displayName||b.coachName||'教練';
+    photoURL = _c.photoURL||_c.lineAvatar||'';
+    ntrp     = _c.ntrp||'—';
+    pos      = _c.preferredPosition||'—';
+  } else {
+    var _u   = b.createdBy?usersCache[b.createdBy]:null;
+    name     = isTeach ? (b.coachName||b.primaryName||'教練') : (_u?((_u.realName||_u.displayName)):(b.primaryName||'?'));
+    photoURL = _u?(_u.photoURL||_u.lineAvatar||''):'';
+    ntrp     = _u?(_u.ntrp||'—'):'—';
+    pos      = _u?(_u.preferredPosition||'—'):'—';
+  }
+
+  // ── Players / students ──
+  var players     = Array.isArray(b.players)  ? b.players  : (b.createdBy?[b.createdBy]:[]);
+  var students    = Array.isArray(b.students) ? b.students : [];
+  var isInPlayers = players.indexOf(myUid)>=0 || students.indexOf(myUid)>=0;
+  var cap         = isTeach ? null : (b.capacity||null);
+  var playerNames = players.map(function(uid){ var pu=usersCache[uid]; return pu?(pu.realName||pu.displayName||uid):uid; });
+  var studentNames= students.map(function(uid){ var su=usersCache[uid]; return su?(su.realName||su.displayName||uid):uid; });
+  var attendance  = (b.attendance && typeof b.attendance==='object') ? b.attendance : {};
+
+  // Coach/admin can manage attendance; also the coach themselves
+  var canManageAtt = isAdminLike() || (myUid && b.coachId && myUid===b.coachId);
+
   var enc=encodeURIComponent(JSON.stringify({
     name:name, photoURL:photoURL, court:courtLabel, date:b.date,
     time:b.startTime+'–'+b.endTime, mode:modeLabel,
-    count:players.length || b.participantCount || 1,
+    count: isTeach ? students.length : (players.length||b.participantCount||1),
     capacity: cap,
     playerNames: playerNames,
-    title: b.title || '',
-    note: b.note || '',
-    isCoach:isCoach,
+    title: b.title||'',
+    note:  b.note||'',
+    isCoach: isTeach,
+    coachId:    b.coachId||'',
+    coachName:  name,
+    studentIds: students,
+    studentNames: studentNames,
+    attendance: attendance,
+    canManageAtt: canManageAtt,
     ntrp:ntrp, pos:pos, att:'—',
     bookingId:id, isOwner:isOwner, isInPlayers:isInPlayers
   }));
@@ -5233,10 +5384,14 @@ function loadCourtBookings(dateStr){
 function loadMyBookings(){
   if(!db||!currentUser){ renderBookings(); renderManage(); return; }
   var myUid=currentUser.uid||currentUser.userId||currentUser.id||'';
-  /* Query both: bookings I created AND bookings where I'm in players[] */
+  /* Three queries:
+     1. bookings I created
+     2. bookings where I'm in players[]  (general / pickleball joined bookings)
+     3. bookings where I'm in students[] (teaching sessions as a student) */
   var qCreator = db.collection('bookings').where('createdBy','==',myUid).get();
   var qPlayer  = db.collection('bookings').where('players','array-contains',myUid).get();
-  Promise.all([qCreator, qPlayer])
+  var qStudent = db.collection('bookings').where('students','array-contains',myUid).get();
+  Promise.all([qCreator, qPlayer, qStudent])
     .then(function(snaps){
       var seen = {};
       var results = [];
