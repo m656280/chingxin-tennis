@@ -640,7 +640,19 @@ button {
 .announcDelBtn:hover { border-color:var(--color-clay); color:var(--color-clay); }
 .announcSystem { border-left:3px solid #e74c3c; padding-left:10px; }
 .announcSystemRow { display:flex; align-items:center; gap:8px; }
-.announcRedDot { width:8px; height:8px; border-radius:50%; background:#e74c3c; flex-shrink:0; }
+.announcRedDot    { width:8px; height:8px; border-radius:50%; background:#e74c3c; flex-shrink:0; }
+.announcYellowDot { width:8px; height:8px; border-radius:50%; background:#f39c12; flex-shrink:0; }
+
+/* ── Membership Fee Status Badges ── */
+.feeTypeBadge   { display:inline-block; font-size:10px; border-radius:4px; padding:2px 6px;
+  white-space:nowrap; border:1px solid var(--color-border); color:var(--color-text-muted); }
+.feeStatusBadge { display:inline-block; font-size:10px; border-radius:4px; padding:2px 6px; white-space:nowrap; }
+.feeStatusBadge.paid     { background:rgba(39,174,96,0.12); border:1px solid rgba(39,174,96,0.35); color:#27ae60; }
+.feeStatusBadge.expiring { background:rgba(243,156,18,0.12); border:1px solid rgba(243,156,18,0.40); color:#c8860a; }
+.feeStatusBadge.overdue  { background:rgba(231,76,60,0.10); border:1px solid rgba(231,76,60,0.35); color:#c0392b; }
+.feeStatusBadge.none     { background:rgba(150,150,150,0.10); border:1px solid rgba(150,150,150,0.35); color:#888; }
+.announcGrayDot  { width:8px; height:8px; border-radius:50%; background:#aaa; flex-shrink:0; }
+.announcSystemGray { border-left-color:#ccc; }
 
 /* ── Coach Student Row ── */
 .coachStudentRow {
@@ -1228,10 +1240,13 @@ button {
       </svg>
       預約
     </button>
-    <button class="navTab" onclick="showTab('manage',this)">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
-        <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-      </svg>
+    <button class="navTab" id="navTabManage" onclick="showTab('manage',this)">
+      <span style="position:relative;display:inline-flex">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+          <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        <span id="manageBadge" style="display:none;position:absolute;top:-4px;right:-7px;min-width:14px;height:14px;border-radius:7px;background:#e74c3c;color:#fff;font-size:9px;font-weight:700;line-height:14px;padding:0 3px;text-align:center;pointer-events:none"></span>
+      </span>
       管理
     </button>
     <button class="navTab" onclick="showTab('finance',this)">
@@ -1406,12 +1421,16 @@ button {
   <div class="formSection">
     <div class="formRow">
       <label class="formLabel">類型</label>
-      <select class="formSelect" id="finFormType">
+      <select class="formSelect" id="finFormType" onchange="_finToggleYearRow()">
         <option value="annual">年費</option>
         <option value="monthly">月費</option>
         <option value="donate">抖內</option>
         <option value="expense">支出</option>
       </select>
+    </div>
+    <div class="formRow" id="finFormYearRow">
+      <label class="formLabel">會籍年度</label>
+      <select class="formSelect" id="finFormYear"></select>
     </div>
     <div class="formRow">
       <label class="formLabel">會員</label>
@@ -2086,8 +2105,10 @@ let _manageTab = 'pending';   // 'pending' | 'members' | 'coach' | 'adminSetting
 let _memberSearch='';        // member directory: text search
 let _memberNtrpFilter='';    // member directory: NTRP filter
 let _memberPosFilter='';     // member directory: position filter
+let _memberFeeFilter='';     // member directory: fee status filter ('paid'|'expiring'|'overdue'|'none'|'')
 let _coachTabSelected = null; // manage: currently viewed coach uid
 let announcementsCache = [];  // manage: announcements from Firestore
+let _announceLastReadTs = parseInt(localStorage.getItem('qx_announceLastRead')||'0',10); // 未讀追蹤
 let financeRecords = [];      // local array; Firestore layer can be added later
 let _finSearchQuery = '';     // finance search filter state
 let _finYear = 2026;    // active year ledger (fixed range 2026–2036)
@@ -2442,6 +2463,44 @@ function _renderPendingTab(el){
 function _esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 /* ── 會員管理 tab ── */
+/* ── 會費狀態計算（從 financeRecords + membershipExpiry 即時算，不需人工維護）── */
+function _calcMemberFeeStatus(m){
+  var uid = m.userId || m.uid || '';
+  var hasFeeRecord = financeRecords.some(function(r){
+    return (r.type==='annual'||r.type==='monthly') && r.memberId===uid;
+  });
+  if(!hasFeeRecord){
+    return {typeLabel:'', status:'none', statusLabel:'尚未建立繳費紀錄', expireStr:''};
+  }
+  var typeLabel = m.membershipType==='annual' ? '年費會員'
+               : m.membershipType==='monthly' ? '月費會員' : '';
+  var expStr = m.membershipExpiry || m.expireDate || '';
+  if(!expStr){ return {typeLabel:typeLabel, status:'paid', statusLabel:'已繳清', expireStr:''}; }
+  var todayFS = new Date(); todayFS.setHours(0,0,0,0);
+  var exp = new Date(expStr.replace(/\//g,'-')+'T00:00:00');
+  if(isNaN(exp.getTime())){ return {typeLabel:typeLabel, status:'paid', statusLabel:'已繳清', expireStr:''}; }
+  var diff = Math.floor((exp-todayFS)/86400000);
+  if(diff < 0)
+    return {typeLabel:typeLabel, status:'overdue',  statusLabel:'已到期 '+Math.abs(diff)+' 天', expireStr:''};
+  if(diff === 0)
+    return {typeLabel:typeLabel, status:'expiring', statusLabel:'今日到期', expireStr:''};
+  if(diff <= 30)
+    return {typeLabel:typeLabel, status:'expiring', statusLabel:'剩餘 '+diff+' 天', expireStr:''};
+  return {typeLabel:typeLabel, status:'paid', statusLabel:'已繳清', expireStr:expStr};
+}
+function _memberFeeStatusHtml(m){
+  var fs = _calcMemberFeeStatus(m);
+  var lines = [];
+  if(fs.typeLabel){
+    lines.push('<span class="feeTypeBadge">🏷 '+fs.typeLabel+'</span>');
+  }
+  lines.push('<span class="feeStatusBadge '+fs.status+'">'+fs.statusLabel+'</span>');
+  if(fs.status === 'paid' && fs.expireStr){
+    lines.push('<span style="font-size:10px;color:var(--color-text-muted)">有效至 '+fs.expireStr+'</span>');
+  }
+  return '<div style="display:flex;flex-direction:column;gap:3px">'+lines.join('')+'</div>';
+}
+
 function _renderMembersTab(el){
   var _cu    = currentUser || {};
   var _myId  = _cu.uid || _cu.userId || '';
@@ -2475,12 +2534,8 @@ function _renderMembersTab(el){
         '<div style="flex:1;min-width:0">'+
           '<div style="font-size:14px;font-weight:500;color:var(--color-text-primary)">'+_esc(m.realName||m.displayName||'未知')+'</div>'+
           (m.realName?'<div style="font-size:11px;color:var(--color-text-muted);margin-top:1px">LINE：'+_esc(m.displayName||'')+'</div>':'')+
-          '<div style="font-size:11px;color:var(--color-text-muted);margin-top:2px">'+
-            (meta2.length?meta2.join(' · '):'')+'</div>'+
-          (m.membershipType&&m.membershipExpiry?
-            '<div style="font-size:11px;color:var(--color-text-muted);margin-top:2px">'+
-              (m.membershipType==='annual'?'年費':'月費')+' · 有效至 '+_esc(m.membershipExpiry)+
-            '</div>':'')+
+          '<div style="margin-top:5px">'+_memberFeeStatusHtml(m)+'</div>'+
+          (meta2.length?'<div style="font-size:11px;color:var(--color-text-muted);margin-top:4px">'+meta2.join(' · ')+'</div>':'')+
           '<div style="font-size:10px;color:var(--color-text-muted);margin-top:2px;opacity:0.7">'+_esc(shortUid)+'</div>'+
         '</div>'+
         '<div class="memberBadge'+(m.role==='coach'?' coach':'')+'">'+roleLabel+'</div>'+
@@ -2583,6 +2638,15 @@ function _renderMembersTab(el){
             '<option value="全能"'+(_memberPosFilter==='全能'?' selected':'')+'>全能</option>'+
           '</select>'+
         '</div>'+
+        '<select id="memberDirFee"'+
+          ' style="width:100%;box-sizing:border-box;padding:6px 8px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-primary);font-size:12px;margin-top:6px"'+
+          ' onchange="_memberFeeFilter=this.value;_renderMemberListInTab()">'+
+          '<option value="">全部繳費狀態</option>'+
+          '<option value="paid"'+(_memberFeeFilter==='paid'?' selected':'')+'>✅ 已繳清</option>'+
+          '<option value="expiring"'+(_memberFeeFilter==='expiring'?' selected':'')+'>🟡 即將到期</option>'+
+          '<option value="overdue"'+(_memberFeeFilter==='overdue'?' selected':'')+'>🔴 已到期</option>'+
+          '<option value="none"'+(_memberFeeFilter==='none'?' selected':'')+'>🔴 未繳費</option>'+
+        '</select>'+
       '</div>'+
       '<div id="memberDirList"></div>';
   }
@@ -2606,6 +2670,7 @@ function _renderMemberListInTab(){
          !(m.preferredPosition||'').toLowerCase().includes(f)) return false;
     if(_memberNtrpFilter&&String(m.ntrp||'')!==_memberNtrpFilter) return false;
     if(_memberPosFilter&&(m.preferredPosition||'')!==_memberPosFilter) return false;
+    if(_memberFeeFilter&&_calcMemberFeeStatus(m).status!==_memberFeeFilter) return false;
     return true;
   }).sort(function(a,b){
     return (a.realName||a.displayName||'').localeCompare(b.realName||b.displayName||'','zh-Hant');
@@ -2625,17 +2690,13 @@ function _renderMemberListInTab(){
     var meta=[];
     if(m.ntrp) meta.push(_esc(_ntrpDisplay(m.ntrp)));
     if(m.preferredPosition) meta.push(_esc(m.preferredPosition));
-    var msLabel=m.membershipType==='annual'?'年費會員':m.membershipType==='monthly'?'月費會員':'';
     html+='<div class="memberCard">'+
       '<div class="memberAvatar">'+avatarHtml+'</div>'+
       '<div class="memberInfo">'+
         '<div class="memberName">'+_esc(m.realName||m.displayName||'未知')+'</div>'+
         (m.realName?'<div style="font-size:11px;color:var(--color-text-muted);margin-top:1px">'+_esc(m.displayName||'')+'</div>':'')+
+        '<div style="margin-top:5px;line-height:1.8">'+_memberFeeStatusHtml(m)+'</div>'+
         (meta.length?'<div class="memberMeta">'+meta.join(' · ')+'</div>':'')+
-        (msLabel&&m.membershipExpiry?
-          '<div style="font-size:11px;color:var(--color-text-muted);margin-top:2px">'+
-            msLabel+' · 有效至 '+_esc(m.membershipExpiry)+
-          '</div>':'')+
       '</div>'+
       '<div class="memberBadge'+(m.role==='coach'?' coach':'')+'">'+roleLabel+'</div>'+
     '</div>';
@@ -2800,82 +2861,154 @@ function _promoteToAdmin(){
   setAdminRole(sel.value,true);
 }
 
-/* ── 系統公告產生（admin/owner 限定，從 usersCache 即時計算）── */
+/* ── 未讀公告 Badge 管理 ── */
+function _markAnnouncementsRead(){
+  _announceLastReadTs = Date.now();
+  try { localStorage.setItem('qx_announceLastRead', String(_announceLastReadTs)); } catch(e){}
+  _updateManageNavBadge();
+}
+function _getManageBadgeCount(){
+  var sysCount = _generateSystemAnnouncements().length;
+  var unreadNormal = announcementsCache.filter(function(a){
+    if(!a.updatedAt) return false;
+    var ts = a.updatedAt.toDate ? a.updatedAt.toDate().getTime()
+           : (typeof a.updatedAt === 'number' ? a.updatedAt : 0);
+    return ts > _announceLastReadTs;
+  }).length;
+  return sysCount + unreadNormal;
+}
+function _updateManageNavBadge(){
+  var badge = document.getElementById('manageBadge');
+  if(!badge) return;
+  var count = _getManageBadgeCount();
+  if(count > 0){
+    badge.textContent = count > 9 ? '9+' : String(count);
+    badge.style.display = 'inline-block';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+/* ── 系統公告產生（角色感知，從 usersCache + financeRecords 即時計算）── */
 function _generateSystemAnnouncements(){
-  if(!isAdminLike()) return [];
-  var today=new Date(); today.setHours(0,0,0,0);
-  var items=[];
+  var adminLike = isAdminLike();
+  var today = new Date(); today.setHours(0,0,0,0);
+  var myUid = currentUser ? (currentUser.uid || currentUser.userId || '') : '';
+  var items = [];
 
-  // 1. 會費到期 / 逾期（30天內）
-  Object.values(usersCache).forEach(function(m){
-    var s=m.status||'';
-    if(s==='pending'||s==='blocked'||s==='deleted'||s==='rejected') return;
-    if(!m.expireDate||m.expirePaid) return;
-    var exp=new Date(m.expireDate.replace(/\//g,'-')+'T00:00:00');
-    var diff=Math.floor((exp-today)/86400000);
-    if(diff>30) return;
-    var name=_esc(m.realName||m.displayName||'某會員');
-    var title;
-    if(diff<0)      title=name+'會費已逾期 '+Math.abs(diff)+' 天';
-    else if(diff===0) title=name+'會費今日到期';
-    else             title=name+'會費將於 '+diff+' 天後到期';
-    items.push({type:'system',title:title,_sort:diff});
+  // 決定要檢查哪些會員（admin 看全部，一般會員只看自己）
+  var members = Object.values(usersCache).filter(function(m){
+    var s = m.status || '';
+    if(s === 'pending' || s === 'blocked' || s === 'deleted' || s === 'rejected') return false;
+    if(!adminLike){
+      var uid = m.userId || m.uid || '';
+      return uid === myUid;
+    }
+    return true;
   });
 
-  // 2. 尚未填寫正式姓名
-  Object.values(usersCache).forEach(function(m){
-    var s=m.status||'';
-    if(s!=='approved'&&s!=='active') return;
-    if(m.realName) return;
-    items.push({type:'system',title:_esc(m.displayName||'某會員')+'尚未填寫正式姓名',_sort:9999});
+  // 1. 尚未建立繳費紀錄（priority 1000，🔴）
+  var _hasFee = {};
+  financeRecords.forEach(function(r){
+    if((r.type==='annual'||r.type==='monthly') && r.memberId) _hasFee[r.memberId] = true;
+  });
+  members.forEach(function(m){
+    var s = m.status || '';
+    if(s !== 'approved' && s !== 'active') return;
+    var uid = m.userId || m.uid || '';
+    if(!uid || _hasFee[uid]) return;
+    var name = _esc(m.realName || m.displayName || uid);
+    items.push({type:'system', dot:'gray', title: name + ' 尚未建立繳費紀錄', _sort: 1000});
   });
 
-  // 逾期最優先（diff 最小），名稱缺漏排最後
-  items.sort(function(a,b){ return a._sort-b._sort; });
+  // 2. 已到期（🔴）/ 3. 即將到期 ≤30天（🟡）
+  members.forEach(function(m){
+    var expStr = m.membershipExpiry || m.expireDate || '';
+    if(!expStr || m.expirePaid) return;
+    var exp = new Date(expStr.replace(/\//g, '-') + 'T00:00:00');
+    if(isNaN(exp.getTime())) return;
+    var diff = Math.floor((exp - today) / 86400000);
+    if(diff > 30) return;
+    var name = _esc(m.realName || m.displayName || '某會員');
+    if(diff < 0){
+      // 已到期：diff 越負越嚴重，_sort 越小越優先
+      items.push({type:'system', dot:'red',
+        title: name + ' 已逾期 ' + Math.abs(diff) + ' 天',
+        _sort: 2000 + diff}); // e.g. diff=-30 → 1970, diff=-1 → 1999
+    } else if(diff === 0){
+      items.push({type:'system', dot:'red',
+        title: name + ' 會籍今日到期', _sort: 1999});
+    } else {
+      // 即將到期：diff 越小越緊急
+      items.push({type:'system', dot:'yellow',
+        title: name + ' 會籍將於 ' + diff + ' 天後到期', _sort: 3000 + diff});
+    }
+  });
+
+  // 4. 尚未填寫正式姓名（admin only，🔴，priority 9999）
+  if(adminLike){
+    members.forEach(function(m){
+      var s = m.status || '';
+      if(s !== 'approved' && s !== 'active') return;
+      if(m.realName) return;
+      items.push({type:'system', dot:'red',
+        title: _esc(m.displayName || '某會員') + '尚未填寫正式姓名', _sort: 9999});
+    });
+  }
+
+  // 排序：無繳費紀錄 → 已到期（越久越前）→ 即將到期（越近越前）→ 無姓名
+  items.sort(function(a, b){ return a._sort - b._sort; });
   return items;
 }
 
 /* ── 公告 tab (Firestore-backed + system 即時) ── */
 function _renderAnnouncementsTab(el){
-  var canEdit=isAdminLike();
+  // 開啟公告頁即標記已讀，清除 badge
+  _markAnnouncementsRead();
+
+  var canEdit = isAdminLike();
   if(canEdit){
-    el.innerHTML+='<button class="addBookingBtn" onclick="openAnnouncementEditor(null)">＋ 新增公告</button>';
+    el.innerHTML += '<button class="addBookingBtn" onclick="openAnnouncementEditor(null)">＋ 新增公告</button>';
   }
-  var sysItems=_generateSystemAnnouncements();
-  var hasNormal=announcementsCache.length>0;
-  if(!sysItems.length&&!hasNormal){
-    el.innerHTML+='<div class="emptyState"><div class="emptyStateIcon">—</div>目前沒有公告</div>';
+  var sysItems = _generateSystemAnnouncements();
+  var hasNormal = announcementsCache.length > 0;
+  if(!sysItems.length && !hasNormal){
+    el.innerHTML += '<div class="emptyState"><div class="emptyStateIcon">—</div>目前沒有公告</div>';
     return;
   }
-  var html='<div>';
-  // ── 系統公告（紅點，admin only）──
+  var html = '<div>';
+  // ── 系統公告（🔴 / 🟡 dot，依角色顯示）──
   sysItems.forEach(function(a){
-    html+='<div class="announcCard announcSystem">'+
+    var dotClass = a.dot === 'yellow' ? 'announcYellowDot'
+                : a.dot === 'gray'   ? 'announcGrayDot'
+                : 'announcRedDot';
+    var cardClass = 'announcCard announcSystem' + (a.dot === 'gray' ? ' announcSystemGray' : '');
+    html += '<div class="'+cardClass+'">'+
       '<div class="announcSystemRow">'+
-        '<span class="announcRedDot"></span>'+
+        '<span class="'+dotClass+'"></span>'+
         '<span class="announcTitle" style="margin-bottom:0">'+a.title+'</span>'+
       '</div>'+
     '</div>';
   });
   // ── 一般公告（📢，Firestore）──
   announcementsCache.forEach(function(a){
-    var timeStr='';
+    var timeStr = '';
     if(a.updatedAt){
-      timeStr=a.updatedAt.toDate?a.updatedAt.toDate().toLocaleDateString('zh-TW'):String(a.updatedAt);
+      timeStr = a.updatedAt.toDate ? a.updatedAt.toDate().toLocaleDateString('zh-TW') : String(a.updatedAt);
     }
-    var byStr=a.updatedBy?' · '+_esc(a.updatedBy):'';
-    html+='<div class="announcCard">'+
+    var byStr = a.updatedBy ? ' · ' + _esc(a.updatedBy) : '';
+    html += '<div class="announcCard">'+
       '<div class="announcTitle">📢 '+_esc(a.title||'')+'</div>'+
       '<div class="announcBody">'+_esc(a.content||'')+'</div>'+
-      (timeStr?'<div class="announcMeta">'+timeStr+byStr+'</div>':'')+
-      (canEdit?'<div class="announcActions">'+
+      (timeStr ? '<div class="announcMeta">'+timeStr+byStr+'</div>' : '')+
+      (canEdit ? '<div class="announcActions">'+
         '<button class="announcEditBtn" onclick="openAnnouncementEditor(\''+a.id+'\')">編輯</button>'+
         '<button class="announcDelBtn" onclick="deleteAnnouncement(\''+a.id+'\')">刪除</button>'+
-      '</div>':'')+
+      '</div>' : '')+
     '</div>';
   });
-  html+='</div>';
-  el.innerHTML+=html;
+  html += '</div>';
+  el.innerHTML += html;
 }
 
 /* ── Approve Member ── */
@@ -3058,6 +3191,7 @@ function loadAnnouncements(){
   db.collection('announcements').orderBy('updatedAt','desc').get()
     .then(function(snap){
       announcementsCache=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());});
+      _updateManageNavBadge();
       if(_manageTab==='announcements') renderManage();
     })
     .catch(function(e){ console.warn('loadAnnouncements error:',e); });
@@ -3814,15 +3948,18 @@ function exportFinanceCSV(){
 }
 
 /* ── Finance: 會籍到期日計算 ── */
-function _calcMembershipExpiry(membershipType, dateStr){
-  // dateStr: YYYY-MM-DD（來自 date input）
+function _calcMembershipExpiry(membershipType, dateStr, membershipYear){
+  // dateStr: YYYY-MM-DD（收款日期，monthly 用來推算到期日）
+  // membershipYear: number（年費專用，決定會籍到期年度）
   // return: YYYY/MM/DD（與 expireDate 格式一致）
   if(!dateStr||!membershipType) return '';
   var parts=dateStr.split('-');
   var y=parseInt(parts[0],10), mo=parseInt(parts[1],10), d=parseInt(parts[2],10);
   if(!y||!mo||!d) return '';
   if(membershipType==='annual'){
-    return y+'/12/31';
+    // 優先使用 membershipYear；沒有則 fallback 到收款年（舊資料相容）
+    var yr = (membershipYear && parseInt(membershipYear,10)) || y;
+    return yr+'/12/31';
   } else if(membershipType==='monthly'){
     mo+=1;
     if(mo>12){ mo=1; y+=1; }
@@ -3847,6 +3984,24 @@ function _finPopulateMemberSelect(selectedId){
   });
 }
 
+/* ── Finance: Year Row Toggle ── */
+function _finToggleYearRow(){
+  var type = document.getElementById('finFormType').value;
+  var row  = document.getElementById('finFormYearRow');
+  if(row) row.style.display = (type === 'annual') ? '' : 'none';
+}
+function _finPopulateYearSelect(selectedYear){
+  var sel = document.getElementById('finFormYear');
+  if(!sel) return;
+  var cur = new Date().getFullYear();
+  var html = '';
+  for(var y = cur - 1; y <= cur + 3; y++){
+    var sel_ = (y === (selectedYear ? parseInt(selectedYear,10) : cur)) ? ' selected' : '';
+    html += '<option value="'+y+'"'+sel_+'>'+y+' 年度</option>';
+  }
+  sel.innerHTML = html;
+}
+
 function openFinanceForm(){
   if(!_isFinanceAdmin()){ showToast('僅管理員可新增紀錄'); return; }
   _finEditId = null;
@@ -3856,6 +4011,8 @@ function openFinanceForm(){
   document.getElementById('finFormDate').value = formatDate(today);
   document.getElementById('finFormAmount').value = '';
   document.getElementById('finFormNote').value = '';
+  _finPopulateYearSelect(null);   // 預設當年度
+  _finToggleYearRow();            // annual → 顯示 year row
   document.getElementById('sheetBackdrop').classList.add('open');
   document.getElementById('financeFormSheet').classList.add('open');
 }
@@ -3877,7 +4034,8 @@ function submitFinanceRecord(){
   if(!amount || amount <= 0){ showToast('請輸入金額'); return; }
 
   if(_finEditId){
-    submitEditFinanceRecord(type, member, date, amount, note);
+    var _mYearE = (type==='annual') ? (parseInt((document.getElementById('finFormYear')||{}).value||'0',10)||null) : null;
+    submitEditFinanceRecord(type, member, date, amount, note, _mYearE);
   } else {
     if(!db){ showToast('無法連線，請稍後再試'); return; }
     const creatorName = currentUser ? (currentUser.displayName || currentUser.name || '') : '';
@@ -3888,7 +4046,8 @@ function submitFinanceRecord(){
     var _mRealName    = _mObj ? (_mObj.realName || '') : '';
     // 會籍計算（annual / monthly 才產生）
     var _msType   = (type==='annual'||type==='monthly') ? type : '';
-    var _msExpiry = _calcMembershipExpiry(_msType, date);
+    var _mYear    = (_msType==='annual') ? (parseInt((document.getElementById('finFormYear')||{}).value||'0',10)||null) : null;
+    var _msExpiry = _calcMembershipExpiry(_msType, date, _mYear);
     const rec = {
       type:              type,
       memberId:          member || '',
@@ -3899,6 +4058,7 @@ function submitFinanceRecord(){
       amount:            amount,
       note:              note || '',
       membershipType:    _msType,
+      membershipYear:    _mYear,
       membershipExpiry:  _msExpiry,
       createdByUid:      creatorUid,
       createdByName:     creatorName,
@@ -3934,7 +4094,7 @@ function submitFinanceRecord(){
   }
 }
 
-function submitEditFinanceRecord(type, member, date, amount, note){
+function submitEditFinanceRecord(type, member, date, amount, note, membershipYear){
   if(!db){ showToast('無法連線，請稍後再試'); return; }
   // member = userId (option value); look up display info directly
   var _mObj2 = member ? usersCache[member] : null;
@@ -3942,7 +4102,8 @@ function submitEditFinanceRecord(type, member, date, amount, note){
   var _mRealName2    = _mObj2 ? (_mObj2.realName || '') : '';
   // 會籍計算
   var _msType2   = (type==='annual'||type==='monthly') ? type : '';
-  var _msExpiry2 = _calcMembershipExpiry(_msType2, date);
+  var _mYear2    = (_msType2==='annual') ? (membershipYear||null) : null;
+  var _msExpiry2 = _calcMembershipExpiry(_msType2, date, _mYear2);
   const upd = {
     type:              type,
     memberId:          member || '',
@@ -3952,6 +4113,7 @@ function submitEditFinanceRecord(type, member, date, amount, note){
     amount:            amount,
     note:              note || '',
     membershipType:    _msType2,
+    membershipYear:    _mYear2,
     membershipExpiry:  _msExpiry2,
     updatedAt:         TS(),
   };
@@ -3976,7 +4138,7 @@ function submitEditFinanceRecord(type, member, date, amount, note){
         rec.type=type; rec.member=_mDisplayName2; rec.memberDisplayName=_mDisplayName2;
         rec.memberRealName=_mRealName2; rec.memberId=member||'';
         rec.date=date; rec.amount=amount; rec.note=note||'';
-        rec.membershipType=_msType2; rec.membershipExpiry=_msExpiry2;
+        rec.membershipType=_msType2; rec.membershipYear=_mYear2; rec.membershipExpiry=_msExpiry2;
         rec.updatedAt=upd.updatedAt;
       }
       closeFinanceForm();
@@ -4002,6 +4164,8 @@ function editFinanceRecord(id){
   document.getElementById('finFormAmount').value = rec.amount || '';
   document.getElementById('finFormNote').value   = rec.note   || '';
   _finPopulateMemberSelect(rec.memberId || '');
+  _finPopulateYearSelect(rec.membershipYear || null);
+  _finToggleYearRow();
   document.getElementById('sheetBackdrop').classList.add('open');
   document.getElementById('financeFormSheet').classList.add('open');
 }
@@ -4571,6 +4735,7 @@ function loadFinanceRecords(){
           member: data.memberDisplayName || data.memberName || data.member || '',  // normalize for render functions
         });
       });
+      _updateManageNavBadge();
       // Re-render finance screen if it is currently active
       var finScreen = document.getElementById('screen-finance');
       if(finScreen && finScreen.classList.contains('active')){
@@ -4615,6 +4780,7 @@ function loadUsersCache(){
 
     renderMembers('');
     renderGrid();
+    _updateManageNavBadge();
     if(document.getElementById('screen-manage') &&
        document.getElementById('screen-manage').classList.contains('active')){
       renderManage();
