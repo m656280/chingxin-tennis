@@ -5134,7 +5134,7 @@ function selectDate(dateStr){
 function changeWeek(delta){ selectedDate=addDays(selectedDate,delta*7); render(); }
 function changeMonth(delta){
   selectedDate=new Date(selectedDate.getFullYear(), selectedDate.getMonth()+delta, 1);
-  renderMonthView();
+  loadMonthBookings();
 }
 function filterMembers(v){ renderMembers(v); }
 
@@ -5406,10 +5406,11 @@ function loadMonthBookings(){
   db.collection('bookings')
     .where('date','>=',firstDs)
     .where('date','<=',lastDs)
-    .where('status','==','confirmed')
     .get()
     .then(function(snap){
-      monthBookingsCache = snap.docs.map(function(d){ return Object.assign({id:d.id},d.data()); });
+      monthBookingsCache = snap.docs
+        .map(function(d){ return Object.assign({id:d.id},d.data()); })
+        .filter(function(b){ return b.status==='confirmed'; });
       renderMonthView();
     })
     .catch(function(e){
