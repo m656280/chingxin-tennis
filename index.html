@@ -817,42 +817,44 @@ button {
   margin-bottom:2px;
 }
 
-/* ── Week Calendar Grid ── */
+/* ── Week View: Surface toggle ── */
 .wkSurfaceRow { display:flex; gap:6px; padding:8px 0 10px; }
 .wkSurfaceBtn { padding:5px 16px; border-radius:99px; border:1px solid var(--color-border); background:var(--color-surface-alt); font-size:12px; letter-spacing:0.04em; color:var(--color-text-muted); cursor:pointer; transition:all 150ms ease; }
 .wkSurfaceBtn.active { background:var(--color-text-primary); color:var(--color-surface); border-color:var(--color-text-primary); }
-/* calendar header row */
-.wkCalHeader { display:grid; grid-template-columns:40px repeat(7,1fr); border-bottom:1.5px solid var(--color-border); background:var(--color-bg); }
-.wkCalTimeSpacer { }
-.wkCalDayHead { padding:6px 2px 5px; text-align:center; font-size:9px; font-weight:600; letter-spacing:0.04em; color:var(--color-text-muted); line-height:1.3; border-left:1px solid var(--color-border-soft); }
-.wkCalDayHead.wkToday { color:var(--color-now); }
-.wkCalDayNum { display:block; font-size:12px; font-weight:700; color:var(--color-text-primary); margin-top:2px; }
-.wkCalDayNumToday { display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:50%; background:var(--color-now); color:#fff; font-size:10px; font-weight:700; margin-top:2px; }
-/* court section */
-.wkCalCourtBar { display:flex; align-items:center; padding:4px 4px 3px 40px; background:var(--color-surface-alt); border-top:1px solid var(--color-border-soft); border-bottom:1px solid var(--color-border-soft); }
-.wkCalCourtName { font-size:9px; font-weight:700; letter-spacing:0.12em; color:var(--color-text-secondary); text-transform:uppercase; }
-/* body layout */
-.wkCalBody { display:grid; grid-template-columns:40px 1fr; }
-.wkCalTimeCol { position:relative; }
-.wkCalTimeLabel { position:absolute; right:5px; font-size:7.5px; color:var(--color-text-muted); white-space:nowrap; line-height:1; transform:translateY(-50%); }
-.wkCalDayGrid { display:grid; grid-template-columns:repeat(7,1fr); }
-.wkCalDayCol { border-left:1px solid var(--color-border-soft); position:relative; }
-.wkCalDayCol.wkToday { background:rgba(107,138,107,0.035); }
-/* grid lines */
+/* Day picker strip */
+.wkDayPicker { display:grid; grid-template-columns:repeat(7,1fr); gap:1px; padding:4px 0 10px; }
+.wkDpDay { display:flex; flex-direction:column; align-items:center; gap:3px; padding:5px 2px; border-radius:8px; cursor:pointer; -webkit-tap-highlight-color:transparent; transition:background 120ms; }
+.wkDpDay:active { background:var(--color-border-soft); }
+.wkDpDow { font-size:9px; font-weight:600; letter-spacing:0.04em; color:var(--color-text-muted); line-height:1; }
+.wkDpNum { display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; font-size:13px; font-weight:600; color:var(--color-text-primary); line-height:1; transition:background 120ms, color 120ms; }
+.wkDpDay.wkDpToday .wkDpDow { color:var(--color-now); }
+.wkDpDay.wkDpToday .wkDpNum { color:var(--color-now); }
+.wkDpDay.wkDpSelected .wkDpNum { background:var(--color-text-primary); color:var(--color-surface); }
+.wkDpDay.wkDpToday.wkDpSelected .wkDpNum { background:var(--color-now); color:#fff; }
+/* Single-day dual-court grid */
+.wkDayGrid { border:1px solid var(--color-border); border-radius:10px; overflow:hidden; }
+.wkDayHdrRow { display:grid; grid-template-columns:40px 1fr 1fr; border-bottom:1px solid var(--color-border); }
+.wkDayHdrSpacer { background:var(--color-surface-alt); }
+.wkDayCourtHdr { padding:5px 8px; font-size:9px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:var(--color-text-secondary); border-left:1px solid var(--color-border-soft); background:var(--color-surface-alt); }
+.wkDayBodyRow { display:grid; grid-template-columns:40px 1fr 1fr; }
+.wkDayTimeCol { position:relative; background:var(--color-bg); }
+.wkDayTimeLabel { position:absolute; right:5px; font-size:7.5px; color:var(--color-text-muted); white-space:nowrap; line-height:1; transform:translateY(-50%); }
+.wkDayCourtCol { border-left:1px solid var(--color-border-soft); position:relative; background:var(--color-surface); }
+/* Grid lines (shared) */
 .wkCalHourLine { position:absolute; left:0; right:0; border-top:1px solid var(--color-border-soft); pointer-events:none; z-index:0; }
 .wkCalHalfLine { position:absolute; left:0; right:0; border-top:1px dashed rgba(0,0,0,0.05); pointer-events:none; z-index:0; }
-/* now indicator */
+/* Now indicator */
 .wkCalNowLine { position:absolute; left:0; right:0; pointer-events:none; z-index:2; }
 .wkCalNowLine::before { content:''; display:block; border-top:1.5px solid var(--color-now); }
 .wkCalNowDot { position:absolute; left:-3px; top:-3.5px; width:7px; height:7px; border-radius:50%; background:var(--color-now); }
-/* booking block */
-.wkCalBlock { position:absolute; left:2px; right:2px; border-radius:3px; overflow:hidden; cursor:pointer; padding:2px 3px; display:flex; flex-direction:column; z-index:1; transition:opacity 150ms; box-sizing:border-box; }
+/* Booking block */
+.wkCalBlock { position:absolute; left:3px; right:3px; border-radius:4px; overflow:hidden; cursor:pointer; padding:3px 4px; display:flex; flex-direction:column; z-index:1; transition:opacity 150ms; box-sizing:border-box; }
 .wkCalBlock:active { opacity:0.65; }
 .wkCalBlock.hard { background:var(--event-hard-bg); border-left:2px solid var(--event-hard-bar); }
 .wkCalBlock.clay { background:var(--event-clay-bg); border-left:2px solid var(--event-clay-bar); }
-.wkCalBlockTime { font-size:7.5px; color:var(--color-text-secondary); white-space:nowrap; overflow:hidden; line-height:1.3; }
-.wkCalBlockName { font-size:9px; font-weight:600; color:var(--color-text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.3; }
-.wkCalBlockMeta { font-size:7px; color:var(--color-text-muted); white-space:nowrap; overflow:hidden; line-height:1.3; }
+.wkCalBlockTime { font-size:8px; color:var(--color-text-secondary); white-space:nowrap; overflow:hidden; line-height:1.3; }
+.wkCalBlockName { font-size:10px; font-weight:600; color:var(--color-text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.3; }
+.wkCalBlockMeta { font-size:8px; color:var(--color-text-muted); white-space:nowrap; overflow:hidden; line-height:1.3; }
 
 /* ── Teaching form: student multi-select ── */
 .formStudentList { max-height:180px; overflow-y:auto; border:1px solid var(--color-border); border-radius:8px; background:var(--color-surface); }
@@ -2312,7 +2314,7 @@ function loadWeekBookings(){
     });
 }
 
-/* ── Render: Week Calendar Grid ── */
+/* ── Render: Week View (day-picker + single-day dual-court grid) ── */
 function renderWeekGrid(){
   var WK_START = 7;    // 07:00
   var WK_END   = 22;   // 22:00
@@ -2322,10 +2324,12 @@ function renderWeekGrid(){
 
   var el = document.getElementById('weekGridContent');
   if(!el) return;
+
   var ws     = startOfWeek(selectedDate);
   var isClay = _courtSurfaceFilter === 'clay';
   var courts = isClay ? ['clay_a','clay_b'] : ['hard_a','hard_b'];
   var surf   = isClay ? 'clay' : 'hard';
+  var selDs  = formatDate(selectedDate);
 
   // Surface buttons
   var btnHard = document.getElementById('wkBtnHard');
@@ -2333,102 +2337,100 @@ function renderWeekGrid(){
   if(btnHard) btnHard.classList.toggle('active', !isClay);
   if(btnClay) btnClay.classList.toggle('active',  isClay);
 
-  // 7 days for this week
-  var days = [];
-  for(var i = 0; i < 7; i++) days.push(addDays(ws, i));
-
-  // ── Day header row ──
-  var hdr = '<div class="wkCalHeader"><div class="wkCalTimeSpacer"></div>';
-  days.forEach(function(d){
+  // ── Day picker strip (7 tappable day buttons) ──
+  var picker = '<div class="wkDayPicker">';
+  for(var i = 0; i < 7; i++){
+    var d   = addDays(ws, i);
+    var ds  = formatDate(d);
     var isT = isSameDay(d, today);
-    var dn  = d.getDate();
-    var numH = isT
-      ? '<span class="wkCalDayNumToday">'+dn+'</span>'
-      : '<span class="wkCalDayNum">'+dn+'</span>';
-    hdr += '<div class="wkCalDayHead'+(isT?' wkToday':'')+'">'+DAYS_TC[d.getDay()]+numH+'</div>';
-  });
-  hdr += '</div>';
+    var isSel = (ds === selDs);
+    var cls = 'wkDpDay'+(isT?' wkDpToday':'')+(isSel?' wkDpSelected':'');
+    picker +=
+      '<div class="'+cls+'" onclick="selectWeekDay(\''+ds+'\')">'+
+        '<span class="wkDpDow">'+DAYS_TC[d.getDay()]+'</span>'+
+        '<span class="wkDpNum">'+d.getDate()+'</span>'+
+      '</div>';
+  }
+  picker += '</div>';
 
-  // ── Hour + half-hour grid lines (shared template) ──
+  // ── Shared grid lines (hour + half-hour) ──
   var lines = '';
   for(var h = 0; h <= WK_HOURS; h++){
     lines += '<div class="wkCalHourLine" style="top:'+(h*HOUR_PX)+'px"></div>';
     if(h < WK_HOURS)
-      lines += '<div class="wkCalHalfLine" style="top:'+(h*HOUR_PX + HOUR_PX/2)+'px"></div>';
+      lines += '<div class="wkCalHalfLine" style="top:'+(h*HOUR_PX+HOUR_PX/2)+'px"></div>';
   }
 
-  // ── Current-time indicator ──
+  // ── Now indicator (only when selected day is today) ──
   var nowM   = today.getHours()*60 + today.getMinutes();
   var nowTop = ((nowM - WK_START*60) / 60) * HOUR_PX;
-  var nowOK  = nowTop >= 0 && nowTop <= GRID_H;
+  var isToday = (selDs === formatDate(today));
+  var nowLine = (isToday && nowTop >= 0 && nowTop <= GRID_H)
+    ? '<div class="wkCalNowLine" style="top:'+nowTop+'px"><div class="wkCalNowDot"></div></div>'
+    : '';
 
-  // ── Court sections (Hard A + Hard B, or Clay A + Clay B) ──
-  var secs = '';
+  // ── Time label column ──
+  var timeCol = '<div class="wkDayTimeCol" style="height:'+GRID_H+'px">';
+  for(var h = WK_START; h <= WK_END; h++){
+    timeCol += '<div class="wkDayTimeLabel" style="top:'+((h-WK_START)*HOUR_PX)+'px">'+(h<10?'0':'')+h+':00</div>';
+  }
+  timeCol += '</div>';
+
+  // ── Court header row ──
+  var hdrRow = '<div class="wkDayHdrRow"><div class="wkDayHdrSpacer"></div>';
   courts.forEach(function(courtId){
-    var cl         = COURT_LABELS[courtId];
-    var courtLabel = cl.surface + ' ' + cl.letter;
+    var cl = COURT_LABELS[courtId];
+    hdrRow += '<div class="wkDayCourtHdr">'+cl.surface+' '+cl.letter+'</div>';
+  });
+  hdrRow += '</div>';
 
-    // Time label column
-    var timeCol = '<div class="wkCalTimeCol" style="height:'+GRID_H+'px">';
-    for(var h = WK_START; h <= WK_END; h++){
-      timeCol += '<div class="wkCalTimeLabel" style="top:'+((h-WK_START)*HOUR_PX)+'px">'+(h<10?'0':'')+h+':00</div>';
-    }
-    timeCol += '</div>';
+  // ── Court columns for selected day ──
+  var courtCols = '';
+  courts.forEach(function(courtId){
+    var bks = weekBookingsCache.filter(function(b){ return b.date===selDs && b.court===courtId; });
+    var blocks = '';
+    bks.forEach(function(b){
+      var sm = timeToMin(b.startTime) - WK_START*60;
+      var em = timeToMin(b.endTime)   - WK_START*60;
+      if(em<=0 || sm>=WK_HOURS*60) return;
+      sm = Math.max(0, sm);
+      em = Math.min(WK_HOURS*60, em);
+      var topPx = (sm/60)*HOUR_PX;
+      var hPx   = Math.max(16, (em-sm)/60*HOUR_PX - 2);
 
-    // Day columns for this court
-    var dayCols = '';
-    days.forEach(function(d){
-      var ds  = formatDate(d);
-      var isT = isSameDay(d, today);
-      var bks = weekBookingsCache.filter(function(b){ return b.date===ds && b.court===courtId; });
+      var u    = b.createdBy ? usersCache[b.createdBy] : null;
+      var name = u ? (u.realName||u.displayName||'—') : (b.primaryName||'—');
+      var pls  = Array.isArray(b.players) ? b.players : (b.createdBy ? [b.createdBy] : []);
+      var cap  = b.capacity || null;
+      var cnt  = pls.length || b.participantCount || 1;
+      var nm   = _normaliseMode(b.mode);
+      var ml   = (nm && nm!=='general') ? (MODE_LABELS[nm]||'') : '';
+      var cs   = cap ? (cnt+'/'+cap) : (cnt>1 ? cnt+'人' : '');
+      var meta = [ml,cs].filter(Boolean).join(' · ');
 
-      // Booking blocks
-      var blocks = '';
-      bks.forEach(function(b){
-        var sm = timeToMin(b.startTime) - WK_START*60;
-        var em = timeToMin(b.endTime)   - WK_START*60;
-        if(em<=0 || sm>=WK_HOURS*60) return; // out of visible range
-        sm = Math.max(0, sm);
-        em = Math.min(WK_HOURS*60, em);
-        var topPx = (sm/60)*HOUR_PX;
-        var hPx   = Math.max(14, (em-sm)/60*HOUR_PX - 2);
+      // Wider columns — can show more content at smaller heights
+      var inner = '';
+      if(hPx >= 18) inner  = '<span class="wkCalBlockName">'+_esc(name)+'</span>';
+      if(hPx >= 30) inner  = '<span class="wkCalBlockTime">'+b.startTime+'–'+b.endTime+'</span>'+inner;
+      if(hPx >= 46 && meta) inner += '<span class="wkCalBlockMeta">'+meta+'</span>';
 
-        var u    = b.createdBy ? usersCache[b.createdBy] : null;
-        var name = u ? (u.realName||u.displayName||'—') : (b.primaryName||'—');
-        // backward compat: old bookings may not have players[]
-        var pls  = Array.isArray(b.players) ? b.players : (b.createdBy ? [b.createdBy] : []);
-        var cap  = b.capacity || null;
-        var cnt  = pls.length || b.participantCount || 1;
-        var nm   = _normaliseMode(b.mode);
-        var ml   = (nm && nm!=='general') ? (MODE_LABELS[nm]||'') : '';
-        var cs   = cap ? (cnt+'/'+cap) : (cnt>1 ? cnt+'人' : '');
-        var meta = [ml,cs].filter(Boolean).join('·');
-
-        // Adaptive content: show more detail as block gets taller
-        var inner = '';
-        if(hPx >= 26) inner  = '<span class="wkCalBlockName">'+_esc(name)+'</span>';
-        if(hPx >= 40) inner  = '<span class="wkCalBlockTime">'+b.startTime+'</span>'+inner;
-        if(hPx >= 54 && meta) inner += '<span class="wkCalBlockMeta">'+meta+'</span>';
-
-        blocks += '<div class="wkCalBlock '+surf+'" style="top:'+topPx+'px;height:'+hPx+'px" onclick="showBookingDetail(\''+b.id+'\')">'+inner+'</div>';
-      });
-
-      // Current-time line: only on today's column
-      var nowLine = (isT && nowOK)
-        ? '<div class="wkCalNowLine" style="top:'+nowTop+'px"><div class="wkCalNowDot"></div></div>'
-        : '';
-
-      dayCols += '<div class="wkCalDayCol'+(isT?' wkToday':'')+'" style="height:'+GRID_H+'px">'+lines+nowLine+blocks+'</div>';
+      blocks += '<div class="wkCalBlock '+surf+'" style="top:'+topPx+'px;height:'+hPx+'px" onclick="showBookingDetail(\''+b.id+'\')">'+inner+'</div>';
     });
-
-    secs +=
-      '<div class="wkCalSection">'+
-        '<div class="wkCalCourtBar"><span class="wkCalCourtName">'+courtLabel+'</span></div>'+
-        '<div class="wkCalBody">'+timeCol+'<div class="wkCalDayGrid">'+dayCols+'</div></div>'+
-      '</div>';
+    courtCols += '<div class="wkDayCourtCol" style="height:'+GRID_H+'px">'+lines+nowLine+blocks+'</div>';
   });
 
-  el.innerHTML = '<div class="wkCal">'+hdr+secs+'</div>';
+  var bodyRow = '<div class="wkDayBodyRow">'+timeCol+courtCols+'</div>';
+  var dayGrid = '<div class="wkDayGrid">'+hdrRow+bodyRow+'</div>';
+
+  el.innerHTML = picker + dayGrid;
+}
+
+/* ── Select a specific day within the current week ── */
+function selectWeekDay(dateStr){
+  // Parse dateStr 'YYYY-MM-DD' without timezone shift
+  var parts = dateStr.split('-');
+  selectedDate = new Date(parseInt(parts[0],10), parseInt(parts[1],10)-1, parseInt(parts[2],10));
+  renderWeekGrid(); // no data reload — weekBookingsCache already covers the whole week
 }
 
 /* ── Render: Day Header ── */
