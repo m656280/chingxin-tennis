@@ -2482,18 +2482,25 @@ function _esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').re
 /* ── 會費狀態計算（從 financeRecords + membershipExpiry 即時算，不需人工維護）── */
 function _calcMemberFeeStatus(m){
   var uid = m.userId || m.uid || '';
-  var hasFeeRecord = financeRecords.some(function(r){
-    return (r.type==='annual'||r.type==='monthly') && r.memberId===uid && (r.status||'active') !== 'void';
+  // financialRecords 為唯一依據：只有 status=active 才算有效繳費（void/refund 不算）
+  var activeRecs = financeRecords.filter(function(r){
+    return (r.type==='annual'||r.type==='monthly') && r.memberId===uid && (r.status||'active')==='active';
   });
-  // Fallback：若 member doc 已有 membershipExpiry，代表曾經有繳費紀錄
-  // 解決 financeRecords 尚未載入或 memberId 不符時的誤判
-  if(!hasFeeRecord) hasFeeRecord = !!(m.membershipExpiry || m.expireDate);
-  if(!hasFeeRecord){
+  if(!activeRecs.length){
     return {typeLabel:'', status:'none', statusLabel:'尚未建立繳費紀錄'};
   }
-  var typeLabel = m.membershipType==='annual' ? '年費會員'
-               : m.membershipType==='monthly' ? '月費會員' : '';
-  var expStr = m.membershipExpiry || m.expireDate || '';
+  // 取到期日最晚的那筆 active 紀錄
+  var bestRec = activeRecs.reduce(function(best, r){
+    var expB = best.membershipExpiry || best.expireDate || '';
+    var expR = r.membershipExpiry    || r.expireDate    || '';
+    return expR > expB ? r : best;
+  }, activeRecs[0]);
+  var typeLabel = bestRec.membershipType==='annual'  ? '年費會員'
+               : bestRec.membershipType==='monthly' ? '月費會員'
+               : m.membershipType==='annual'        ? '年費會員'
+               : m.membershipType==='monthly'       ? '月費會員' : '';
+  // 到期日：優先用 financeRecord 自身欄位，舊紀錄無此欄位才 fallback 至 member doc 顯示快取
+  var expStr = bestRec.membershipExpiry || bestRec.expireDate || m.membershipExpiry || m.expireDate || '';
   if(!expStr){ return {typeLabel:typeLabel, status:'paid', statusLabel:'已繳清'}; }
   var todayFS = new Date(); todayFS.setHours(0,0,0,0);
   var exp = new Date(expStr.replace(/\//g,'-')+'T00:00:00');
@@ -2941,25 +2948,34 @@ function _generateSystemAnnouncements(){
     return true;
   });
 
-  // 1. 尚未建立繳費紀錄（priority 1000，🔴）
-  var _hasFee = {};
+  // 從 financeRecords 建立 active 紀錄的 uid → 最晚到期日 map（唯一依據，不用 member doc）
+  var _hasFee  = {};   // uid → true（有任一 active annual/monthly 紀錄）
+  var _bestExp = {};   // uid → 最晚到期日字串
   financeRecords.forEach(function(r){
-    if((r.type==='annual'||r.type==='monthly') && r.memberId && (r.status||'active') !== 'void') _hasFee[r.memberId] = true;
+    if((r.type==='annual'||r.type==='monthly') && r.memberId && (r.status||'active')==='active'){
+      _hasFee[r.memberId] = true;
+      var exp = r.membershipExpiry || r.expireDate || '';
+      if(exp && (!_bestExp[r.memberId] || exp > _bestExp[r.memberId])){
+        _bestExp[r.memberId] = exp;
+      }
+    }
   });
+
+  // 1. 尚未建立繳費紀錄（priority 1000，gray dot）
   members.forEach(function(m){
     var s = m.status || '';
     if(s !== 'approved' && s !== 'active') return;
     var uid = m.userId || m.uid || '';
     if(!uid) return;
-    // 雙重判斷：financeRecords 比對 OR member doc 已有 membershipExpiry
-    if(_hasFee[uid] || m.membershipExpiry || m.expireDate) return;
+    if(_hasFee[uid]) return;   // 有 active 紀錄 → 不提醒
     var name = _esc(m.realName || m.displayName || uid);
     items.push({type:'system', dot:'gray', title: name + ' 尚未建立繳費紀錄', _sort: 1000});
   });
 
-  // 2. 已到期（🔴）/ 3. 即將到期 ≤30天（🟡）
+  // 2. 已到期（🔴）/ 3. 即將到期 ≤30天（🟡）— 以 active record 的到期日為準
   members.forEach(function(m){
-    var expStr = m.membershipExpiry || m.expireDate || '';
+    var uid = m.userId || m.uid || '';
+    var expStr = _bestExp[uid] || '';   // 只從 active financeRecord 取到期日
     if(!expStr || m.expirePaid) return;
     var exp = new Date(expStr.replace(/\//g, '-') + 'T00:00:00');
     if(isNaN(exp.getTime())) return;
@@ -2967,15 +2983,12 @@ function _generateSystemAnnouncements(){
     if(diff > 30) return;
     var name = _esc(m.realName || m.displayName || '某會員');
     if(diff < 0){
-      // 已到期：diff 越負越嚴重，_sort 越小越優先
       items.push({type:'system', dot:'red',
-        title: name + ' 已逾期 ' + Math.abs(diff) + ' 天',
-        _sort: 2000 + diff}); // e.g. diff=-30 → 1970, diff=-1 → 1999
+        title: name + ' 已逾期 ' + Math.abs(diff) + ' 天', _sort: 2000 + diff});
     } else if(diff === 0){
       items.push({type:'system', dot:'red',
         title: name + ' 會籍今日到期', _sort: 1999});
     } else {
-      // 即將到期：diff 越小越緊急
       items.push({type:'system', dot:'yellow',
         title: name + ' 會籍將於 ' + diff + ' 天後到期', _sort: 3000 + diff});
     }
@@ -3958,6 +3971,9 @@ function deleteFinanceRecord(id){
       var rec = financeRecords.find(function(r){ return r.id===id; });
       if(rec){ rec.status = 'void'; }
       renderFinance();
+      _updateManageNavBadge();
+      var manScreen = document.getElementById('screen-manage');
+      if(manScreen && manScreen.classList.contains('active')){ renderManage(); }
       showToast('紀錄已作廢');
     })
     .catch(function(e){
