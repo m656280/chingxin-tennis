@@ -509,23 +509,6 @@ button {
   text-align:center; cursor:pointer;
 }
 
-/* ── Notifications ── */
-.notifItem {
-  display:flex; gap:12px; padding:14px 20px;
-  border-bottom:1px solid var(--color-border-soft);
-  align-items:flex-start;
-}
-.notifDot {
-  width:8px; height:8px; border-radius:50%;
-  background:var(--color-text-primary); flex-shrink:0; margin-top:5px;
-  transition:opacity 200ms;
-}
-.notifItem.read .notifDot { opacity:0; }
-.notifBody { flex:1; }
-.notifTitle { font-size:13px; font-weight:500; color:var(--color-text-primary); margin-bottom:2px; }
-.notifText { font-size:12px; color:var(--color-text-secondary); }
-.notifTime { font-size:10px; color:var(--color-text-muted); letter-spacing:0.04em; margin-top:3px; }
-
 /* ── About ── */
 .aboutContent { padding:20px 20px 0; }
 .aboutLogo { text-align:center; margin-bottom:24px; }
@@ -655,6 +638,9 @@ button {
   cursor:pointer; letter-spacing:0.05em; transition:all 150ms ease;
 }
 .announcDelBtn:hover { border-color:var(--color-clay); color:var(--color-clay); }
+.announcSystem { border-left:3px solid #e74c3c; padding-left:10px; }
+.announcSystemRow { display:flex; align-items:center; gap:8px; }
+.announcRedDot { width:8px; height:8px; border-radius:50%; background:#e74c3c; flex-shrink:0; }
 
 /* ── Coach Student Row ── */
 .coachStudentRow {
@@ -1311,17 +1297,6 @@ button {
   <button class="saveBtn" onclick="saveSettings()">儲存設定</button>
 </div>
 
-<!-- ── Notifications Sub-Sheet ── -->
-<div class="subSheet" id="notificationsSheet">
-  <div class="sheetHandle"></div>
-  <div class="subSheetHeader">
-    <button class="subSheetBack" onclick="closeNotifications()">‹</button>
-    <span class="subSheetTitle">通知中心</span>
-    <span style="width:32px"></span>
-  </div>
-  <div id="notificationsList"></div>
-</div>
-
 <!-- ── About Sub-Sheet ── -->
 <div class="subSheet" id="aboutSheet">
   <div class="sheetHandle"></div>
@@ -1732,8 +1707,6 @@ function _renderProfileSheet(){
       '</details>' +
     '</div>' +
     '<div class="sheetSection">' +
-      '<div class="sheetRow sheetNavRow" onclick="openNotifications()">' +
-        '<span class="sheetRowLabel">通知中心</span><span class="sheetRowChevron">›</span></div>' +
       '<div class="sheetRow sheetNavRow" onclick="openAbout()">' +
         '<span class="sheetRowLabel">關於清心網球協會</span><span class="sheetRowChevron">›</span></div>' +
     '</div>' +
@@ -2818,17 +2791,64 @@ function _promoteToAdmin(){
   setAdminRole(sel.value,true);
 }
 
-/* ── 公告 tab (Firestore-backed) ── */
+/* ── 系統公告產生（admin/owner 限定，從 usersCache 即時計算）── */
+function _generateSystemAnnouncements(){
+  if(!isAdminLike()) return [];
+  var today=new Date(); today.setHours(0,0,0,0);
+  var items=[];
+
+  // 1. 會費到期 / 逾期（30天內）
+  Object.values(usersCache).forEach(function(m){
+    var s=m.status||'';
+    if(s==='pending'||s==='blocked'||s==='deleted'||s==='rejected') return;
+    if(!m.expireDate||m.expirePaid) return;
+    var exp=new Date(m.expireDate.replace(/\//g,'-')+'T00:00:00');
+    var diff=Math.floor((exp-today)/86400000);
+    if(diff>30) return;
+    var name=_esc(m.realName||m.displayName||'某會員');
+    var title;
+    if(diff<0)      title=name+'會費已逾期 '+Math.abs(diff)+' 天';
+    else if(diff===0) title=name+'會費今日到期';
+    else             title=name+'會費將於 '+diff+' 天後到期';
+    items.push({type:'system',title:title,_sort:diff});
+  });
+
+  // 2. 尚未填寫正式姓名
+  Object.values(usersCache).forEach(function(m){
+    var s=m.status||'';
+    if(s!=='approved'&&s!=='active') return;
+    if(m.realName) return;
+    items.push({type:'system',title:_esc(m.displayName||'某會員')+'尚未填寫正式姓名',_sort:9999});
+  });
+
+  // 逾期最優先（diff 最小），名稱缺漏排最後
+  items.sort(function(a,b){ return a._sort-b._sort; });
+  return items;
+}
+
+/* ── 公告 tab (Firestore-backed + system 即時) ── */
 function _renderAnnouncementsTab(el){
   var canEdit=isAdminLike();
   if(canEdit){
     el.innerHTML+='<button class="addBookingBtn" onclick="openAnnouncementEditor(null)">＋ 新增公告</button>';
   }
-  if(!announcementsCache.length){
+  var sysItems=_generateSystemAnnouncements();
+  var hasNormal=announcementsCache.length>0;
+  if(!sysItems.length&&!hasNormal){
     el.innerHTML+='<div class="emptyState"><div class="emptyStateIcon">—</div>目前沒有公告</div>';
     return;
   }
   var html='<div>';
+  // ── 系統公告（紅點，admin only）──
+  sysItems.forEach(function(a){
+    html+='<div class="announcCard announcSystem">'+
+      '<div class="announcSystemRow">'+
+        '<span class="announcRedDot"></span>'+
+        '<span class="announcTitle" style="margin-bottom:0">'+a.title+'</span>'+
+      '</div>'+
+    '</div>';
+  });
+  // ── 一般公告（📢，Firestore）──
   announcementsCache.forEach(function(a){
     var timeStr='';
     if(a.updatedAt){
@@ -2836,7 +2856,7 @@ function _renderAnnouncementsTab(el){
     }
     var byStr=a.updatedBy?' · '+_esc(a.updatedBy):'';
     html+='<div class="announcCard">'+
-      '<div class="announcTitle">'+_esc(a.title||'')+'</div>'+
+      '<div class="announcTitle">📢 '+_esc(a.title||'')+'</div>'+
       '<div class="announcBody">'+_esc(a.content||'')+'</div>'+
       (timeStr?'<div class="announcMeta">'+timeStr+byStr+'</div>':'')+
       (canEdit?'<div class="announcActions">'+
@@ -3963,14 +3983,6 @@ function renderMembers(filter){
   }
 }
 
-/* ── Render: Notifications ── */
-function renderNotifications(){
-  var el = document.getElementById('notificationsList');
-  if(!el) return;
-  el.innerHTML = '<div class="emptyState"><div class="emptyStateIcon">—</div>目前沒有通知</div>';
-}
-function markRead(id, el){ el.classList.add('read'); }
-
 /* ── Navigation ── */
 function showTab(name, el){
   document.querySelectorAll('.navTab').forEach(t=>t.classList.remove('active'));
@@ -4360,7 +4372,7 @@ function closeProfile(){
   document.getElementById('sheetBackdrop').classList.remove('open');
 }
 function closeAllSheets(){
-  ['profileSheet','settingsSheet','notificationsSheet','aboutSheet','bookingFormSheet','financeFormSheet','finCategorySheet'].forEach(id=>{
+  ['profileSheet','settingsSheet','aboutSheet','bookingFormSheet','financeFormSheet','finCategorySheet'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.classList.remove('open');
   });
   document.getElementById('sheetBackdrop').classList.remove('open');
@@ -4428,15 +4440,6 @@ function saveProfileEdit(){
     console.error('saveProfileEdit error:', e);
     showToast('儲存失敗，請稍後再試');
   });
-}
-
-/* ── Notifications Sheet ── */
-function openNotifications(){
-  renderNotifications();
-  document.getElementById('notificationsSheet').classList.add('open');
-}
-function closeNotifications(){
-  document.getElementById('notificationsSheet').classList.remove('open');
 }
 
 /* ── About Sheet ── */
