@@ -1288,9 +1288,14 @@ button {
   <div class="settingsRow">
     <label class="settingsLabel" for="ntrpSelect">NTRP</label>
     <select class="settingsSelect" id="ntrpSelect">
-      <option>2.5</option><option>3.0</option>
-      <option selected>3.5</option>
-      <option>4.0</option><option>4.5</option><option>5.0</option>
+      <option value="">— 未選擇 —</option>
+      <option value="2.0">NTRP 2.0｜新手</option>
+      <option value="2.5">NTRP 2.5｜初學</option>
+      <option value="3.0">NTRP 3.0｜穩定對打</option>
+      <option value="3.5" selected>NTRP 3.5｜中階</option>
+      <option value="4.0">NTRP 4.0｜進階</option>
+      <option value="4.5">NTRP 4.5｜高階</option>
+      <option value="5.0">NTRP 5.0｜競技</option>
     </select>
   </div>
   <div class="settingsRow">
@@ -1666,7 +1671,7 @@ function _renderProfileSheet(){
   _infoRows += '<div class="sheetRow"><span class="sheetRowLabel">正式姓名</span><span class="sheetRowValue">' +
     (_realName ? _esc(_realName) : '<span style="color:var(--color-text-muted);font-style:italic">未設定</span>') + '</span></div>';
   if(_fsM.ntrp)
-    _infoRows += '<div class="sheetRow"><span class="sheetRowLabel">NTRP</span><span class="sheetRowValue">' + _esc(String(_fsM.ntrp)) + '</span></div>';
+    _infoRows += '<div class="sheetRow"><span class="sheetRowLabel">NTRP</span><span class="sheetRowValue">' + _esc(_ntrpDisplay(_fsM.ntrp)) + '</span></div>';
   if(_fsM.preferredPosition)
     _infoRows += '<div class="sheetRow"><span class="sheetRowLabel">擅長位置</span><span class="sheetRowValue">' + _esc(_fsM.preferredPosition) + '</span></div>';
   if(_fsM.expireDate)
@@ -1679,9 +1684,10 @@ function _renderProfileSheet(){
     : '';
 
   // ── 編輯區下拉選項 ─────────────────────────────────────────────────
-  var _ntrpOpts = ['','2.5','3.0','3.5','4.0','4.5','5.0'].map(function(v){
-    return '<option value="'+v+'"'+(String(_fsM.ntrp||'')===v?' selected':'')+'>'+(v||'— 未選擇 —')+'</option>';
-  }).join('');
+  var _ntrpOpts = '<option value=""'+(String(_fsM.ntrp||'')===''?' selected':'')+'>— 未選擇 —</option>'+
+    NTRP_OPTIONS.map(function(o){
+      return '<option value="'+o.v+'"'+(String(_fsM.ntrp||'')===o.v?' selected':'')+'>NTRP '+o.v+'｜'+o.label+'</option>';
+    }).join('');
   var _posOpts = ['','底線型 / 後場','網前型','全場','雙打後場','雙打網前'].map(function(v){
     return '<option value="'+v+'"'+(_fsM.preferredPosition===v?' selected':'')+'>'+(v||'— 未選擇 —')+'</option>';
   }).join('');
@@ -2088,6 +2094,21 @@ let courtBookingsFirestore = null;  // null = not yet loaded; [] = loaded but em
 let myBookingsFirestore = null;     // null = not yet loaded; [] = loaded but empty
 let pendingUsersFirestore = [];
 let unsubMyBookings = null;
+/* ── NTRP 等級定義（全站共用）── */
+var NTRP_OPTIONS=[
+  {v:'2.0',label:'新手'},
+  {v:'2.5',label:'初學'},
+  {v:'3.0',label:'穩定對打'},
+  {v:'3.5',label:'中階'},
+  {v:'4.0',label:'進階'},
+  {v:'4.5',label:'高階'},
+  {v:'5.0',label:'競技'},
+];
+function _ntrpDisplay(v){
+  if(!v) return '';
+  var opt=NTRP_OPTIONS.find(function(o){return o.v===String(v);});
+  return opt?'NTRP '+opt.v+'｜'+opt.label:'NTRP '+v;
+}
 let _manageTab = 'pending';   // 'pending' | 'members' | 'coach' | 'adminSettings' | 'announcements'
 let _memberSearch='';        // member directory: text search
 let _memberNtrpFilter='';    // member directory: NTRP filter
@@ -2475,7 +2496,7 @@ function _renderMembersTab(el){
       var rawUid=m.userId||m.uid||'';
       var shortUid=rawUid.length>12?rawUid.slice(0,12)+'…':rawUid;
       var meta2=[];
-      if(m.ntrp) meta2.push('NTRP '+_esc(String(m.ntrp)));
+      if(m.ntrp) meta2.push(_esc(_ntrpDisplay(m.ntrp)));
       html+='<div style="display:flex;align-items:center;gap:12px;padding:12px 0 4px 0">'+
         '<div style="flex-shrink:0">'+avatarHtml+'</div>'+
         '<div style="flex:1;min-width:0">'+
@@ -2571,11 +2592,9 @@ function _renderMembersTab(el){
             ' style="flex:1;padding:6px 8px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-primary);font-size:12px"'+
             ' onchange="_memberNtrpFilter=this.value;_renderMemberListInTab()">'+
             '<option value="">全部 NTRP</option>'+
-            '<option value="2.0"'+(_memberNtrpFilter==='2.0'?' selected':'')+'>2.0</option>'+
-            '<option value="2.5"'+(_memberNtrpFilter==='2.5'?' selected':'')+'>2.5</option>'+
-            '<option value="3.0"'+(_memberNtrpFilter==='3.0'?' selected':'')+'>3.0</option>'+
-            '<option value="3.5"'+(_memberNtrpFilter==='3.5'?' selected':'')+'>3.5</option>'+
-            '<option value="4.0+"'+(_memberNtrpFilter==='4.0+'?' selected':'')+'>4.0+</option>'+
+            NTRP_OPTIONS.map(function(o){
+              return '<option value="'+o.v+'"'+(_memberNtrpFilter===o.v?' selected':'')+'>'+o.v+' '+o.label+'</option>';
+            }).join('')+
           '</select>'+
           '<select id="memberDirPos"'+
             ' style="flex:1;padding:6px 8px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-primary);font-size:12px"'+
@@ -2608,10 +2627,7 @@ function _renderMemberListInTab(){
          !(m.displayName||'').toLowerCase().includes(f)&&
          !String(m.ntrp||'').toLowerCase().includes(f)&&
          !(m.preferredPosition||'').toLowerCase().includes(f)) return false;
-    if(_memberNtrpFilter){
-      if(_memberNtrpFilter==='4.0+'){if(parseFloat(m.ntrp||0)<4.0) return false;}
-      else{if(String(m.ntrp||'')!==_memberNtrpFilter) return false;}
-    }
+    if(_memberNtrpFilter&&String(m.ntrp||'')!==_memberNtrpFilter) return false;
     if(_memberPosFilter&&(m.preferredPosition||'')!==_memberPosFilter) return false;
     return true;
   }).sort(function(a,b){
@@ -2630,7 +2646,7 @@ function _renderMemberListInTab(){
       :'<svg width="40" height="40" viewBox="0 0 40 40" style="flex-shrink:0"><rect width="40" height="40" rx="20" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="16" font-family="serif">'+initials+'</text></svg>';
     var roleLabel=ROLE_LABEL[m.role]||m.role||'會員';
     var meta=[];
-    if(m.ntrp) meta.push('NTRP '+_esc(String(m.ntrp)));
+    if(m.ntrp) meta.push(_esc(_ntrpDisplay(m.ntrp)));
     if(m.preferredPosition) meta.push(_esc(m.preferredPosition));
     html+='<div class="memberCard">'+
       '<div class="memberAvatar">'+avatarHtml+'</div>'+
@@ -3939,7 +3955,7 @@ function renderMembers(filter){
         '<div class="memberAvatar">'+avatarHtml+'</div>'+
         '<div class="memberInfo">'+
           '<div class="memberName">'+(m.realName||m.displayName||'未知')+'</div>'+
-          '<div class="memberMeta">'+(m.ntrp?'NTRP '+m.ntrp+' · ':'')+(m.preferredPosition||'—')+'</div>'+
+          '<div class="memberMeta">'+(m.ntrp?_ntrpDisplay(m.ntrp)+' · ':'')+(m.preferredPosition||'—')+'</div>'+
         '</div>'+
         '<span class="memberBadge'+(isCoach?' coach':'')+'">'+((ROLE_BADGE[m.role])||'會員')+'</span>'+
       '</div>';
