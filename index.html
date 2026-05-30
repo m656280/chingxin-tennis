@@ -2446,24 +2446,14 @@ function _esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').re
 
 /* ── 會員管理 tab ── */
 function _renderMembersTab(el){
-  // ── [DEBUG] 臨時診斷面板 ──
-  var _cu=currentUser||{};
-  var _myId=_cu.uid||_cu.userId||'(null)';
-  var _cuRole=_cu.role||'(undefined)';
-  var _adminResult=isAdminLike();
-  var _cacheRole=(usersCache[_myId]&&usersCache[_myId].role)||'(not in cache)';
-  el.innerHTML+='<pre style="font-size:10px;line-height:1.6;background:#1a1a1a;color:#06C755;padding:10px 12px;border-radius:8px;margin-bottom:12px;white-space:pre-wrap;word-break:break-all">'+
-    '[DEBUG] currentUser.uid:  '+_myId+'\n'+
-    '[DEBUG] currentUser.role: '+_cuRole+'\n'+
-    '[DEBUG] isAdminLike():    '+_adminResult+'\n'+
-    '[DEBUG] cache role:       '+_cacheRole+
-  '</pre>';
-  // ── end debug ──
+  var _cu    = currentUser || {};
+  var _myId  = _cu.uid || _cu.userId || '';
+  var _cuRole= _cu.role || '';
   var ROLE_LABEL={owner:'擁有者',admin:'管理員',coach:'教練',annual_member:'年費會員',monthly_member:'月費會員',member:'會員'};
   var members=Object.values(usersCache).filter(function(m){
     return m.status==='approved' || m.status==='active';
   }).sort(function(a,b){
-    return (a.displayName||'').localeCompare(b.displayName||'','zh-Hant');
+    return (a.realName||a.displayName||'').localeCompare(b.realName||b.displayName||'','zh-Hant');
   });
   if(!members.length){
     el.innerHTML+='<div class="emptyState"><div class="emptyStateIcon">—</div>尚無會員資料</div>';
@@ -2495,8 +2485,12 @@ function _renderMembersTab(el){
         '<div class="memberBadge'+(m.role==='coach'?' coach':'')+'">'+roleLabel+'</div>'+
       '</div>'+
       (rawUid===_myId
-        ? '<div style="padding:4px 0 16px 56px"><span style="font-size:11px;color:var(--color-text-muted);letter-spacing:0.5px">YOU &nbsp;永久</span></div>'
+        ? '<div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 0 16px 56px">'+
+            '<span style="font-size:11px;color:var(--color-text-muted);letter-spacing:0.5px;padding:4px 0">YOU &nbsp;永久</span>'+
+            '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="editMemberRealName(\''+rawUid+'\')">編輯姓名</button>'+
+          '</div>'
         : '<div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 0 16px 56px">'+
+            '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="editMemberRealName(\''+rawUid+'\')">編輯姓名</button>'+
             '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="blockMember(\''+rawUid+'\')">封鎖</button>'+
             '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="setMemberRole(\''+rawUid+'\',\'member\')">設為會員</button>'+
             '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="setMemberRole(\''+rawUid+'\',\'coach\')">設為教練</button>'+
@@ -2917,6 +2911,27 @@ function setMemberRole(userId, newRole){
       renderManage();
     })
     .catch(function(e){console.error('setMemberRole error:',e);showToast('操作失敗，請稍後再試');});
+}
+
+/* ── Edit Member realName (admin/owner only) ── */
+function editMemberRealName(userId){
+  if(!db){ showToast('無法連線，請稍後再試'); return; }
+  var operator = _currentRole();
+  if(!isAdminLike()){ showToast('僅管理員可編輯'); return; }
+  var target = usersCache[userId];
+  if(!target){ showToast('找不到此會員'); return; }
+  var current = target.realName || '';
+  var input = prompt('請輸入「'+(target.displayName||userId)+'」的正式姓名：', current);
+  if(input === null) return;   // cancelled
+  input = input.trim();
+  db.collection('members').doc(userId).update({ realName: input, updatedAt: TS() })
+    .then(function(){
+      if(usersCache[userId]) usersCache[userId].realName = input;
+      if(currentUser && (currentUser.uid===userId || currentUser.userId===userId)) currentUser.realName = input;
+      showToast('姓名已更新');
+      renderManage();
+    })
+    .catch(function(e){ console.error('editMemberRealName error:', e); showToast('更新失敗，請稍後再試'); });
 }
 
 /* ── Announcements: Load ── */
