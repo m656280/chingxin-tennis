@@ -214,7 +214,7 @@ button {
 }
 
 /* ── Week Strip ── */
-.weekStrip { margin-bottom:24px; display:flex; flex-direction:column; gap:8px; }
+.weekStrip { margin-bottom:4px; display:flex; flex-direction:column; gap:4px; }
 .weekHeader { display:flex; align-items:center; justify-content:space-between; padding:0 4px; }
 .monthLabel {
   font-family:Georgia,'Cormorant Garamond','Times New Roman',serif; font-size:19px;
@@ -907,11 +907,11 @@ button {
 }
 
 /* ── Week View: Surface toggle ── */
-.wkSurfaceRow { display:flex; gap:6px; padding:8px 0 10px; }
+.wkSurfaceRow { display:flex; gap:6px; padding:4px 0 6px; }
 .wkSurfaceBtn { padding:5px 16px; border-radius:99px; border:1px solid var(--color-border); background:var(--color-surface-alt); font-size:12px; letter-spacing:0.04em; color:var(--color-text-muted); cursor:pointer; transition:all 150ms ease; }
 .wkSurfaceBtn.active { background:var(--color-text-primary); color:var(--color-surface); border-color:var(--color-text-primary); }
 /* Day picker strip */
-.wkDayPicker { display:grid; grid-template-columns:repeat(7,1fr); gap:1px; padding:4px 0 10px; }
+.wkDayPicker { display:grid; grid-template-columns:repeat(7,1fr); gap:1px; padding:2px 0 4px; }
 .wkDpDay { display:flex; flex-direction:column; align-items:center; gap:3px; padding:5px 2px; border-radius:8px; cursor:pointer; -webkit-tap-highlight-color:transparent; transition:background 120ms; }
 .wkDpDay:active { background:var(--color-border-soft); }
 .wkDpDow { font-size:9px; font-weight:600; letter-spacing:0.04em; color:var(--color-text-muted); line-height:1; }
@@ -2239,6 +2239,18 @@ const MONTHS_TC = ['1 月','2 月','3 月','4 月','5 月','6 月','7 月','8 �
 const SLOT_HEIGHT = 32;
 const SLOT_MIN = 30;
 
+/* ── Court Open Hours Config (週視圖開放時間設定) ── */
+/* 國定假日：依高雄市行事曆手動維護，格式 'YYYY-MM-DD' */
+var nationalHolidays = [
+  '2026-01-01','2026-02-28','2026-04-04','2026-04-05',
+  '2026-05-01','2026-06-19','2026-09-28','2026-10-10'
+];
+/* 寒暑假區間：依世隆國小行事曆手動維護 */
+var schoolHolidayRanges = [
+  { start:'2026-01-21', end:'2026-02-10', type:'winter' },
+  { start:'2026-07-01', end:'2026-08-31', type:'summer' },
+];
+
 /* ── State ── */
 const today = new Date();
 let selectedDate = new Date(today);
@@ -2375,6 +2387,18 @@ function scrollToNow(){
 }
 
 /* ── Court: Live nowLine ticker (every minute) ── */
+/* ── Court open hours by date type ── */
+/* Priority: weekend → national holiday → school holiday → weekday */
+function getCourtOpenHours(date){
+  var ds  = formatDate(date);
+  var dow = date.getDay();
+  if(dow === 0 || dow === 6) return { start:'06:00', end:'24:00' };
+  if(nationalHolidays.indexOf(ds) >= 0) return { start:'06:00', end:'24:00' };
+  var inHoliday = schoolHolidayRanges.some(function(r){ return ds >= r.start && ds <= r.end; });
+  if(inHoliday) return { start:'06:00', end:'24:00' };
+  return { start:'17:30', end:'24:00' };
+}
+
 function startNowLineTicker(){
   if(_nowTickInterval) clearInterval(_nowTickInterval);
   _nowTickInterval=setInterval(function(){
@@ -2383,16 +2407,23 @@ function startNowLineTicker(){
     var nowMin=now.getHours()*60+now.getMinutes();
     /* ── Week view: update all nowLines + time label ── */
     if(currentView==='week'){
-      var WK_S=7, H_PX=44;
-      var newTop=((nowMin-WK_S*60)/60)*H_PX;
+      var _wkH=getCourtOpenHours(selectedDate);
+      var WK_S_MIN=timeToMin(_wkH.start), WK_E_MIN=timeToMin(_wkH.end), H_PX=44;
+      var newTop=((nowMin-WK_S_MIN)/60)*H_PX;
+      var inRange=(nowMin>=WK_S_MIN && nowMin<WK_E_MIN);
       document.querySelectorAll('.wkCalNowLine').forEach(function(nl){
-        nl.style.top=newTop+'px';
+        nl.style.top=(inRange?newTop:-9999)+'px';
       });
       var lbl=document.getElementById('wkNowTimeLbl');
       if(lbl){
-        var hh=now.getHours(), mm=now.getMinutes();
-        lbl.textContent=(hh<10?'0':'')+hh+':'+(mm<10?'0':'')+mm;
-        lbl.style.top=newTop+'px';
+        if(inRange){
+          var hh=now.getHours(), mm=now.getMinutes();
+          lbl.textContent=(hh<10?'0':'')+hh+':'+(mm<10?'0':'')+mm;
+          lbl.style.top=newTop+'px';
+          lbl.style.display='';
+        } else {
+          lbl.style.display='none';
+        }
       }
       return;
     }
@@ -2461,11 +2492,14 @@ function loadWeekBookings(){
 
 /* ── Render: Week View (day-picker + single-day dual-court grid) ── */
 function renderWeekGrid(){
-  var WK_START = 7;    // 07:00
-  var WK_END   = 23;   // 23:00
-  var WK_HOURS = WK_END - WK_START; // 16
   var HOUR_PX  = 44;   // px per hour
-  var GRID_H   = WK_HOURS * HOUR_PX; // 704px
+
+  /* Dynamic open hours based on date type */
+  var _wkOpenHours = getCourtOpenHours(selectedDate);
+  var WK_START_MIN = timeToMin(_wkOpenHours.start); // e.g. 1050 (17:30) or 360 (06:00)
+  var WK_END_MIN   = timeToMin(_wkOpenHours.end);   // e.g. 1440 (24:00)
+  var WK_HOURS_MIN = WK_END_MIN - WK_START_MIN;     // total minutes in grid
+  var GRID_H       = (WK_HOURS_MIN / 60) * HOUR_PX;
 
   var el = document.getElementById('weekGridContent');
   if(!el) return;
@@ -2498,29 +2532,40 @@ function renderWeekGrid(){
   }
   picker += '</div>';
 
-  // ── Shared grid lines (hour + half-hour) ──
+  // ── Shared grid lines: iterate real-time minutes in 30-min steps ──
   var lines = '';
-  for(var h = 0; h <= WK_HOURS; h++){
-    lines += '<div class="wkCalHourLine" style="top:'+(h*HOUR_PX)+'px"></div>';
-    if(h < WK_HOURS)
-      lines += '<div class="wkCalHalfLine" style="top:'+(h*HOUR_PX+HOUR_PX/2)+'px"></div>';
+  for(var _gm = WK_START_MIN; _gm <= WK_END_MIN; _gm += 30){
+    var _gTop = ((_gm - WK_START_MIN) / 60) * HOUR_PX;
+    if(_gm % 60 === 0){
+      lines += '<div class="wkCalHourLine" style="top:'+_gTop+'px"></div>';
+    } else {
+      lines += '<div class="wkCalHalfLine" style="top:'+_gTop+'px"></div>';
+    }
   }
 
-  // ── Now indicator (only when selected day is today) ──
-  var nowM   = today.getHours()*60 + today.getMinutes();
-  var nowTop = ((nowM - WK_START*60) / 60) * HOUR_PX;
+  // ── Now indicator (only when selected day is today and within range) ──
+  var nowM    = today.getHours()*60 + today.getMinutes();
+  var nowTop  = ((nowM - WK_START_MIN) / 60) * HOUR_PX;
   var isToday = (selDs === formatDate(today));
-  var nowLine = (isToday && nowTop >= 0 && nowTop <= GRID_H)
+  var nowInRange = isToday && nowM >= WK_START_MIN && nowM < WK_END_MIN;
+  var nowLine = nowInRange
     ? '<div class="wkCalNowLine" style="top:'+nowTop+'px"><div class="wkCalNowDot"></div></div>'
     : '';
 
   // ── Time label column ──
   var timeCol = '<div class="wkDayTimeCol" style="height:'+GRID_H+'px">';
-  for(var h = WK_START; h <= WK_END; h++){
-    timeCol += '<div class="wkDayTimeLabel" style="top:'+((h-WK_START)*HOUR_PX)+'px">'+(h<10?'0':'')+h+':00</div>';
+  /* First label: always show the open time at top */
+  timeCol += '<div class="wkDayTimeLabel" style="top:0px">'+_wkOpenHours.start+'</div>';
+  /* Subsequent integer-hour labels */
+  var _firstHourMin = (Math.floor(WK_START_MIN / 60) + 1) * 60;
+  for(var _hm = _firstHourMin; _hm <= WK_END_MIN; _hm += 60){
+    var _hTop = ((_hm - WK_START_MIN) / 60) * HOUR_PX;
+    var _hh   = Math.floor(_hm / 60); /* keep 24 for 24:00 display, don't mod */
+    var _hhDisp = (_hh === 24) ? '24' : (_hh < 10 ? '0'+_hh : ''+_hh);
+    timeCol += '<div class="wkDayTimeLabel" style="top:'+_hTop+'px">'+_hhDisp+':00</div>';
   }
-  /* Live now-time label (clay red, updated by ticker) */
-  if(isToday && nowTop >= 0 && nowTop <= GRID_H){
+  /* Live now-time label (updated by ticker) */
+  if(nowInRange){
     var _nh = today.getHours(), _nm = today.getMinutes();
     var _nt = (_nh<10?'0':'')+_nh+':'+(_nm<10?'0':'')+_nm;
     timeCol += '<div class="wkNowTimeLabel" id="wkNowTimeLbl" style="top:'+nowTop+'px">'+_nt+'</div>';
@@ -2541,13 +2586,13 @@ function renderWeekGrid(){
     var bks = weekBookingsCache.filter(function(b){ return b.date===selDs && b.court===courtId; });
     var blocks = '';
     bks.forEach(function(b){
-      var sm = timeToMin(b.startTime) - WK_START*60;
-      var em = timeToMin(b.endTime)   - WK_START*60;
-      if(em<=0 || sm>=WK_HOURS*60) return;
+      var sm = timeToMin(b.startTime) - WK_START_MIN;
+      var em = timeToMin(b.endTime)   - WK_START_MIN;
+      if(em <= 0 || sm >= WK_HOURS_MIN) return; /* outside displayed range — skip silently */
       sm = Math.max(0, sm);
-      em = Math.min(WK_HOURS*60, em);
-      var topPx = (sm/60)*HOUR_PX;
-      var hPx   = Math.max(16, (em-sm)/60*HOUR_PX - 2);
+      em = Math.min(WK_HOURS_MIN, em);
+      var topPx = (sm / 60) * HOUR_PX;
+      var hPx   = Math.max(16, (em - sm) / 60 * HOUR_PX - 2);
 
       var nm      = _normaliseMode(b.mode);
       var isTeach = (nm === 'teaching');
