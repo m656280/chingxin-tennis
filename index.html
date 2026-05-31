@@ -1591,7 +1591,7 @@ button {
     </div>
     <div class="formRow" id="formCoachRow" style="display:none">
       <label class="formLabel">教練（必填）</label>
-      <select class="formSelect" id="formCoach"><option value="">— 請選擇教練 —</option></select>
+      <select class="formSelect" id="formCoach" onchange="_onFormCoachChange()"><option value="">— 請選擇教練 —</option></select>
     </div>
     <div class="formRow" id="formStudentsRow" style="display:none">
       <label class="formLabel">學生（可多選）</label>
@@ -3510,6 +3510,9 @@ function _renderCoachTab(el){
   // ── Can current user edit attendance for this coach's lessons? ──
   // owner → yes; coach-self → yes; admin → no
   var canEdit = isOwner || (isCoach && selId === myUid);
+  // ── Can current user manage students for this coach? ──
+  // owner / admin → yes; coach-self → yes
+  var canManageStudents = adminLike || (isCoach && selId === myUid);
 
   var html = '';
 
@@ -3526,6 +3529,45 @@ function _renderCoachTab(el){
     html += '<div style="font-size:15px;font-weight:600;margin-bottom:12px;color:var(--color-text-primary)">'+
       _esc(_mName(selCoach)||selId)+'</div>';
   }
+
+  // ── 我的學生 section ──
+  var _cs=(selCoach.coachStudents&&typeof selCoach.coachStudents==='object'&&!Array.isArray(selCoach.coachStudents))
+    ?selCoach.coachStudents:{};
+  var _csKeys=Object.keys(_cs);
+  html+='<div style="margin-bottom:18px">';
+  html+='<div style="font-size:10px;font-weight:700;letter-spacing:0.08em;color:var(--color-text-muted);text-transform:uppercase;margin-bottom:8px">我的學生（'+_csKeys.length+'人）</div>';
+  if(!_csKeys.length){
+    html+='<div style="font-size:13px;color:var(--color-text-muted);padding:6px 0 8px">尚未認領學生</div>';
+  } else {
+    _csKeys
+      .map(function(uid){return {uid:uid,m:usersCache[uid]||{}};})
+      .sort(function(a,b){
+        var na=a.m.realName||a.m.displayName||'';
+        var nb=b.m.realName||b.m.displayName||'';
+        return na.localeCompare(nb,'zh-Hant');
+      })
+      .forEach(function(item){
+        var uid=item.uid; var su=item.m;
+        var sName=su.realName||su.displayName||uid;
+        var sPhoto=_mPic(su);
+        var avatar=sPhoto
+          ?'<img src="'+sPhoto+'" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display=\'none\'" alt="">'
+          :'<div style="width:28px;height:28px;border-radius:50%;background:var(--color-surface-alt);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--color-text-muted);flex-shrink:0">'+_esc(sName.charAt(0))+'</div>';
+        html+='<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--color-border-soft)">';
+        html+=avatar;
+        html+='<span style="flex:1;font-size:12.5px;color:var(--color-text-primary);font-weight:500">'+_esc(sName)+'</span>';
+        if(canManageStudents){
+          html+='<button style="font-size:11px;padding:3px 8px;border-radius:99px;border:1px solid var(--color-border);background:none;cursor:pointer;color:var(--color-text-muted);flex-shrink:0" '+
+            'onclick="removeStudentFromCoach(\''+selId+'\',\''+uid+'\')">移除</button>';
+        }
+        html+='</div>';
+      });
+  }
+  if(canManageStudents){
+    html+='<button class="abActionBtn" style="margin-left:0;margin-top:10px;font-size:12px" onclick="openCoachAssign(\''+selId+'\')">＋ 認領學生</button>';
+  }
+  html+='</div>';
+  html+='<div style="border-top:1px solid var(--color-border);margin:0 0 16px"></div>';
 
   // ── Year + Month selectors ──
   html += '<div style="display:flex;gap:6px;margin-bottom:14px">';
@@ -3552,8 +3594,6 @@ function _renderCoachTab(el){
   html += '<div style="font-size:10px;font-weight:700;letter-spacing:0.08em;color:var(--color-text-muted);text-transform:uppercase;margin-bottom:10px">'+
     _esc(periodLabel)+' 授課紀錄（'+sorted.length+'堂）</div>';
 
-  var ATT_LABELS_C = { present:'出席', absent:'缺席', excused:'請假' };
-
   if(!sorted.length){
     html += '<div style="font-size:13px;color:var(--color-text-muted);padding:12px 0;text-align:center">本月暫無授課紀錄</div>';
   } else {
@@ -3563,8 +3603,6 @@ function _renderCoachTab(el){
       var cl       = COURT_LABELS[b.court]||{};
       var courtStr = cl.surface ? (cl.surface+' '+cl.letter) : (b.court||'—');
       var students = Array.isArray(b.students) ? b.students : [];
-      var att      = (b.attendance && typeof b.attendance==='object') ? b.attendance : {};
-      var bid      = b.id;
 
       // Header row
       html += '<div style="padding:10px 0 6px;border-bottom:1px solid var(--color-border)">';
@@ -3574,47 +3612,22 @@ function _renderCoachTab(el){
       if(!students.length){
         html += '<div style="font-size:11px;color:var(--color-text-muted);margin-top:6px">尚未指定學生</div>';
       } else {
-        // Student rows
+        // Student name list only (no attendance UI)
         students.forEach(function(uid){
-          var su     = usersCache[uid] || {};
-          var sName  = _mName(su)||uid;
-          var sPhoto = su.photoURL||su.lineAvatar||'';
-          var status = att[uid] || '';
-          var avatar = sPhoto
-            ? '<img src="'+sPhoto+'" style="width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display=\'none\'" alt="">'
-            : '<div style="width:24px;height:24px;border-radius:50%;background:var(--color-surface-alt);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--color-text-muted);flex-shrink:0">'+_esc(sName.charAt(0))+'</div>';
-
-          html += '<div style="display:flex;align-items:center;gap:7px;margin-top:7px">';
+          var su    = usersCache[uid] || {};
+          var sName = su.realName||su.displayName||uid;
+          var sPhoto= su.photoURL||su.lineAvatar||'';
+          var avatar= sPhoto
+            ? '<img src="'+sPhoto+'" style="width:22px;height:22px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display=\'none\'" alt="">'
+            : '<div style="width:22px;height:22px;border-radius:50%;background:var(--color-surface-alt);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:var(--color-text-muted);flex-shrink:0">'+_esc(sName.charAt(0))+'</div>';
+          html += '<div style="display:flex;align-items:center;gap:7px;margin-top:6px">';
           html += avatar;
-          html += '<span style="flex:1;font-size:12.5px;color:var(--color-text-primary)">'+_esc(sName)+'</span>';
-
-          if(canEdit){
-            // Toggle buttons
-            ['present','absent','excused'].forEach(function(s){
-              var active = (status === s);
-              var activeCls = active ? (
-                s==='present' ? 'background:rgba(107,138,107,0.14);border-color:#6b8a6b;color:#3d6b3d;font-weight:600' :
-                s==='absent'  ? 'background:rgba(184,74,74,0.10);border-color:#c06060;color:#a83232;font-weight:600' :
-                                'background:rgba(184,140,74,0.12);border-color:#b89040;color:#8a6020;font-weight:600'
-              ) : 'background:var(--color-surface-alt);color:var(--color-text-muted)';
-              html += '<button style="font-size:10px;padding:3px 7px;border-radius:99px;border:1px solid var(--color-border);cursor:pointer;'+activeCls+'" '+
-                'onclick="updateAttendance(\''+bid+'\',\''+uid+'\',\''+s+'\')">'+ATT_LABELS_C[s]+'</button>';
-            });
-          } else {
-            // Read-only badge
-            var badgeCls = status ? 'att-'+status : 'att-none';
-            var badgeTxt = status ? (ATT_LABELS_C[status]||status) : '—';
-            html += '<span class="dvAttBadge '+badgeCls+'">'+badgeTxt+'</span>';
-          }
+          html += '<span style="font-size:12px;color:var(--color-text-primary)">'+_esc(sName)+'</span>';
           html += '</div>';
         });
       }
       html += '</div>'; // lesson card
     });
-  }
-
-  if(!canEdit && adminLike){
-    html += '<div style="margin-top:12px;font-size:11px;color:var(--color-text-muted);text-align:center">管理員為唯讀，出席修改請由教練本人或 Owner 操作</div>';
   }
 
   el.innerHTML += html;
@@ -4088,17 +4101,27 @@ function deleteAnnouncement(id){
 
 /* ── Coach: Assign member (inline) ── */
 function openCoachAssign(coachId){
+  var _role=_currentRole();
+  var _myUid=currentUser?(currentUser.userId||currentUser.uid||currentUser.id||''):'';
+  if(!isAdminLike()&&!(_role==='coach'&&coachId===_myUid)){showToast('無權限');return;}
   var coach=usersCache[coachId]||{};
   var existingStudents=coach.coachStudents&&typeof coach.coachStudents==='object'&&!Array.isArray(coach.coachStudents)
     ?Object.keys(coach.coachStudents):[];
   var available=Object.values(usersCache).filter(function(m){
-    return m.role&&m.role!=='pending'&&m.role!=='blocked'&&m.status!=='deleted'&&m.status!=='blocked'&&existingStudents.indexOf(m.userId)<0&&m.userId!==coachId;
+    return (m.userId||m.uid)&&m.status!=='deleted'&&m.status!=='blocked'&&m.role!=='pending'
+      &&existingStudents.indexOf(m.userId||m.uid)<0&&(m.userId||m.uid)!==coachId;
+  }).sort(function(a,b){
+    var na=a.realName||a.displayName||'';
+    var nb=b.realName||b.displayName||'';
+    return na.localeCompare(nb,'zh-Hant');
   });
-  if(!available.length){showToast('沒有可指派的會員');return;}
+  if(!available.length){showToast('沒有可新增的會員');return;}
   var el=document.getElementById('manageContent');
   if(!el) return;
   var opts=available.map(function(m){
-    return '<option value="'+m.userId+'">'+_esc(_mName(m)||m.userId)+'</option>';
+    var _uid=m.userId||m.uid||'';
+    var _dname=m.realName||m.displayName||_uid;  /* realName only, no nickname */
+    return '<option value="'+_uid+'">'+_esc(_dname)+'</option>';
   }).join('');
   el.innerHTML=
     '<div style="padding:0 4px">'+
@@ -4113,6 +4136,9 @@ function openCoachAssign(coachId){
 /* ── Coach: Assign student to Firestore ── */
 function assignStudentToCoach(coachId){
   if(!db){showToast('無法連線');return;}
+  var _role=_currentRole();
+  var _myUid=currentUser?(currentUser.userId||currentUser.uid||currentUser.id||''):'';
+  if(!isAdminLike()&&!(_role==='coach'&&coachId===_myUid)){showToast('無權限');return;}
   var sel=document.getElementById('assignStudentSel');
   var studentId=sel?sel.value:'';
   if(!studentId){showToast('請選擇會員');return;}
@@ -4129,6 +4155,26 @@ function assignStudentToCoach(coachId){
       renderManage();
     })
     .catch(function(e){console.error('assignStudentToCoach error:',e);showToast('指派失敗');});
+}
+
+/* ── Coach: Remove student from coachStudents ── */
+function removeStudentFromCoach(coachId, studentId){
+  if(!db){showToast('無法連線');return;}
+  var _role=_currentRole();
+  var _myUid=currentUser?(currentUser.userId||currentUser.uid||currentUser.id||''):'';
+  if(!isAdminLike()&&!(_role==='coach'&&coachId===_myUid)){showToast('無權限');return;}
+  var update={updatedAt:TS()};
+  update['coachStudents.'+studentId]=firebase.firestore.FieldValue.delete();
+  db.collection('members').doc(coachId).update(update)
+    .then(function(){
+      showToast('已移除學生');
+      if(usersCache[coachId]&&usersCache[coachId].coachStudents){
+        delete usersCache[coachId].coachStudents[studentId];
+      }
+      _manageTab='coach';
+      renderManage();
+    })
+    .catch(function(e){console.error('removeStudentFromCoach error:',e);showToast('移除失敗');});
 }
 
 /* ── Coach: Open student editor (inline) ── */
@@ -5614,9 +5660,7 @@ function _dvShowDetail(enc){
             '<span class="dvAttBadge '+badgeCls+'" style="flex-shrink:0">'+badgeTxt+'</span>'+
           '</div>';
       });
-      attHtml = '<div class="dvAttSection"><div class="dvAttSectionLabel">學生名單</div>'+stRows+
-        '<div style="font-size:10px;color:var(--color-text-muted);margin-top:6px;padding-bottom:4px">出席紀錄請至「教練管理 → 授課紀錄」修改</div>'+
-        '</div>';
+      attHtml = '<div class="dvAttSection"><div class="dvAttSectionLabel">學生名單</div>'+stRows+'</div>';
     }
 
     /* title / note for teaching */
@@ -6459,9 +6503,10 @@ function onFormModeChange(){
   var coachRow = document.getElementById('formCoachRow');
   if(coachRow) coachRow.style.display = isTeaching && isAdmin ? '' : 'none';
 
-  // Students row: teaching only, admin-only
+  // Students row: teaching only — admin AND coach role can see it
+  var isCoachRole = (_currentRole() === 'coach');
   var studsRow = document.getElementById('formStudentsRow');
-  if(studsRow) studsRow.style.display = isTeaching && isAdmin ? '' : 'none';
+  if(studsRow) studsRow.style.display = isTeaching && (isAdmin || isCoachRole) ? '' : 'none';
 
   // Capacity row: hidden for all — pickleball removed, general fixed 4, groupClass by attendance, teaching n/a
   var capRow = document.getElementById('formCapacityRow');
@@ -6554,24 +6599,13 @@ function openBookingForm(){
     });
     coachSel.innerHTML=copts;
   }
-  // Populate students multi-select
-  var studentList = document.getElementById('formStudentList');
-  if(studentList){
-    var shtml = '';
-    Object.values(usersCache)
-      .filter(function(m){
-        return (m.userId||m.uid) &&
-          m.status!=='deleted' && m.status!=='blocked' && m.role!=='pending';
-      })
-      .sort(function(a,b){ return _mName(a).localeCompare(_mName(b),'zh-Hant'); })
-      .forEach(function(m){
-        var uid = m.userId||m.uid||'';
-        shtml += '<label class="formStudentItem">'+
-          '<input type="checkbox" class="formStudentCheck" value="'+uid+'">'+
-          '<span>'+_esc(_mName(m)||uid)+'</span>'+
-        '</label>';
-      });
-    studentList.innerHTML = shtml || '<div style="padding:10px 12px;font-size:13px;color:var(--color-text-muted)">尚無可選會員</div>';
+  // Populate students multi-select — filtered to coach's coachStudents
+  var _myUidForm = currentUser ? (currentUser.userId||currentUser.uid||currentUser.id||'') : '';
+  if(_currentRole() === 'coach'){
+    _refreshFormStudentList(_myUidForm);
+  } else {
+    var _coachSelEl = document.getElementById('formCoach');
+    _refreshFormStudentList(_coachSelEl && _coachSelEl.value ? _coachSelEl.value : null);
   }
   // Clay court restriction: disable options for non-admins
   var courtSel = document.getElementById('formCourt');
@@ -6796,6 +6830,51 @@ function _createGroupClassAnnouncement(coachUid, coachName, date, startTime, end
   }).catch(function(e){ console.error('groupClass announcement error:',e); });
 }
 
+/* ── Booking form: refresh student list based on selected coach's coachStudents ── */
+function _refreshFormStudentList(coachUid){
+  var studentList=document.getElementById('formStudentList');
+  if(!studentList) return;
+  if(!coachUid){
+    studentList.innerHTML='<div style="padding:10px 12px;font-size:13px;color:var(--color-text-muted)">請先選擇教練</div>';
+    return;
+  }
+  var myUid=currentUser?(currentUser.userId||currentUser.uid||currentUser.id||''):'';
+  var coachRec=usersCache[coachUid]||{};
+  var cs=(coachRec.coachStudents&&typeof coachRec.coachStudents==='object'&&!Array.isArray(coachRec.coachStudents))
+    ?coachRec.coachStudents:{};
+  var studentUids=Object.keys(cs);
+  if(!studentUids.length){
+    var _noStuMsg=coachUid===myUid
+      ?'尚未認領學生 <button style="font-size:11.5px;color:var(--color-hard);background:none;border:none;cursor:pointer;padding:0;text-decoration:underline" onclick="closeBookingForm();_manageTab=\'coach\';renderManage()">前往我的學生管理</button>'
+      :'此教練尚未認領學生，請先到教練管理新增學生';
+    studentList.innerHTML='<div style="padding:10px 12px;font-size:13px;color:var(--color-text-muted)">'+_noStuMsg+'</div>';
+    return;
+  }
+  var shtml='';
+  studentUids
+    .map(function(uid){return usersCache[uid];})
+    .filter(Boolean)
+    .sort(function(a,b){
+      var na=a.realName||a.displayName||'';
+      var nb=b.realName||b.displayName||'';
+      return na.localeCompare(nb,'zh-Hant');
+    })
+    .forEach(function(m){
+      var uid=m.userId||m.uid||'';
+      if(!uid) return;
+      var dname=m.realName||m.displayName||uid;
+      shtml+='<label class="formStudentItem">'+
+        '<input type="checkbox" class="formStudentCheck" value="'+uid+'">'+
+        '<span>'+_esc(dname)+'</span>'+
+      '</label>';
+    });
+  studentList.innerHTML=shtml||'<div style="padding:10px 12px;font-size:13px;color:var(--color-text-muted)">尚無可選學生</div>';
+}
+function _onFormCoachChange(){
+  var sel=document.getElementById('formCoach');
+  _refreshFormStudentList(sel&&sel.value?sel.value:null);
+}
+
 function submitBooking(){
   if(!db){ showToast('無法連線，請稍後再試'); return; }
   var court    = document.getElementById('formCourt').value;
@@ -6821,6 +6900,10 @@ function submitBooking(){
   if(timeToMin(start)<timeToMin(_oh.start)){
     showToast('此日期場地開放時間為 '+_oh.start+'，請重新選擇開始時間');
     return;
+  }
+  // Coach self-booking: coachId = own uid (formCoach is hidden for coach role)
+  if(mode==='teaching' && _currentRole() === 'coach'){
+    coachId = currentUser ? (currentUser.userId||currentUser.uid||currentUser.id||'') : coachId;
   }
   // Teaching: coach is required
   if(mode==='teaching' && !coachId){ showToast('請選擇教練'); return; }
