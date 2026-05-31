@@ -28,6 +28,10 @@
   --event-clay-bar: rgba(184,92,74,0.55);
   --event-lock-bg: rgba(26,31,28,0.05);
   --event-lock-bar: rgba(26,31,28,0.35);
+  --event-teach-bg: rgba(201,169,110,0.14);
+  --event-teach-bar: rgba(201,169,110,0.75);
+  --event-gc-bg: rgba(74,109,74,0.10);
+  --event-gc-bar: rgba(74,109,74,0.60);
   --color-now: #5FAFB7; /* hard default; clay overrides to #B86A4A via JS */
   --grid-line: #e9e7e0;
   --grid-line-soft: #f1efe9;
@@ -960,6 +964,10 @@ button {
 .wkCalBlock:active { opacity:0.65; }
 .wkCalBlock.hard { background:var(--event-hard-bg); border-left:2px solid var(--event-hard-bar); }
 .wkCalBlock.clay { background:var(--event-clay-bg); border-left:2px solid var(--event-clay-bar); }
+/* Mode overrides — higher specificity than surface */
+.wkCalBlock.mode-teach { background:var(--event-teach-bg) !important; border-left-color:var(--event-teach-bar) !important; }
+.wkCalBlock.mode-gc    { background:var(--event-gc-bg)    !important; border-left-color:var(--event-gc-bar)    !important; }
+.wkCalBlock.mode-lock  { background:var(--event-lock-bg)  !important; border-left-color:var(--event-lock-bar)  !important; }
 .wkCalBlockTime { font-size:8px; color:var(--color-text-secondary); white-space:nowrap; overflow:hidden; line-height:1.3; }
 .wkCalBlockName { font-size:10px; font-weight:600; color:var(--color-text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.3; }
 .wkCalBlockMeta { font-size:8px; color:var(--color-text-muted); white-space:nowrap; overflow:hidden; line-height:1.3; }
@@ -2699,7 +2707,8 @@ function renderWeekGrid(){
       if(hPx >= 30) inner  = '<span class="wkCalBlockTime">'+b.startTime+'–'+b.endTime+'</span>'+inner;
       if(hPx >= 46 && meta) inner += '<span class="wkCalBlockMeta">'+meta+'</span>';
 
-      blocks += '<div class="wkCalBlock '+surf+'" style="top:'+topPx+'px;height:'+hPx+'px" onclick="showBookingDetail(\''+b.id+'\')">'+inner+'</div>';
+      var _wkModeClass = nm==='teaching'?'mode-teach':nm==='groupClass'?'mode-gc':nm==='event_lock'?'mode-lock':'';
+      blocks += '<div class="wkCalBlock '+surf+(_wkModeClass?' '+_wkModeClass:'')+'" style="top:'+topPx+'px;height:'+hPx+'px" onclick="showBookingDetail(\''+b.id+'\')">'+inner+'</div>';
     });
     courtCols += '<div class="wkDayCourtCol" style="height:'+GRID_H+'px">'+lines+nowLine+blocks+'</div>';
   });
@@ -2765,9 +2774,11 @@ function renderGrid(){
     const courtIdx=COURTS.indexOf(b.court);
     if(courtIdx<0) return;
     const surface=COURT_SURFACE[b.court];
-    const isLock=b.mode==='event_lock';
+    const _dnm=_normaliseMode(b.mode);
+    const isLock=(_dnm==='event_lock');
+    const isCoachMode=(_dnm==='teaching'||_dnm==='groupClass');
     const cls='event '+(isLock?'eventLock':(surface==='clay'?'clay':''))+(spanSlots<=1?' short':'');
-    const dotColor=(b.mode==='coaching'||b.mode==='group_class')?'var(--dot-coach)':(isLock?'var(--dot-event)':null);
+    const dotColor=isCoachMode?'var(--dot-coach)':(isLock?'var(--dot-event)':null);
     const u=b.createdBy?usersCache[b.createdBy]:null;
     const avatarHtml=u&&u.lineAvatar?'<div class="eAvatar"><img src="'+u.lineAvatar+'" alt=""></div>':'';
     const displayName=u?_mName(u):(b.primaryName||'—');
@@ -2776,7 +2787,7 @@ function renderGrid(){
       (dotColor?'<span class="modeDot" style="background:'+dotColor+'"></span>':'')+
       '<span class="time">'+b.startTime+'</span>'+
       '<span class="name">'+displayName+'</span>'+
-      (spanSlots>=3?'<span class="meta">'+MODE_LABELS[b.mode]+(b.participantCount>0?(' · '+b.participantCount+'P'):'')+'</span>':'')+
+      (spanSlots>=3?'<span class="meta">'+(MODE_LABELS[_dnm]||_dnm)+(b.participantCount>0?(' · '+b.participantCount+'P'):'')+'</span>':'')+
       avatarHtml+
     '</div>';
   });
@@ -2813,13 +2824,13 @@ function renderMonthView(){
     if(isWe) cls+=' weekend';
     /* Guard: only render active bookings (cache may briefly hold a just-cancelled entry) */
     const dayBookings=(monthBookingsCache||[]).filter(b=>b.date===ds && _isActiveBooking(b));
-    html+='<button class="'+cls+'" onclick="selectDate(\''+ds+'\');setView(\'week\',document.getElementById(\'btnWeek\'))">'
+    html+='<button class="'+cls+'" onclick="_showMonthDayBookings(\''+ds+'\')">'
       +'<span class="monthCellNum">'+d+'</span>';
     if(dayBookings.length>0){
       html+='<div class="monthDots">';
       dayBookings.slice(0,3).forEach(b=>{
         const nm=_normaliseMode(b.mode);
-        const dotCls=nm==='event_lock'?'dot-event':(nm==='teaching'||nm==='group_class'?'dot-coach':(COURT_SURFACE[b.court]==='clay'?'dot-clay':'dot-hard'));
+        const dotCls=nm==='event_lock'?'dot-event':(nm==='teaching'||nm==='groupClass'?'dot-coach':(COURT_SURFACE[b.court]==='clay'?'dot-clay':'dot-hard'));
         html+='<span class="monthDot '+dotCls+'"></span>';
       });
       html+='</div>';
@@ -2828,6 +2839,91 @@ function renderMonthView(){
   }
   html+='</div>';
   document.getElementById('monthGrid').innerHTML=html;
+}
+
+/* ── Month view: tap a date → list bookings → tap booking → detail ── */
+function _showMonthDayBookings(ds){
+  var dayBs=(monthBookingsCache||[]).filter(function(b){ return b.date===ds && _isActiveBooking(b); });
+
+  /* If no bookings: fall through to week view (legacy behaviour) */
+  if(!dayBs.length){
+    selectDate(ds);
+    setView('week',document.getElementById('btnWeek'));
+    return;
+  }
+
+  /* Remove any existing detail panel */
+  var _old=document.getElementById('dvDetailPanel');
+  if(_old) _old.parentNode.removeChild(_old);
+  var _old2=document.getElementById('dvDetailBackdrop');
+  if(_old2) _old2.parentNode.removeChild(_old2);
+
+  /* Date label */
+  var _parts=ds.split('-');
+  var _d=new Date(parseInt(_parts[0],10),parseInt(_parts[1],10)-1,parseInt(_parts[2],10));
+  var _dateLabel=parseInt(_parts[1],10)+'月'+parseInt(_parts[2],10)+'日（'+DAYS_TC[_d.getDay()]+'）';
+
+  /* Backdrop */
+  var bd=document.createElement('div');
+  bd.id='dvDetailBackdrop'; bd.className='dvDetailBackdrop';
+  bd.onclick=_dvCloseDetail;
+  document.body.appendChild(bd);
+
+  /* Panel */
+  var p=document.createElement('div');
+  p.id='dvDetailPanel'; p.className='dvDetailPanel';
+
+  /* Booking rows */
+  var listHtml='';
+  dayBs.forEach(function(b){
+    var nm=_normaliseMode(b.mode);
+    var ml=MODE_LABELS[nm]||nm;
+    var isCoachLike=(nm==='teaching'||nm==='groupClass');
+    var nameUid=isCoachLike?b.coachId:(Array.isArray(b.players)&&b.players.length?b.players[0]:b.createdBy);
+    var mem=nameUid?(usersCache[nameUid]||null):null;
+    var dispName=isCoachLike
+      ?((mem?(mem.realName||mem.displayName):null)||b.coachName||(nm==='teaching'?'教練':'教學會員'))
+      :(_mName(mem)||b.primaryName||'—');
+    var photo=_mPic(mem);
+    var surf=COURT_SURFACE[b.court]||'hard';
+    var dotColor=(isCoachLike||surf==='clay')?'var(--color-clay)':'var(--color-hard)';
+    var cl={hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[b.court]||b.court;
+    var avatar=photo
+      ?'<img src="'+photo+'" style="width:38px;height:38px;border-radius:50%;object-fit:cover;flex-shrink:0;border:2px solid '+dotColor+'" alt="" onerror="this.style.display=\'none\'">'
+      :'<div style="width:38px;height:38px;border-radius:50%;background:var(--color-surface-alt);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--color-text-muted);flex-shrink:0;border:2px solid '+dotColor+'">'+_esc(dispName.charAt(0))+'</div>';
+    var stCnt=Array.isArray(b.students)?b.students.length:0;
+    var plCnt=Array.isArray(b.players)?b.players.length:(b.participantCount||1);
+    var gstCnt=Array.isArray(b.guests)?b.guests.length:0;
+    var countStr=isCoachLike
+      ?(stCnt>0?stCnt+'位學生':'')
+      :(b.capacity?(plCnt+gstCnt+'/'+b.capacity+' 人'):(plCnt+gstCnt>1?(plCnt+gstCnt+'人'):''));
+    listHtml+=
+      '<div onclick="showBookingDetail(\''+b.id+'\')" style="display:flex;align-items:center;gap:10px;padding:11px 20px;cursor:pointer;border-bottom:1px solid var(--color-border-soft)">'+
+        avatar+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:13.5px;font-weight:600;color:var(--color-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+_esc(dispName)+'</div>'+
+          '<div style="font-size:12px;color:var(--color-text-muted);margin-top:2px">'+
+            _esc(ml+' · '+cl+' · '+b.startTime+'–'+b.endTime+(countStr?' · '+countStr:''))+
+          '</div>'+
+        '</div>'+
+        '<span style="font-size:18px;color:var(--color-text-muted);flex-shrink:0">›</span>'+
+      '</div>';
+  });
+
+  p.innerHTML=
+    '<div class="dvDetailHandle"></div>'+
+    '<div style="padding:16px 20px 12px;border-bottom:1px solid var(--color-border)">'+
+      '<div style="font-size:15px;font-weight:700;color:var(--color-text-primary)">'+_esc(_dateLabel)+'</div>'+
+      '<div style="font-size:12px;color:var(--color-text-muted);margin-top:3px">'+dayBs.length+'個預約</div>'+
+    '</div>'+
+    listHtml+
+    '<button class="dvDetailClose" onclick="_dvCloseDetail()">關閉</button>';
+
+  document.body.appendChild(p);
+  requestAnimationFrame(function(){
+    bd.classList.add('open');
+    p.classList.add('open');
+  });
 }
 
 /* ── Render: Booking Records ── */
@@ -5427,7 +5523,8 @@ function _dvAvatar(b,idx,total){
   var lPct=Math.max(2,Math.min(98,((midMin-_DV_S*60)/((_DV_E-_DV_S)*60)*100)));
   /* stagger multiple avatars on same court vertically */
   var topPct = total>1 ? (30+idx*20) : 50;
-  var isCoach=b.mode==='coaching', isLock=b.mode==='event_lock';
+  var _avNm=_normaliseMode(b.mode);
+  var isCoach=(_avNm==='teaching'||_avNm==='groupClass'), isLock=(_avNm==='event_lock');
   var cls='dvAvatar'+(isCoach?' is-coaching':'')+(isLock?' is-lock':'');
   var init=(b.primaryName||'?').charAt(0);
   // Look up member from Firestore cache by displayName or createdBy uid
@@ -5437,7 +5534,7 @@ function _dvAvatar(b,idx,total){
   var ntrp=mem?( mem.ntrp||'—'):'—';
   var pos=mem?(mem.preferredPosition||'—'):'—';
   var att='—';
-  var modeLabel=b.mode==='coaching'?'教學課':b.mode==='event_lock'?'場地封鎖':b.mode==='group_class'?'團體課':'一般預約';
+  var modeLabel=MODE_LABELS[_avNm]||_avNm||'一般預約';
   var enc=encodeURIComponent(JSON.stringify({name:b.primaryName||'?',time:b.startTime+'–'+b.endTime,mode:modeLabel,count:b.participantCount||1,isCoach:isCoach,ntrp:ntrp,pos:pos,att:att}));
   var smMin=timeToMin(b.startTime), emMin=timeToMin(b.endTime);
   return '<div class="'+cls+'" data-start="'+smMin+'" data-end="'+emMin+'" style="left:'+lPct.toFixed(1)+'%;top:'+topPct+'%;transition:opacity 180ms,transform 180ms" onclick="event.stopPropagation();_dvShowDetail(\''+enc+'\')">'+init+'</div>';
@@ -5528,8 +5625,10 @@ function _dvShowDetail(enc){
   var p=document.createElement('div');
   p.id='dvDetailPanel';
   p.className='dvDetailPanel';
-  var isTeach    = !!data.isCoach;
-  var modeColor  = isTeach ? 'var(--color-clay)' : 'var(--color-hard)';
+  var isTeach      = !!data.isCoach;
+  var isGroupClass = !!data.isGroupClass;
+  var isCoachLike  = isTeach || isGroupClass;
+  var modeColor  = isCoachLike ? 'var(--color-clay)' : 'var(--color-hard)';
   /* avatar */
   var avatarInner = data.photoURL
     ? '<img src="'+data.photoURL+'" style="width:100%;height:100%;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'" alt="">'
@@ -5541,17 +5640,17 @@ function _dvShowDetail(enc){
   _dvCurrentBookingId = data.bookingId || null;
 
   // ── Common info grid ──
-  var countStr = isTeach
+  var countStr = isCoachLike
     ? (data.count > 0 ? data.count+'位學生' : '—')
     : (data.capacity ? (data.count+' / '+data.capacity+' 人') : (data.count+'人'));
 
   var infoRows =
     '<div class="dvDetailCell"><div class="dvDetailCellLabel">場地</div><div class="dvDetailCellValue">'+(data.court||'—')+'</div></div>'+
     '<div class="dvDetailCell"><div class="dvDetailCellLabel">日期</div><div class="dvDetailCellValue" style="font-size:13px">'+(data.date||'—')+'</div></div>'+
-    /* 時間：teaching 時佔 1 欄（右側空出給學生欄）；一般預約 時間橫跨 2 欄 */
-    '<div class="dvDetailCell"'+(isTeach?'':' style="grid-column:1/-1"')+'><div class="dvDetailCellLabel">時間</div><div class="dvDetailCellValue" style="font-size:13px">'+data.time+'</div></div>'+
-    /* 學生欄：只在教學預約顯示 */
-    (isTeach?'<div class="dvDetailCell"><div class="dvDetailCellLabel">學生</div><div class="dvDetailCellValue">'+countStr+'</div></div>':'');
+    /* 時間：teaching/groupClass 時佔 1 欄（右側空出給學生欄）；一般預約 時間橫跨 2 欄 */
+    '<div class="dvDetailCell"'+(isCoachLike?'':' style="grid-column:1/-1"')+'><div class="dvDetailCellLabel">時間</div><div class="dvDetailCellValue" style="font-size:13px">'+data.time+'</div></div>'+
+    /* 學生欄：teaching 與 groupClass 皆顯示 */
+    (isCoachLike?'<div class="dvDetailCell"><div class="dvDetailCellLabel">學生</div><div class="dvDetailCellValue">'+countStr+'</div></div>':'');
 
   /* title / note (non-teaching) */
   var titleHtml = (!isTeach && data.title)
@@ -5563,7 +5662,7 @@ function _dvShowDetail(enc){
 
   /* ── Participants section (general bookings only: interactive, replaces old playersHtml) ── */
   var participantHtml = '';
-  if(!isTeach && !!(data.isGeneral)){
+  if(!isCoachLike && !!(data.isGeneral)){
     var _pIds   = Array.isArray(data.playerIds) ? data.playerIds : [];
     var _guests = Array.isArray(data.guests)    ? data.guests    : [];
     var _total  = _pIds.length + _guests.length;
@@ -5630,9 +5729,9 @@ function _dvShowDetail(enc){
     '</div>';
   }
 
-  // ── Teaching: student list (read-only, with LINE photo + tap for info) ──
+  // ── Teaching / groupClass: student list (read-only, with LINE photo + tap for info) ──
   var attHtml = '';
-  if(isTeach){
+  if(isCoachLike){
     var _stIds   = Array.isArray(data.studentIds)   ? data.studentIds   : [];
     var _stNames = Array.isArray(data.studentNames) ? data.studentNames : [];
     var _att     = (data.attendance && typeof data.attendance==='object') ? data.attendance : {};
@@ -5673,10 +5772,10 @@ function _dvShowDetail(enc){
   p.innerHTML=
     '<div class="dvDetailHandle"></div>'+
     '<div class="dvDetailTop">'+
-      '<div class="dvDetailAvatar'+(isTeach?' is-coaching':'')+'" style="border-color:'+modeColor+';overflow:hidden;padding:0">'+avatarInner+'</div>'+
+      '<div class="dvDetailAvatar'+(isCoachLike?' is-coaching':'')+'" style="border-color:'+modeColor+';overflow:hidden;padding:0">'+avatarInner+'</div>'+
       '<div>'+
         '<div class="dvDetailName">'+_esc(data.name)+'</div>'+
-        '<div class="dvDetailMode">'+_esc(data.mode)+(isTeach?' · 教練':'')+'</div>'+
+        '<div class="dvDetailMode">'+_esc(data.mode)+(isTeach?' · 教練':(isGroupClass?' · 教學會員':''))+'</div>'+
       '</div>'+
     '</div>'+
     '<div class="dvDetailRows">'+infoRows+titleHtml+noteHtml+'</div>'+
@@ -5957,9 +6056,10 @@ function showBookingDetail(id){
     b = src.find(function(x){ return x.id===id; });
   }
   if(!b) return;
-  var normMode  = _normaliseMode(b.mode);
-  var modeLabel = MODE_LABELS[normMode] || normMode || '一般預約';
-  var isTeach   = (normMode === 'teaching');
+  var normMode     = _normaliseMode(b.mode);
+  var modeLabel    = MODE_LABELS[normMode] || normMode || '一般預約';
+  var isTeach      = (normMode === 'teaching');
+  var isGroupClass = (normMode === 'groupClass');
   var myUid     = currentUser?(currentUser.uid||currentUser.userId||currentUser.id||''):'';
   var isBookingCreator = (b.createdBy===myUid);
   var role      = _currentRole();
@@ -6012,13 +6112,12 @@ function showBookingDetail(id){
   var canLeave  = isActive && !hasStarted && !withinCut && isInPlayers && !isBookingCreator && !isAdminLike() && !isTeach;
 
   /* Participant management: available to creator/admin/owner on active general bookings */
-  var isGeneral = (nm === 'general');
   var canManageParticipants = isGeneral && isActive && (isBookingCreator || isClubAdmin || isClubOwner);
 
   var enc=encodeURIComponent(JSON.stringify({
     name:name, photoURL:photoURL, court:courtLabel, date:b.date,
     time:b.startTime+'–'+b.endTime, mode:modeLabel,
-    count: isTeach ? students.length : (players.length||b.participantCount||1),
+    count: (isTeach||isGroupClass) ? students.length : (players.length||b.participantCount||1),
     capacity: cap,
     playerNames: playerNames,
     playerIds:   players,
@@ -6026,6 +6125,7 @@ function showBookingDetail(id){
     title: b.title||'',
     note:  b.note||'',
     isCoach: isTeach,
+    isGroupClass: isGroupClass,
     isGeneral: isGeneral,
     coachId:    b.coachId||'',
     coachName:  name,
