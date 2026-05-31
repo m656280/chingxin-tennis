@@ -28,7 +28,7 @@
   --event-clay-bar: rgba(184,92,74,0.55);
   --event-lock-bg: rgba(26,31,28,0.05);
   --event-lock-bar: rgba(26,31,28,0.35);
-  --color-now: #B86A4A;
+  --color-now: #5FAFB7; /* hard default; clay overrides to #B86A4A via JS */
   --grid-line: #e9e7e0;
   --grid-line-soft: #f1efe9;
   --font-display: 'Cormorant Garamond','Noto Serif TC','Times New Roman',Georgia,serif;
@@ -1285,6 +1285,7 @@ button {
           <button class="navButton" onclick="changeWeek(1)" aria-label="下一週">›</button>
         </div>
       </div>
+      <div id="weekDayPickerContainer"></div>
       <div class="wkSurfaceRow">
         <button class="wkSurfaceBtn active" id="wkBtnHard" onclick="setCourtSurface('hard')">硬地</button>
         <button class="wkSurfaceBtn" id="wkBtnClay" onclick="setCourtSurface('clay')">紅土</button>
@@ -2560,7 +2561,13 @@ function renderWeekGrid(){
     + '<div class="wkDayScrollBody" id="wkScrollBody">'+bodyRow+'</div>'
     + '</div>';
 
-  el.innerHTML = picker + dayGrid;
+  /* Picker goes to its own container (above surface buttons); grid fills weekGridContent */
+  var pickerEl = document.getElementById('weekDayPickerContainer');
+  if(pickerEl) pickerEl.innerHTML = picker;
+  el.innerHTML = dayGrid;
+
+  /* Sync now-line color with current surface */
+  _updateNowColor();
 
   /* Auto-scroll to now − 1 hour on initial render of today */
   if(isToday){
@@ -5389,7 +5396,16 @@ function updateAttendance(bookingId, studentUid, status){
     .catch(function(e){ showToast('更新失敗：'+e.message); });
 }
 
-function setCourtSurface(filter){ _courtSurfaceFilter=filter; if(currentView==='week') render(); else if(currentView==='month') renderMonthView(); }
+/* Update --color-now CSS variable based on surface (hard=lake-blue, clay=clay-red) */
+function _updateNowColor(){
+  var c = (_courtSurfaceFilter==='clay') ? '#B86A4A' : '#5FAFB7';
+  document.documentElement.style.setProperty('--color-now', c);
+}
+function setCourtSurface(filter){
+  _courtSurfaceFilter=filter;
+  _updateNowColor();
+  if(currentView==='week') render(); else if(currentView==='month') renderMonthView();
+}
 function changeDayView(delta){ selectedDate=addDays(selectedDate,delta); renderDayView(); }
 
 function selectDate(dateStr){
