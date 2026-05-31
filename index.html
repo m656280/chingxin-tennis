@@ -2222,10 +2222,11 @@ let monthBookingsCache = [];        // all confirmed bookings for current month 
 let allBookingsCache  = null;       // admin/owner: all bookings (null = not yet loaded)
 let myBookingsFirestore = null;     // null = not yet loaded; [] = loaded but empty
 // Cancel dialog state
-let _cancelDlgBookingId = null;
-let _cancelDlgIsVoid    = false;
-let _cancelDlgIsDelete  = false;
-let _cancelDlgCallback  = null;
+let _cancelDlgBookingId  = null;
+let _cancelDlgIsVoid     = false;
+let _cancelDlgIsDelete   = false;
+let _cancelDlgShowReason = false; /* true = show reason textarea (admin/owner cancelling other, or void) */
+let _cancelDlgCallback   = null;
 let pendingUsersFirestore = [];
 let unsubMyBookings = null;
 /* ── NTRP 等級定義（全站共用）── */
@@ -5733,19 +5734,28 @@ function loadMyBookings(){
 }
 
 /* ── Cancel / Void dialog ── */
-function _showCancelDlg(id, isVoid, callback){
-  _cancelDlgBookingId = id;
-  _cancelDlgIsVoid    = isVoid;
-  _cancelDlgIsDelete  = false;
-  _cancelDlgCallback  = callback || null;
-  var title = isVoid ? '強制作廢' : '取消預約';
-  var desc  = isVoid
-    ? '此操作無法還原，預約將標記為作廢並通知相關人員。請填寫原因。'
-    : '取消後將通知相關人員，紀錄保留供查閱。請填寫原因（選填）。';
+function _showCancelDlg(id, isVoid, callback, showReason){
+  _cancelDlgBookingId  = id;
+  _cancelDlgIsVoid     = isVoid;
+  _cancelDlgIsDelete   = false;
+  /* void always shows reason; self-cancel hides it; admin/owner cancelling other shows it */
+  _cancelDlgShowReason = isVoid || !!showReason;
+  _cancelDlgCallback   = callback || null;
+  var title, desc;
+  if(isVoid){
+    title = '強制作廢';
+    desc  = '此操作無法還原，預約將標記為作廢並通知相關人員。請填寫原因（必填）。';
+  } else if(showReason){
+    title = '取消預約';
+    desc  = '取消後將通知預約者，紀錄保留供查閱。請填寫原因（選填）。';
+  } else {
+    title = '取消預約';
+    desc  = '是否取消預約？\n取消後將釋出場地。';
+  }
   document.getElementById('cancelDlgTitle').textContent = title;
   document.getElementById('cancelDlgDesc').textContent  = desc;
   var ta = document.getElementById('cancelDlgReason');
-  ta.value = ''; ta.style.display = '';
+  ta.value = ''; ta.style.display = _cancelDlgShowReason ? '' : 'none';
   var btn = document.getElementById('cancelDlgConfirmBtn');
   if(btn){ btn.textContent='確認'; btn.style.background=''; }
   document.getElementById('cancelDlgBackdrop').classList.add('open');
@@ -5770,7 +5780,7 @@ function _showDeleteConfirmDlg(id){
 }
 function _closeCancelDlg(){
   document.getElementById('cancelDlgBackdrop').classList.remove('open');
-  _cancelDlgBookingId = null; _cancelDlgIsVoid = false; _cancelDlgIsDelete = false; _cancelDlgCallback = null;
+  _cancelDlgBookingId = null; _cancelDlgIsVoid = false; _cancelDlgIsDelete = false; _cancelDlgShowReason = false; _cancelDlgCallback = null;
   /* restore button style */
   var btn = document.getElementById('cancelDlgConfirmBtn');
   if(btn){ btn.textContent='確認'; btn.style.background=''; }
@@ -5786,9 +5796,11 @@ function _confirmCancelDlg(){
   var isVoid   = _cancelDlgIsVoid;
   var isDelete = _cancelDlgIsDelete;
   var cb       = _cancelDlgCallback;
+  /* Void requires a reason */
+  if(isVoid && !reason){ showToast('強制作廢請填寫原因'); return; }
   _closeCancelDlg();
   if(!id) return;
-  if(isDelete)   _executePermanentDelete(id, cb);
+  if(isDelete)    _executePermanentDelete(id, cb);
   else if(isVoid) _executeVoid(id, reason, cb);
   else            _executeCancel(id, reason, cb);
 }
@@ -5801,7 +5813,10 @@ function cancelBooking(id, callback){
   if(!_isActiveBooking(b)){ showToast('此預約已取消或作廢'); return; }
   if(_bookingHasStarted(b)){ showToast('預約已開始，無法取消'); return; }
   if(_withinCancelCutoff(b)){ showToast('距開始不足 30 分鐘，無法取消'); return; }
-  _showCancelDlg(id, false, callback);
+  /* Show reason field only when admin/owner is cancelling on behalf of someone else */
+  var myUid = currentUser?(currentUser.uid||currentUser.userId||currentUser.id||''):'';
+  var showReason = isAdminLike() && (b.createdBy||'') !== myUid;
+  _showCancelDlg(id, false, callback, showReason);
 }
 function _executeCancel(id, reason, callback){
   if(!db){ showToast('無法連線，請稍後再試'); return; }
