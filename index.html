@@ -662,6 +662,33 @@ button {
 }
 .rejectBtn:hover { background:rgba(184,92,74,0.20); }
 
+/* ── Pending Entry Card (above tabs, admin/owner only) ── */
+.pendingEntryBtn {
+  display:flex; align-items:center; gap:10px; width:100%;
+  padding:11px 14px; margin-bottom:12px;
+  background:var(--color-surface); border:1px solid var(--color-border-soft);
+  border-radius:10px; cursor:pointer; font-size:13px; font-weight:500;
+  color:var(--color-text-primary); letter-spacing:0.02em;
+  text-align:left; -webkit-tap-highlight-color:transparent;
+  transition:border-color 150ms;
+}
+.pendingEntryBtn.active { border-color:var(--color-text-primary); }
+.pendingEntryBtn:active { opacity:0.7; }
+.pendingEntryBadge {
+  min-width:20px; height:20px; border-radius:10px;
+  background:#e74c3c; color:#fff; font-size:10px; font-weight:700;
+  display:inline-flex; align-items:center; justify-content:center;
+  padding:0 5px; line-height:1; flex-shrink:0;
+}
+.pendingEntryBadgeZero {
+  min-width:20px; height:20px; border-radius:10px;
+  background:var(--color-border); color:var(--color-text-muted); font-size:10px; font-weight:600;
+  display:inline-flex; align-items:center; justify-content:center;
+  padding:0 5px; line-height:1; flex-shrink:0;
+}
+.pendingEntryLabel { flex:1; }
+.pendingEntryChevron { color:var(--color-text-muted); font-size:16px; line-height:1; }
+
 /* ── Manage Tab Bar ── */
 .manageTabs {
   display:flex; overflow-x:auto; -webkit-overflow-scrolling:touch;
@@ -2751,8 +2778,9 @@ function renderManage(){
   var role=_currentRole();
   var isCoach=role==='coach';
 
+  /* pending is routable but not a tab button — shown as entry card above tab bar */
   var ALL_TABS=[
-    {key:'pending',       label:'待審核',    show:adminLike},
+    {key:'pending',       label:'待審核',    show:false},
     {key:'members',       label:adminLike?'會員管理':'會員名單', show:true},
     {key:'coach',         label:'教練管理',  show:isCoach||adminLike},
     {key:'allBookings',   label:'預約管理',  show:adminLike},
@@ -2761,12 +2789,16 @@ function renderManage(){
   ];
   var TABS=ALL_TABS.filter(function(t){return t.show;});
 
-  // Guard: if current tab is not visible for this role, reset to first visible
-  if(!TABS.some(function(t){return t.key===_manageTab;})){
+  // Guard: pending accessible only to admin/owner
+  if(_manageTab==='pending' && !adminLike){
+    _manageTab=TABS.length?TABS[0].key:'announcements';
+  }
+  // Guard: unrecognised tab key → reset to first visible
+  if(!ALL_TABS.some(function(t){return t.key===_manageTab;})){
     _manageTab=TABS.length?TABS[0].key:'announcements';
   }
 
-  // ── Tab bar ──
+  // ── Counts ──
   var pendingCount = Object.values(usersCache).filter(function(m){return m.status==='pending';}).length;
   var announcCount = _generateSystemAnnouncements().length + announcementsCache.filter(function(a){
     if(!a.updatedAt) return false;
@@ -2788,11 +2820,24 @@ function renderManage(){
       allBookingsCache.some(function(b){ return (b.status==='cancelled'||b.status==='void') && (b.date||'')>=_cut30; });
   }
 
-  var html='<div class="manageTabs">';
+  // ── Pending entry card (admin/owner only, above tabs) ──
+  var pendingEntryHtml = '';
+  if(adminLike){
+    var isViewingPending = (_manageTab==='pending');
+    var badgeCls = pendingCount > 0 ? 'pendingEntryBadge' : 'pendingEntryBadgeZero';
+    pendingEntryHtml =
+      '<button class="pendingEntryBtn'+(isViewingPending?' active':'')+'" onclick="_manageTab=\'pending\';renderManage()">'+
+        '<span class="'+badgeCls+'">'+pendingCount+'</span>'+
+        '<span class="pendingEntryLabel">待審核</span>'+
+        '<span class="pendingEntryChevron">›</span>'+
+      '</button>';
+  }
+
+  // ── Tab bar ──
+  var html=pendingEntryHtml+'<div class="manageTabs">';
   TABS.forEach(function(t){
     var active = _manageTab === t.key;
     var dot = '';
-    if(t.key==='pending'      && pendingCount > 0)    dot = '<span class="manageTabDot"></span>';
     if(t.key==='announcements'&& announcCount > 0)    dot = '<span class="manageTabDot"></span>';
     if(t.key==='allBookings'  && allBookingsDot)      dot = '<span class="manageTabDot"></span>';
     html += '<button class="manageTabBtn'+(active?' active':'')+'" onclick="_manageTab=\''+t.key+'\';renderManage()">'+dot+t.label+'</button>';
