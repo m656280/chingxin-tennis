@@ -371,6 +371,12 @@ button {
   margin-bottom:3px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;
 }
 .bookingCardMeta { font-size:12px; color:var(--color-text-secondary); }
+.bookingCardOwner { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+.bookingCardOwnerAvatar { width:26px; height:26px; border-radius:50%; overflow:hidden; flex-shrink:0; background:var(--color-border); display:flex; align-items:center; justify-content:center; font-size:10px; color:var(--color-text-muted); font-weight:600; }
+.bookingCardOwnerAvatar img { width:100%; height:100%; object-fit:cover; }
+.bookingCardOwnerName { font-size:13.5px; font-weight:500; color:var(--color-text-primary); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bookingCardBuddies { font-size:12px; color:var(--color-text-secondary); margin-top:2px; }
+.bookingCardGuestWarn { font-size:11px; color:#8a6020; margin-top:2px; }
 .statusChip {
   display:inline-flex; align-items:center;
   padding:2px 8px; border-radius:99px;
@@ -957,6 +963,26 @@ button {
 .wkCalBlockTime { font-size:8px; color:var(--color-text-secondary); white-space:nowrap; overflow:hidden; line-height:1.3; }
 .wkCalBlockName { font-size:10px; font-weight:600; color:var(--color-text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.3; }
 .wkCalBlockMeta { font-size:8px; color:var(--color-text-muted); white-space:nowrap; overflow:hidden; line-height:1.3; }
+
+/* ── General booking: buddy picker ── */
+.formBuddySelf { display:flex; align-items:center; gap:8px; padding:7px 10px; border-radius:8px; background:var(--color-surface-alt); margin-bottom:5px; }
+.formBuddyChip { display:flex; align-items:center; gap:7px; padding:6px 10px; border-radius:8px; background:var(--color-surface); border:1px solid var(--color-border); margin-bottom:5px; }
+.formBuddyChipName { font-size:13px; color:var(--color-text-primary); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.formBuddyChipTag { font-size:9px; font-weight:700; letter-spacing:0.05em; color:var(--color-text-muted); background:var(--color-border); border-radius:4px; padding:2px 5px; flex-shrink:0; }
+.formBuddyChipRemove { font-size:15px; line-height:1; color:var(--color-text-muted); padding:3px 6px; border-radius:5px; flex-shrink:0; }
+.formBuddyChipRemove:active { color:#c0392b; background:rgba(192,57,43,0.08); }
+.formBuddyAvatar { width:24px; height:24px; border-radius:50%; overflow:hidden; flex-shrink:0; background:var(--color-border); display:flex; align-items:center; justify-content:center; font-size:10px; color:var(--color-text-muted); }
+.formBuddyAvatar img { width:100%; height:100%; object-fit:cover; }
+.formBuddyAddRow { display:flex; gap:6px; margin-bottom:6px; align-items:center; }
+.formBuddyAddSelect,.formBuddyAddInput { flex:1; font-size:12px; padding:6px 8px; border:1px solid var(--color-border); border-radius:8px; background:var(--color-surface); color:var(--color-text-primary); min-width:0; font-family:inherit; }
+.formBuddyAddBtn { font-size:11px; padding:6px 11px; border-radius:8px; border:1px solid var(--color-border); background:var(--color-surface-alt); color:var(--color-text-secondary); flex-shrink:0; font-family:inherit; cursor:pointer; }
+.formBuddyAddBtn:active { background:var(--color-border); }
+.formBuddyAddBtn:disabled { opacity:0.4; cursor:not-allowed; }
+.formBuddyCap { font-size:10.5px; color:var(--color-text-muted); margin-bottom:6px; }
+.formBuddyGuestNotice { font-size:11px; padding:7px 10px; border-radius:8px; background:rgba(140,96,32,0.07); border:1px solid rgba(140,96,32,0.2); color:#8a6020; line-height:1.5; margin-top:2px; }
+/* General booking: proxy checkbox */
+.formProxyLabel { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--color-text-secondary); cursor:pointer; padding:2px 0; }
+.formProxyLabel input[type=checkbox] { width:16px; height:16px; flex-shrink:0; accent-color:var(--color-text-primary); }
 
 /* ── Teaching form: student multi-select ── */
 .formStudentList { max-height:180px; overflow-y:auto; border:1px solid var(--color-border); border-radius:8px; background:var(--color-surface); }
@@ -1576,10 +1602,44 @@ button {
       <label class="formLabel">課程名稱</label>
       <input class="formInput" id="formTitle" type="text" placeholder="例：入門班 Week 3">
     </div>
-    <div class="formRow">
+    <!-- General mode: buddy picker (replaces note for general) -->
+    <div id="formGeneralBuddiesRow" style="display:none">
+      <div class="formLabel" style="margin-bottom:8px">球友選擇</div>
+      <div class="formBuddyCap" id="formBuddyCap">1/4 人</div>
+      <div id="formBuddyList"></div>
+      <div class="formBuddyAddRow">
+        <select class="formBuddyAddSelect" id="formBuddyMemberSel">
+          <option value="">— 選擇會員 —</option>
+        </select>
+        <button class="formBuddyAddBtn" id="formBuddyAddMemberBtn" type="button" onclick="_formBuddyAddMember()">加入</button>
+      </div>
+      <div class="formBuddyAddRow">
+        <input class="formBuddyAddInput" id="formBuddyGuestInput" type="text" placeholder="來賓姓名">
+        <button class="formBuddyAddBtn" id="formBuddyAddGuestBtn" type="button" onclick="_formBuddyAddGuest()">加入來賓</button>
+      </div>
+      <div class="formBuddyGuestNotice" id="formBuddyGuestNotice" style="display:none">
+        ⚠️ 來賓需告知球場管理員，請尊重球場人員管理及會員權益。
+      </div>
+    </div>
+    <!-- General mode: proxy booking (replaces old bookForRow for general) -->
+    <div id="formProxyRow" class="formRow" style="display:none">
+      <label class="formProxyLabel">
+        <input type="checkbox" id="formProxyCheck" onchange="_formProxyToggle()">
+        <span>代訂（由他人打球，我代為預約）</span>
+      </label>
+      <div id="formProxyDetail" style="display:none;margin-top:8px">
+        <select class="formSelect" id="formProxyOwnerSel" onchange="_formBuddyRender()" style="margin-bottom:4px">
+          <option value="">— 選擇代訂對象 —</option>
+        </select>
+        <div style="font-size:11px;color:var(--color-text-muted);line-height:1.5">預約人為代訂對象，你仍是建立者</div>
+      </div>
+    </div>
+    <!-- Note row: shown for non-general modes -->
+    <div class="formRow" id="formNoteRow">
       <label class="formLabel">備註（選填）</label>
       <input class="formInput" id="formNote" type="text" placeholder="">
     </div>
+    <!-- BookFor row: admin-only, pickleball/groupClass (not general) -->
     <div class="formRow" id="bookForRow" style="display:none">
       <label class="formLabel">代訂（選填）</label>
       <select class="formSelect" id="formBookFor"><option value="">— 自己 —</option></select>
@@ -2279,6 +2339,9 @@ let _cancelDlgIsDelete   = false;
 let _cancelDlgShowReason = false; /* true = show reason textarea (admin/owner cancelling other, or void) */
 let _cancelDlgCallback   = null;
 var _dvCurrentBookingId  = null;  /* booking id of the currently open detail panel */
+/* ── General booking form: buddy state ── */
+var _formBuddyMembers = [];  /* uid strings of added member buddies */
+var _formBuddyGuests  = [];  /* guest name strings */
 let pendingUsersFirestore = [];
 let unsubMyBookings = null;
 /* ── NTRP 等級定義（全站共用）── */
@@ -2589,24 +2652,39 @@ function renderWeekGrid(){
 
       var nm      = _normaliseMode(b.mode);
       var isTeach = (nm === 'teaching');
+      var isGen   = (nm === 'general');
       var name, photoURL;
       if(isTeach && b.coachId && usersCache[b.coachId]){
         var _coach = usersCache[b.coachId];
-        name     = _coach.realName||_coach.displayName||b.coachName||'教練';
-        photoURL = _coach.photoURL||_coach.lineAvatar||'';
+        name     = _mName(_coach)||b.coachName||'教練';
+        photoURL = _mPic(_coach);
+      } else if(isGen){
+        /* General: show actual owner (players[0]) not createdBy */
+        var _wkPls  = Array.isArray(b.players) ? b.players : [];
+        var _wkOwn  = _wkPls.length ? usersCache[_wkPls[0]] : null;
+        name     = _mName(_wkOwn)||b.primaryName||'—';
+        photoURL = _mPic(_wkOwn);
       } else {
         var _u   = b.createdBy ? usersCache[b.createdBy] : null;
-        name     = _u ? (_u.realName||_u.displayName||'—') : (b.primaryName||b.coachName||'—');
-        photoURL = _u ? (_u.photoURL||_u.lineAvatar||'') : '';
+        name     = _u ? (_mName(_u)||'—') : (b.primaryName||b.coachName||'—');
+        photoURL = _mPic(_u);
       }
       var students = Array.isArray(b.students) ? b.students : [];
       var pls  = Array.isArray(b.players) ? b.players : (b.createdBy ? [b.createdBy] : []);
+      var gsts = Array.isArray(b.guests)  ? b.guests  : [];
       var cnt  = isTeach ? (students.length || pls.length || 1) : (pls.length || b.participantCount || 1);
       var cap  = isTeach ? null : (b.capacity || null);
       var ml   = (nm && nm!=='general') ? (MODE_LABELS[nm]||'') : '';
-      var cs   = isTeach
-        ? (students.length > 0 ? students.length+'位學生' : '')
-        : (cap ? (cnt+'/'+cap) : (cnt>1 ? cnt+'人' : ''));
+      /* General: meta shows 👥 total count (players + guests); no name suffix */
+      var cs;
+      if(isTeach){
+        cs = students.length > 0 ? students.length+'位學生' : '';
+      } else if(isGen){
+        var _wkTotal = pls.length + gsts.length;
+        cs = _wkTotal > 1 ? '👥 '+_wkTotal+'人' : '';
+      } else {
+        cs = cap ? (cnt+'/'+cap) : (cnt>1 ? cnt+'人' : '');
+      }
       var meta = [ml,cs].filter(Boolean).join(' · ');
 
       // Wider columns — can show more content at smaller heights
@@ -2686,7 +2764,7 @@ function renderGrid(){
     const dotColor=(b.mode==='coaching'||b.mode==='group_class')?'var(--dot-coach)':(isLock?'var(--dot-event)':null);
     const u=b.createdBy?usersCache[b.createdBy]:null;
     const avatarHtml=u&&u.lineAvatar?'<div class="eAvatar"><img src="'+u.lineAvatar+'" alt=""></div>':'';
-    const displayName=u?u.displayName:(b.primaryName||'—');
+    const displayName=u?_mName(u):(b.primaryName||'—');
     html+='<div class="'+cls+'" style="grid-column:'+(courtIdx+2)+';grid-row:'+(startSlot+1)+'/span '+spanSlots+'"'+
       ' onclick="showBookingDetail(\''+b.id+'\')" title="'+displayName+'">'+
       (dotColor?'<span class="modeDot" style="background:'+dotColor+'"></span>':'')+
@@ -2761,30 +2839,71 @@ function renderBookings(){
   function cardHtml(b, showCancel){
     var d=new Date(b.date+'T00:00:00');
     var courtLabel=b.courtLabel||courtDisplay(b.court);
-    var partners=b.partners?b.partners.join('、'):'';
     var statusLabel = _statusLabel(b.status);
     var chipCls = _statusChipCls(b.status);
+    var _nm2 = _normaliseMode(b.mode);
     // Time-gate cancel button
     var canSelfCancel = showCancel && _isActiveBooking(b) && !_bookingHasStarted(b) && !_withinCancelCutoff(b);
     var cancelBtn = canSelfCancel
       ? '<div class="bookingCardActions"><button class="cancelBtn" onclick="cancelBooking(\''+b.id+'\')">取消預約</button></div>'
       : '';
-    // Cancelled indicator (void records in Firestore are shown as cancelled)
+    // Cancelled indicator
     var metaExtra = '';
     if((b.status==='cancelled'||b.status==='void') && b.cancelledByName) metaExtra = ' · 由 '+_esc(b.cancelledByName)+' 取消';
     if(b.cancelReason) metaExtra += '（'+_esc(b.cancelReason)+'）';
+
+    var bodyHtml;
+    if(_nm2 === 'general'){
+      /* ── General booking: owner avatar + name + buddy list ── */
+      var _pls  = Array.isArray(b.players) ? b.players : [];
+      var _gsts = Array.isArray(b.guests)  ? b.guests  : [];
+      /* Owner = first player uid; fall back to createdBy */
+      var _ownerUid = _pls[0] || b.createdBy || '';
+      var _ownerUser = usersCache[_ownerUid] || null;
+      var _ownerName = _ownerUser ? (_mName(_ownerUser)||b.primaryName||'—') : (b.primaryName||'—');
+      var _ownerPic  = _mPic(_ownerUser);
+      var _avatarInner = _ownerPic
+        ? '<img src="'+_esc(_ownerPic)+'" onerror="this.style.display=\'none\'">'
+        : _esc((_ownerName||'?').charAt(0));
+      var ownerRow = '<div class="bookingCardOwner">'
+        +'<div class="bookingCardOwnerAvatar">'+_avatarInner+'</div>'
+        +'<span class="bookingCardOwnerName">'+_esc(_ownerName)+'</span>'
+        +'<span class="statusChip '+chipCls+'">'+statusLabel+'</span>'
+        +'</div>';
+      /* Buddies: players[1..] — compact, max 2 shown then +N */
+      var _buddyUids = _pls.slice(1);
+      var buddiesRow = '';
+      if(_buddyUids.length > 0){
+        var _shownNames = _buddyUids.slice(0,2).map(function(uid){ return _mName(usersCache[uid]||uid); });
+        var _overflow   = _buddyUids.length > 2 ? ' +'+(_buddyUids.length-2) : '';
+        buddiesRow = '<div class="bookingCardBuddies">👥 '+_esc(_shownNames.join('、'))+_overflow+'</div>';
+      }
+      /* Guests — compact list with ⚠️ prefix */
+      var guestWarnRow = _gsts.length
+        ? '<div class="bookingCardBuddies" style="color:#8a6020">⚠️ '+_esc(_gsts.join('、'))+'</div>'
+        : '';
+      bodyHtml = ownerRow
+        +'<div class="bookingCardTime">'+b.startTime+' – '+b.endTime+' &nbsp;'+_esc(courtLabel)+'</div>'
+        +buddiesRow
+        +guestWarnRow
+        +(metaExtra?'<div class="bookingCardMeta">'+metaExtra+'</div>':'')
+        +cancelBtn;
+    } else {
+      /* ── Other modes: original layout ── */
+      var partners=b.partners?b.partners.join('、'):'';
+      bodyHtml = '<div class="bookingCardTime">'
+          +b.startTime+' – '+b.endTime+' &nbsp;'+_esc(courtLabel)
+          +'&nbsp;<span class="statusChip '+chipCls+'">'+statusLabel+'</span></div>'
+        +'<div class="bookingCardMeta">'+(MODE_LABELS[_nm2]||b.mode||'—')+(partners?' · '+partners:'')+metaExtra+'</div>'
+        +cancelBtn;
+    }
+
     return '<div class="bookingCard'+(b.status==='cancelled'||b.status==='void'?' bk-inactive':'')+'">'+
       '<div class="bookingCardDate">'+
         '<div class="bookingCardDateNum">'+d.getDate()+'</div>'+
         '<div class="bookingCardDateMon">'+(d.getMonth()+1)+'月 '+DAYS_TC[d.getDay()]+'</div>'+
       '</div>'+
-      '<div class="bookingCardBody">'+
-        '<div class="bookingCardTime">'+
-          b.startTime+' – '+b.endTime+' &nbsp;'+courtLabel+
-          '&nbsp;<span class="statusChip '+chipCls+'">'+statusLabel+'</span></div>'+
-        '<div class="bookingCardMeta">'+(MODE_LABELS[_normaliseMode(b.mode)]||b.mode||'一般')+(partners?' · '+partners:'')+metaExtra+'</div>'+
-        cancelBtn+
-      '</div>'+
+      '<div class="bookingCardBody">'+bodyHtml+'</div>'+
     '</div>';
   }
   var upEl=document.getElementById('bookUpcoming');
@@ -2911,7 +3030,7 @@ function _renderAllBookingsTab(el){
 
   function courtLbl(c){ return {hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[c]||c||'—'; }
   function modeLbl(m){ return MODE_LABELS[_normaliseMode(m)]||m||'一般'; }
-  function nameOf(uid){ var u=usersCache[uid]; return u?(u.realName||u.displayName||uid):uid; }
+  function nameOf(uid){ return _mName(usersCache[uid]||uid); }
 
   function rowHtml(b){
     var nm = _normaliseMode(b.mode);
@@ -2996,7 +3115,7 @@ function _renderPendingTab(el){
   } else {
     let html='';
     pending.forEach(function(m){
-      const initials=(m.displayName||'?').charAt(0);
+      const _pn=_mName(m); const initials=_pn.charAt(0);
       const avatarHtml=m.photoURL
         ?'<img src="'+m.photoURL+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'" alt="">'
         :'<svg width="40" height="40" viewBox="0 0 40 40"><rect width="40" height="40" rx="20" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="16" font-family="serif">'+initials+'</text></svg>';
@@ -3007,7 +3126,7 @@ function _renderPendingTab(el){
         '<div class="pendingCardTop">'+
           '<div class="memberAvatar">'+avatarHtml+'</div>'+
           '<div>'+
-            '<div class="pendingCardName">'+(m.displayName||'未知')+'</div>'+
+            '<div class="pendingCardName">'+_esc(_pn)+'</div>'+
             '<div class="pendingCardMeta">申請日期：'+dateStr+'</div>'+
           '</div>'+
         '</div>'+
@@ -3025,7 +3144,7 @@ function _renderPendingTab(el){
   let rHtml='<div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--color-border,#e5e0d8)">'+
     '<div style="font-size:12px;color:var(--color-text-muted,#a09880);margin-bottom:12px;letter-spacing:0.04em">已拒絕申請</div>';
   rejected.forEach(function(m){
-    const initials=(m.displayName||'?').charAt(0);
+    const _rn=_mName(m); const initials=_rn.charAt(0);
     const avatarHtml=m.photoURL
       ?'<img src="'+m.photoURL+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'" alt="">'
       :'<svg width="40" height="40" viewBox="0 0 40 40"><rect width="40" height="40" rx="20" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="16" font-family="serif">'+initials+'</text></svg>';
@@ -3033,7 +3152,7 @@ function _renderPendingTab(el){
       '<div class="pendingCardTop">'+
         '<div class="memberAvatar">'+avatarHtml+'</div>'+
         '<div>'+
-          '<div class="pendingCardName">'+(m.displayName||'未知')+'</div>'+
+          '<div class="pendingCardName">'+_esc(_rn)+'</div>'+
           '<div class="pendingCardMeta" style="color:#c0392b">審核未通過</div>'+
         '</div>'+
       '</div>'+
@@ -3049,6 +3168,19 @@ function _renderPendingTab(el){
 
 /* ── Helper: HTML escape ── */
 function _esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+/* ── Unified member name helper: realName > displayName > nickname > uid ── */
+function _mName(m){
+  if(!m) return '—';
+  if(typeof m === 'string') m = usersCache[m] || { displayName: m };
+  return m.realName || m.displayName || m.nickname || '—';
+}
+/* ── Unified member photo helper: photoURL > lineAvatar > pictureUrl ── */
+function _mPic(m){
+  if(!m) return '';
+  if(typeof m === 'string') m = usersCache[m];
+  if(!m) return '';
+  return m.photoURL || m.lineAvatar || m.pictureUrl || '';
+}
 
 /* ── 會員管理 tab ── */
 /* ── 會費狀態計算（從 financeRecords + membershipExpiry 即時算，不需人工維護）── */
@@ -3146,14 +3278,14 @@ function _renderMembersTab(el){
     // 已封鎖
     var blockedList=Object.values(usersCache).filter(function(m){ return m.status==='blocked'; });
     if(blockedList.length){
-      blockedList.sort(function(a,b){ return (a.displayName||'').localeCompare(b.displayName||'','zh-Hant'); });
+      blockedList.sort(function(a,b){ return _mName(a).localeCompare(_mName(b),'zh-Hant'); });
       html+='<details style="margin-bottom:14px;border:1px solid var(--color-border-soft);border-radius:8px">';
       html+='<summary style="cursor:pointer;font-size:12px;font-weight:600;letter-spacing:0.06em;color:var(--color-text-muted);padding:9px 12px;user-select:none;list-style:none">已封鎖（'+blockedList.length+'）</summary>';
       html+='<div style="padding:4px 12px 10px">';
       blockedList.forEach(function(m){
         var bUid=m.userId||m.uid||'';
         html+='<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0">'+
-          '<span style="font-size:13px;color:var(--color-text-muted)">'+_esc(m.displayName||m.realName||'未知')+'</span>'+
+          '<span style="font-size:13px;color:var(--color-text-muted)">'+_esc(_mName(m)||'未知')+'</span>'+
           '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="unblockMember(\''+bUid+'\')">解除封鎖</button>'+
         '</div>';
       });
@@ -3381,12 +3513,12 @@ function _renderCoachTab(el){
       '<div style="font-size:11px;letter-spacing:0.06em;color:var(--color-text-muted);margin-bottom:5px">教練選擇</div>'+
       '<select class="formSelect" style="margin:0" onchange="_coachTabSelected=this.value;renderManage()">';
     coaches.forEach(function(c){
-      html += '<option value="'+c.userId+'"'+(c.userId===selId?' selected':'')+'>'+_esc(c.displayName||c.realName||c.userId)+'</option>';
+      html += '<option value="'+c.userId+'"'+(c.userId===selId?' selected':'')+'>'+_esc(_mName(c)||c.userId)+'</option>';
     });
     html += '</select></div>';
   } else {
     html += '<div style="font-size:15px;font-weight:600;margin-bottom:12px;color:var(--color-text-primary)">'+
-      _esc(selCoach.displayName||selCoach.realName||selId)+'</div>';
+      _esc(_mName(selCoach)||selId)+'</div>';
   }
 
   // ── Year + Month selectors ──
@@ -3439,7 +3571,7 @@ function _renderCoachTab(el){
         // Student rows
         students.forEach(function(uid){
           var su     = usersCache[uid] || {};
-          var sName  = su.realName||su.displayName||uid;
+          var sName  = _mName(su)||uid;
           var sPhoto = su.photoURL||su.lineAvatar||'';
           var status = att[uid] || '';
           var avatar = sPhoto
@@ -3503,7 +3635,7 @@ function _renderAdminSettingsTab(el){
 
   function _av(m){
     if(m.photoURL) return '<img src="'+m.photoURL+'" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display=\'none\'" alt="">';
-    var i=(m.displayName||'?').charAt(0);
+    var i=_mName(m).charAt(0);
     return '<svg width="36" height="36" viewBox="0 0 36 36" style="flex-shrink:0"><rect width="36" height="36" rx="18" fill="#d4c9b5"/><text x="18" y="24" text-anchor="middle" fill="#8a7f6e" font-size="14" font-family="serif">'+i+'</text></svg>';
   }
 
@@ -3517,7 +3649,7 @@ function _renderAdminSettingsTab(el){
     ownerList.forEach(function(m){
       html+='<div class="adminSettingsRow">'+
         _av(m)+
-        '<div style="flex:1;font-size:14px;color:var(--color-text-primary);font-weight:500;margin-left:10px">'+_esc(m.displayName||'未知')+'</div>'+
+        '<div style="flex:1;font-size:14px;color:var(--color-text-primary);font-weight:500;margin-left:10px">'+_esc(_mName(m))+'</div>'+
         '<span class="adminRoleBadge owner">擁有者</span>'+
       '</div>';
     });
@@ -3534,7 +3666,7 @@ function _renderAdminSettingsTab(el){
     adminList.forEach(function(m){
       html+='<div class="adminSettingsRow">'+
         _av(m)+
-        '<div style="flex:1;font-size:14px;color:var(--color-text-primary);font-weight:500;margin-left:10px">'+_esc(m.displayName||'未知')+'</div>'+
+        '<div style="flex:1;font-size:14px;color:var(--color-text-primary);font-weight:500;margin-left:10px">'+_esc(_mName(m))+'</div>'+
         '<span class="adminRoleBadge admin">管理員</span>'+
         (isOwner?'<button class="adminToggleBtn" onclick="setAdminRole(\''+m.userId+'\',false)">撤銷</button>':'')+
       '</div>';
@@ -3768,7 +3900,7 @@ function removeMember(userId){
   if(target.role==='owner'){showToast('擁有者無法離會');return;}
   var operator=_currentRole();
   if(operator==='admin'&&(target.role==='owner'||target.role==='admin')){showToast('管理員無法操作此身份');return;}
-  if(!confirm('確定讓「'+(target.displayName||userId)+'」離會？\n（資料保留，可隨時恢復）'))return;
+  if(!confirm('確定讓「'+(_mName(target)||userId)+'」離會？\n（資料保留，可隨時恢復）'))return;
   db.collection('members').doc(userId).update({status:'deleted',approved:false,deletedAt:TS()})
     .then(function(){
       if(usersCache[userId]){usersCache[userId].status='deleted';usersCache[userId].approved=false;}
@@ -3786,7 +3918,7 @@ function blockMember(userId){
   if(target.role==='owner'){showToast('擁有者無法被封鎖');return;}
   var operator=_currentRole();
   if(operator==='admin'&&(target.role==='owner'||target.role==='admin')){showToast('管理員無法操作此身份');return;}
-  if(!confirm('確定封鎖「'+(target.displayName||userId)+'」？\n（封鎖後將無法登入）'))return;
+  if(!confirm('確定封鎖「'+(_mName(target)||userId)+'」？\n（封鎖後將無法登入）'))return;
   db.collection('members').doc(userId).update({status:'blocked',approved:false,blockedAt:TS()})
     .then(function(){
       if(usersCache[userId]){usersCache[userId].status='blocked';usersCache[userId].approved=false;}
@@ -3801,7 +3933,7 @@ function unblockMember(userId){
   if(!db){showToast('無法連線，請稍後再試');return;}
   var target=usersCache[userId];
   if(!target){showToast('找不到此會員');return;}
-  if(!confirm('確定解除封鎖「'+(target.displayName||userId)+'」？'))return;
+  if(!confirm('確定解除封鎖「'+(_mName(target)||userId)+'」？'))return;
   db.collection('members').doc(userId).update({status:'approved',approved:true,unblockedAt:TS()})
     .then(function(){
       if(usersCache[userId]){usersCache[userId].status='approved';usersCache[userId].approved=true;}
@@ -3816,7 +3948,7 @@ function restoreMember(userId){
   if(!db){showToast('無法連線，請稍後再試');return;}
   var target=usersCache[userId];
   if(!target){showToast('找不到此會員');return;}
-  if(!confirm('確定恢復「'+(target.displayName||userId)+'」的會員資格？'))return;
+  if(!confirm('確定恢復「'+(_mName(target)||userId)+'」的會員資格？'))return;
   db.collection('members').doc(userId).update({status:'approved',approved:true,restoredAt:TS()})
     .then(function(){
       if(usersCache[userId]){usersCache[userId].status='approved';usersCache[userId].approved=true;}
@@ -3846,7 +3978,7 @@ function setMemberRole(userId, newRole){
     if(cur>=8){showToast('管理員已達上限（8位）');return;}
   }
   var LBL={member:'會員',coach:'教練',admin:'管理員'};
-  if(!confirm('確定將「'+(target.displayName||userId)+'」設為'+(LBL[newRole]||newRole)+'？'))return;
+  if(!confirm('確定將「'+(_mName(target)||userId)+'」設為'+(LBL[newRole]||newRole)+'？'))return;
   db.collection('members').doc(userId).update({role:newRole,updatedAt:TS()})
     .then(function(){
       if(usersCache[userId])usersCache[userId].role=newRole;
@@ -3865,7 +3997,7 @@ function editMemberRealName(userId){
   var target = usersCache[userId];
   if(!target){ showToast('找不到此會員'); return; }
   var current = target.realName || '';
-  var input = prompt('請輸入「'+(target.displayName||userId)+'」的正式姓名：', current);
+  var input = prompt('請輸入「'+(_mName(target)||userId)+'」的正式姓名：', current);
   if(input === null) return;   // cancelled
   input = input.trim();
   db.collection('members').doc(userId).update({ realName: input, updatedAt: TS() })
@@ -3953,12 +4085,12 @@ function openCoachAssign(coachId){
   var el=document.getElementById('manageContent');
   if(!el) return;
   var opts=available.map(function(m){
-    return '<option value="'+m.userId+'">'+_esc(m.displayName||m.userId)+'</option>';
+    return '<option value="'+m.userId+'">'+_esc(_mName(m)||m.userId)+'</option>';
   }).join('');
   el.innerHTML=
     '<div style="padding:0 4px">'+
     '<button onclick="_manageTab=\'coach\';renderManage()" style="font-size:12px;letter-spacing:0.06em;color:var(--color-text-muted);margin-bottom:16px">← 返回</button>'+
-    '<div class="screenSection">指派學生至 '+_esc(coach.displayName||coachId)+'</div>'+
+    '<div class="screenSection">指派學生至 '+_esc(_mName(coach)||coachId)+'</div>'+
     '<div class="formRow"><label class="formLabel">選擇會員</label>'+
     '<select class="formSelect" id="assignStudentSel">'+opts+'</select></div>'+
     '<button class="saveBtn" onclick="assignStudentToCoach(\''+coachId+'\')">指派</button>'+
@@ -3996,7 +4128,7 @@ function openCoachStudentEditor(coachId, studentId){
   el.innerHTML=
     '<div style="padding:0 4px">'+
     '<button onclick="_manageTab=\'coach\';renderManage()" style="font-size:12px;letter-spacing:0.06em;color:var(--color-text-muted);margin-bottom:16px">← 返回</button>'+
-    '<div class="screenSection">'+_esc(student?student.displayName||studentId:studentId)+'</div>'+
+    '<div class="screenSection">'+_esc(student?_mName(student)||studentId:studentId)+'</div>'+
     '<div class="formRow"><label class="formLabel">最近出席日</label>'+
     '<input class="formInput" id="csAtd" type="date" value="'+(rec.attendanceDate||'')+'"></div>'+
     '<div class="formRow"><label class="formLabel">最近繳費日</label>'+
@@ -4041,7 +4173,7 @@ function setAdminRole(userId, makeAdmin){
     if(curAdminCount>=8){showToast('管理員已達上限（8位）');return;}
   }
   var newRole=makeAdmin?'admin':'member';
-  var name=target.displayName||'此會員';
+  var name=_mName(target)||'此會員';
   if(!confirm(makeAdmin?'設 '+name+' 為管理員？':'撤銷 '+name+' 的管理員身份？')) return;
   if(!db){showToast('無法連線');return;}
   db.collection('members').doc(userId).update({role:newRole,updatedAt:TS()})
@@ -4965,21 +5097,22 @@ function renderMembers(filter){
     .sort(function(a,b){
       if(a.role==='coach' && b.role!=='coach') return -1;
       if(b.role==='coach' && a.role!=='coach') return  1;
-      return (a.realName||a.displayName||'').localeCompare(b.realName||b.displayName||'','zh');
+      return _mName(a).localeCompare(_mName(b),'zh');
     });
   if(!list.length){
     el.innerHTML = '<div class="emptyState"><div class="emptyStateIcon">—</div>目前無會員資料</div>';
   } else {
     el.innerHTML = list.map(function(m){
-      var initials=(m.realName||m.displayName||'?').charAt(0);
+      var _mn = _mName(m)||'?';
+      var initials=_mn.charAt(0);
       var isCoach=m.role==='coach';
-      var avatarHtml=m.photoURL
-        ?'<img src="'+m.photoURL+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'" alt="">'
+      var avatarHtml=_mPic(m)
+        ?'<img src="'+_mPic(m)+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'" alt="">'
         :'<svg width="40" height="40" viewBox="0 0 40 40"><rect width="40" height="40" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="16" font-family="serif">'+initials+'</text></svg>';
       return '<div class="memberCard" onclick="showMemberDetail(\''+m.userId+'\')" style="cursor:pointer">'+
         '<div class="memberAvatar">'+avatarHtml+'</div>'+
         '<div class="memberInfo">'+
-          '<div class="memberName">'+(m.realName||m.displayName||'未知')+'</div>'+
+          '<div class="memberName">'+_esc(_mn||'未知')+'</div>'+
           '<div class="memberMeta">'+(m.ntrp?_ntrpDisplay(m.ntrp)+' · ':'')+(m.preferredPosition||'—')+'</div>'+
         '</div>'+
         '<span class="memberBadge'+(isCoach?' coach':'')+'">'+((ROLE_BADGE[m.role])||'會員')+'</span>'+
@@ -5095,18 +5228,24 @@ function renderDayView(){
       var _dvTeach = (_dvNm === 'teaching');
       var isLock   = (b.mode === 'event_lock');
       var modeLabel= MODE_LABELS[_dvNm] || _dvNm || '一般預約';
-      /* For teaching: use coach as the display person */
+      /* For teaching: use coach; for general: use players[0]; else: createdBy */
+      var _dvIsGen = (_dvNm === 'general');
       var dvName, dvPhoto, mem;
       if(_dvTeach && b.coachId && usersCache[b.coachId]){
         mem     = usersCache[b.coachId];
-        dvName  = mem.realName||mem.displayName||b.coachName||'教練';
-        dvPhoto = mem.photoURL||mem.lineAvatar||'';
+        dvName  = _mName(mem)||b.coachName||'教練';
+        dvPhoto = _mPic(mem);
+      } else if(_dvIsGen){
+        var _dvGenPls = Array.isArray(b.players) ? b.players : [];
+        mem     = _dvGenPls.length ? (usersCache[_dvGenPls[0]]||null) : null;
+        dvName  = _mName(mem)||b.primaryName||'—';
+        dvPhoto = _mPic(mem);
       } else {
         mem     = (b.createdBy&&usersCache[b.createdBy])
           ||Object.values(usersCache).find(function(x){return (x.displayName||'')===(b.primaryName||'');})
           ||null;
-        dvName  = _dvTeach ? (b.coachName||b.primaryName||'教練') : (b.primaryName||'?');
-        dvPhoto = mem?(mem.photoURL||mem.lineAvatar||''):'';
+        dvName  = mem ? (_mName(mem)||'?') : (_dvTeach ? (b.coachName||b.primaryName||'教練') : (b.primaryName||'?'));
+        dvPhoto = _mPic(mem);
       }
       var ntrp=mem?(mem.ntrp||'—'):'—';
       var pos=mem?(mem.preferredPosition||'—'):'—';
@@ -5119,12 +5258,12 @@ function renderDayView(){
         time:b.startTime+'–'+b.endTime, mode:modeLabel,
         count:_dvTeach ? dvStudents.length : (dvPlayers.length||b.participantCount||1),
         capacity: _dvTeach ? null : (b.capacity||null),
-        playerNames: dvPlayers.map(function(uid){ var pu=usersCache[uid]; return pu?(pu.realName||pu.displayName||uid):uid; }),
+        playerNames: dvPlayers.map(function(uid){ return _mName(usersCache[uid]||uid); }),
         isCoach:_dvTeach,
         coachId: b.coachId||'',
         coachName: dvName,
         studentIds: dvStudents,
-        studentNames: dvStudents.map(function(uid){ var su=usersCache[uid]; return su?(su.realName||su.displayName||uid):uid; }),
+        studentNames: dvStudents.map(function(uid){ return _mName(usersCache[uid]||uid); }),
         attendance: b.attendance||{},
         ntrp:ntrp, pos:pos, att:'—',
         bookingId:b.id, isOwner:isOwner,
@@ -5134,13 +5273,15 @@ function renderDayView(){
       var blockAvatar=dvPhoto
         ?('<img src="'+dvPhoto+'" class="dvVBlockPhoto" onerror="this.style.display=\'none\'" alt="">')
         :'<div class="dvVBlockInitial">'+dvName.charAt(0)+'</div>';
+      /* General: +N suffix for extra players */
+      var _dvExtra = (_dvIsGen && dvPlayers.length > 1) ? ' +'+(dvPlayers.length-1) : '';
       var cls='dvVBlock'+(_dvTeach?' is-coaching':'')+(isLock?' is-lock':'');
       var blockH=parseFloat(hPx);
       /* show time label only if tall enough */
       var timeHtml=blockH>=36?'<div class="dvVBlockTime">'+b.startTime+'–'+b.endTime+'</div>':'';
       h+='<div class="'+cls+'" style="top:'+topPx+'px;height:'+hPx+'px" onclick="event.stopPropagation();_dvShowDetail(\''+enc+'\')">'+
         blockAvatar+
-        '<div class="dvVBlockName">'+_esc(dvName)+'</div>'+
+        '<div class="dvVBlockName">'+_esc(dvName+_dvExtra)+'</div>'+
         timeHtml+
       '</div>';
     });
@@ -5373,8 +5514,8 @@ function _dvShowDetail(enc){
     var pRows = '';
     _pIds.forEach(function(uid){
       var pu    = usersCache[uid] || {};
-      var pName = pu.realName || pu.displayName || uid;
-      var pPhoto= pu.photoURL || pu.lineAvatar || '';
+      var pName = _mName(pu) || uid;
+      var pPhoto= _mPic(pu);
       var avatar= pPhoto
         ? '<img src="'+pPhoto+'" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display=\'none\'" alt="">'
         : '<div style="width:28px;height:28px;border-radius:50%;background:var(--color-surface-alt);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--color-text-muted);flex-shrink:0">'+_esc(pName.charAt(0))+'</div>';
@@ -5402,17 +5543,14 @@ function _dvShowDetail(enc){
     if(_canMgr && _total < _cap){
       var memberOpts = '<option value="">— 選擇會員 —</option>';
       Object.keys(usersCache).sort(function(a,b){
-        var na=(usersCache[a].realName||usersCache[a].displayName||'');
-        var nb=(usersCache[b].realName||usersCache[b].displayName||'');
-        return na.localeCompare(nb,'zh-Hant');
+        return _mName(usersCache[a]).localeCompare(_mName(usersCache[b]),'zh-Hant');
       }).forEach(function(uid){
         var m = usersCache[uid];
         if(!m) return;
         var s = m.status||'active';
         if(s==='pending'||s==='blocked'||s==='deleted'||s==='resigned') return;
         if(_pIds.indexOf(uid) >= 0) return; /* skip already-in players */
-        var mName = m.realName || m.displayName || uid;
-        memberOpts += '<option value="'+uid+'">'+_esc(mName)+'</option>';
+        memberOpts += '<option value="'+uid+'">'+_esc(_mName(m)||uid)+'</option>';
       });
       addControls =
         '<div class="dvParticipantAddRow">'+
@@ -5425,9 +5563,8 @@ function _dvShowDetail(enc){
         '</div>';
     }
 
-    var _capLabel = '（'+_total+' / '+_cap+' 人）';
     participantHtml = '<div class="dvAttSection">'+
-      '<div class="dvAttSectionLabel">參與者 <span style="font-weight:600;color:var(--color-text-secondary);font-size:10px">'+_capLabel+'</span></div>'+
+      '<div class="dvAttSectionLabel">參與者</div>'+
       (pRows || '<div style="font-size:12px;color:var(--color-text-muted);padding:4px 0">尚無參與者</div>')+
       addControls+
     '</div>';
@@ -5448,8 +5585,8 @@ function _dvShowDetail(enc){
       var stRows = '';
       _stIds.forEach(function(uid, idx){
         var su     = usersCache[uid] || {};
-        var sName  = su.realName||su.displayName||_stNames[idx]||uid;
-        var sPhoto = su.photoURL||su.lineAvatar||'';
+        var sName  = _mName(su)||_stNames[idx]||uid;
+        var sPhoto = _mPic(su);
         var status = _att[uid] || '';
         var badgeCls = status ? 'att-'+status : 'att-none';
         var badgeTxt = status ? (ATT_LABELS_RO[status]||status) : '—';
@@ -5772,18 +5909,26 @@ function showBookingDetail(id){
   var isClubAdmin = (role==='admin');
   var courtLabel= {hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[b.court]||b.court;
 
-  // ── Name / photo: for teaching, show coach; otherwise show creator ──
+  // ── Name / photo: teaching→coach, general→players[0], else→createdBy ──
+  var isGeneral = (normMode === 'general');
   var name, photoURL, ntrp, pos;
   if(isTeach && b.coachId && usersCache[b.coachId]){
     var _c = usersCache[b.coachId];
-    name     = _c.realName||_c.displayName||b.coachName||'教練';
-    photoURL = _c.photoURL||_c.lineAvatar||'';
+    name     = _mName(_c)||b.coachName||'教練';
+    photoURL = _mPic(_c);
     ntrp     = _c.ntrp||'—';
     pos      = _c.preferredPosition||'—';
+  } else if(isGeneral){
+    var _gPls  = Array.isArray(b.players) ? b.players : [];
+    var _gOwn  = _gPls.length ? (usersCache[_gPls[0]]||null) : null;
+    name     = _mName(_gOwn)||b.primaryName||'—';
+    photoURL = _mPic(_gOwn);
+    ntrp     = _gOwn ? (_gOwn.ntrp||'—') : '—';
+    pos      = _gOwn ? (_gOwn.preferredPosition||'—') : '—';
   } else {
     var _u   = b.createdBy?usersCache[b.createdBy]:null;
-    name     = isTeach ? (b.coachName||b.primaryName||'教練') : (_u?((_u.realName||_u.displayName)):(b.primaryName||'?'));
-    photoURL = _u?(_u.photoURL||_u.lineAvatar||''):'';
+    name     = isTeach ? (b.coachName||b.primaryName||'教練') : (_mName(_u)||b.primaryName||'?');
+    photoURL = _mPic(_u);
     ntrp     = _u?(_u.ntrp||'—'):'—';
     pos      = _u?(_u.preferredPosition||'—'):'—';
   }
@@ -5793,8 +5938,8 @@ function showBookingDetail(id){
   var students    = Array.isArray(b.students) ? b.students : [];
   var isInPlayers = players.indexOf(myUid)>=0 || students.indexOf(myUid)>=0;
   var cap         = isTeach ? null : (b.capacity||null);
-  var playerNames = players.map(function(uid){ var pu=usersCache[uid]; return pu?(pu.realName||pu.displayName||uid):uid; });
-  var studentNames= students.map(function(uid){ var su=usersCache[uid]; return su?(su.realName||su.displayName||uid):uid; });
+  var playerNames = players.map(function(uid){ return _mName(usersCache[uid]||uid); });
+  var studentNames= students.map(function(uid){ return _mName(usersCache[uid]||uid); });
   var attendance  = (b.attendance && typeof b.attendance==='object') ? b.attendance : {};
   var canManageAtt = isAdminLike() || (myUid && b.coachId && myUid===b.coachId);
 
@@ -6298,23 +6443,34 @@ function onFormModeChange(){
   var studsRow = document.getElementById('formStudentsRow');
   if(studsRow) studsRow.style.display = isTeaching && isAdmin ? '' : 'none';
 
-  // Capacity row: hide for teaching (not applicable), show for others
+  // Capacity row: hidden for general (fixed 4) and teaching (n/a); shown for pickleball/groupClass
   var capRow = document.getElementById('formCapacityRow');
-  if(capRow) capRow.style.display = isTeaching ? 'none' : '';
+  if(capRow) capRow.style.display = (!isGeneral && !isTeaching) ? '' : 'none';
 
   // Title row: groupClass only
   var titleRow = document.getElementById('formTitleRow');
   if(titleRow) titleRow.style.display = isGroupClass ? '' : 'none';
 
-  // BookFor row: general / pickleball, admin-only
+  // Note row: show for non-general modes only
+  var noteRow = document.getElementById('formNoteRow');
+  if(noteRow) noteRow.style.display = isGeneral ? 'none' : '';
+
+  // General-only: buddy picker section
+  var buddiesRow = document.getElementById('formGeneralBuddiesRow');
+  if(buddiesRow) buddiesRow.style.display = isGeneral ? '' : 'none';
+
+  // General-only: proxy row (checkbox-based, replaces old dropdown for general)
+  var proxyRow = document.getElementById('formProxyRow');
+  if(proxyRow) proxyRow.style.display = isGeneral ? '' : 'none';
+
+  // BookFor row: pickleball / groupClass admin-only (not general, which now uses proxy checkbox)
   var bfRow = document.getElementById('bookForRow');
-  if(bfRow) bfRow.style.display = (isGeneral || isPickle) && isAdmin ? '' : 'none';
+  if(bfRow) bfRow.style.display = (isPickle || isGroupClass) && isAdmin ? '' : 'none';
 
   // Default capacity by mode
   var capSel = document.getElementById('formCapacity');
   if(capSel){
-    if(isGeneral)        capSel.value = '2';
-    else if(isPickle)    capSel.value = '4';
+    if(isPickle)         capSel.value = '4';
     else if(isGroupClass) capSel.value = '4';
   }
 
@@ -6353,7 +6509,7 @@ function openBookingForm(){
     var opts='<option value="">— 自己 —</option>';
     Object.values(usersCache).forEach(function(m){
       if(m.role&&m.role!=='pending'&&m.role!=='blocked'&&m.status!=='deleted'&&m.status!=='blocked')
-        opts+='<option value="'+(m.userId||m.uid||'')+'">'+_esc(m.displayName||m.realName||'')+'</option>';
+        opts+='<option value="'+(m.userId||m.uid||'')+'">'+_esc(_mName(m)||'')+'</option>';
     });
     bfSel.innerHTML=opts;
   }
@@ -6364,7 +6520,7 @@ function openBookingForm(){
     Object.values(usersCache).forEach(function(m){
       var uid = m.userId||m.uid||'';
       if(uid && m.role==='coach' && m.status!=='deleted'&&m.status!=='blocked')
-        copts+='<option value="'+uid+'">'+_esc(m.displayName||m.realName||uid)+'</option>';
+        copts+='<option value="'+uid+'">'+_esc(_mName(m)||uid)+'</option>';
     });
     coachSel.innerHTML=copts;
   }
@@ -6377,12 +6533,12 @@ function openBookingForm(){
         return (m.userId||m.uid) &&
           m.status!=='deleted' && m.status!=='blocked' && m.role!=='pending';
       })
-      .sort(function(a,b){ return (a.displayName||'').localeCompare(b.displayName||'','zh-Hant'); })
+      .sort(function(a,b){ return _mName(a).localeCompare(_mName(b),'zh-Hant'); })
       .forEach(function(m){
         var uid = m.userId||m.uid||'';
         shtml += '<label class="formStudentItem">'+
           '<input type="checkbox" class="formStudentCheck" value="'+uid+'">'+
-          '<span>'+_esc(m.displayName||m.realName||uid)+'</span>'+
+          '<span>'+_esc(_mName(m)||uid)+'</span>'+
         '</label>';
       });
     studentList.innerHTML = shtml || '<div style="padding:10px 12px;font-size:13px;color:var(--color-text-muted)">尚無可選會員</div>';
@@ -6402,6 +6558,14 @@ function openBookingForm(){
       courtSel.value = 'hard_a';
     }
   }
+  /* Reset general buddy state */
+  _formBuddyMembers = [];
+  _formBuddyGuests  = [];
+  var proxyChk = document.getElementById('formProxyCheck');
+  if(proxyChk) proxyChk.checked = false;
+  var proxyDetail = document.getElementById('formProxyDetail');
+  if(proxyDetail) proxyDetail.style.display = 'none';
+  _formBuddyRender();
   document.getElementById('bookingFormSheet').classList.add('open');
   document.getElementById('sheetBackdrop').classList.add('open');
 }
@@ -6429,6 +6593,151 @@ function _populateFormTimeSels(dateStr){
   /* Keep sensible defaults; 19:00 / 21:00 always fall within open range */
   startSel.value = times.indexOf('19:00') >= 0 ? '19:00' : times[0] || '';
   endSel.value   = times.indexOf('21:00') >= 0 ? '21:00' : (times[Math.min(4, times.length-1)] || '');
+}
+
+/* ── General booking form: buddy picker ── */
+function _formBuddyOwnerUid(){
+  var myUid = currentUser ? (currentUser.userId||currentUser.uid||currentUser.id||'') : '';
+  var chk = document.getElementById('formProxyCheck');
+  var proxyOn = chk && chk.checked;
+  var proxyOwner = proxyOn ? ((document.getElementById('formProxyOwnerSel')||{value:''}).value||'') : '';
+  return (proxyOn && proxyOwner) ? proxyOwner : myUid;
+}
+
+function _formBuddyRender(){
+  var ownerUid = _formBuddyOwnerUid();
+  var myUid    = currentUser ? (currentUser.userId||currentUser.uid||currentUser.id||'') : '';
+  var total    = 1 + _formBuddyMembers.length + _formBuddyGuests.length;
+  var atCap    = total >= 4;
+
+  /* Cap label */
+  var capEl = document.getElementById('formBuddyCap');
+  if(capEl) capEl.textContent = total+'/4 人';
+
+  /* Owner chip (self or proxy target) */
+  var ownerUser = usersCache[ownerUid] || (ownerUid === myUid ? currentUser : null);
+  var ownerName = ownerUser ? (_mName(ownerUser)||'我') : '—';
+  var ownerPic  = ownerUser ? (ownerUser.photoURL||ownerUser.lineAvatar||ownerUser.pictureUrl||'') : '';
+  var isProxy   = (ownerUid !== myUid);
+  var avatarHtml = ownerPic
+    ? '<div class="formBuddyAvatar"><img src="'+_esc(ownerPic)+'"></div>'
+    : '<div class="formBuddyAvatar">'+_esc(ownerName.charAt(0))+'</div>';
+  var html = '<div class="formBuddySelf">'+avatarHtml
+    +'<span style="font-size:13px;flex:1;color:var(--color-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_esc(ownerName)+'</span>'
+    +'<span style="font-size:9px;font-weight:700;letter-spacing:0.05em;color:var(--color-text-muted);background:var(--color-border);border-radius:4px;padding:2px 5px;flex-shrink:0">'+(isProxy?'代訂':'本人')+'</span>'
+    +'</div>';
+
+  /* Member buddy chips */
+  _formBuddyMembers.forEach(function(uid, i){
+    var u = usersCache[uid];
+    var name = _mName(u||uid);
+    html += '<div class="formBuddyChip">'
+      +'<span class="formBuddyChipName">'+_esc(name)+'</span>'
+      +'<button type="button" class="formBuddyChipRemove" onclick="_formBuddyRemoveMember('+i+')">✕</button>'
+      +'</div>';
+  });
+
+  /* Guest chips */
+  _formBuddyGuests.forEach(function(g, i){
+    html += '<div class="formBuddyChip">'
+      +'<span class="formBuddyChipName">'+_esc(g)+'</span>'
+      +'<span class="formBuddyChipTag">來賓</span>'
+      +'<button type="button" class="formBuddyChipRemove" onclick="_formBuddyRemoveGuest('+i+')">✕</button>'
+      +'</div>';
+  });
+
+  var listEl = document.getElementById('formBuddyList');
+  if(listEl) listEl.innerHTML = html;
+
+  /* Show/hide guest notice */
+  var noticeEl = document.getElementById('formBuddyGuestNotice');
+  if(noticeEl) noticeEl.style.display = _formBuddyGuests.length > 0 ? '' : 'none';
+
+  /* Refresh member dropdown: exclude owner + already-added members */
+  var excludeUids = [ownerUid].concat(_formBuddyMembers);
+  var sel = document.getElementById('formBuddyMemberSel');
+  if(sel){
+    var opts = '<option value="">— 選擇會員 —</option>';
+    Object.values(usersCache)
+      .filter(function(m){
+        var uid = m.userId||m.uid||'';
+        return uid && excludeUids.indexOf(uid) < 0 && m.status!=='deleted' && m.status!=='blocked' && m.role!=='pending';
+      })
+      .sort(function(a,b){ return _mName(a).localeCompare(_mName(b),'zh-Hant'); })
+      .forEach(function(m){
+        var uid = m.userId||m.uid||'';
+        opts += '<option value="'+uid+'">'+_esc(_mName(m)||uid)+'</option>';
+      });
+    sel.innerHTML = opts;
+  }
+
+  /* Disable add buttons when at cap */
+  var addMBtn = document.getElementById('formBuddyAddMemberBtn');
+  var addGBtn = document.getElementById('formBuddyAddGuestBtn');
+  if(addMBtn) addMBtn.disabled = atCap;
+  if(addGBtn) addGBtn.disabled = atCap;
+}
+
+function _formBuddyAddMember(){
+  var sel = document.getElementById('formBuddyMemberSel');
+  var uid = sel ? sel.value : '';
+  if(!uid){ showToast('請先選擇會員'); return; }
+  var total = 1 + _formBuddyMembers.length + _formBuddyGuests.length;
+  if(total >= 4){ showToast('最多 4 人'); return; }
+  if(_formBuddyMembers.indexOf(uid) >= 0){ showToast('此會員已在名單中'); return; }
+  _formBuddyMembers.push(uid);
+  _formBuddyRender();
+}
+
+function _formBuddyRemoveMember(idx){
+  _formBuddyMembers.splice(idx, 1);
+  _formBuddyRender();
+}
+
+function _formBuddyAddGuest(){
+  var inp = document.getElementById('formBuddyGuestInput');
+  var name = inp ? inp.value.trim() : '';
+  if(!name){ showToast('請輸入來賓姓名'); return; }
+  var total = 1 + _formBuddyMembers.length + _formBuddyGuests.length;
+  if(total >= 4){ showToast('最多 4 人'); return; }
+  _formBuddyGuests.push(name);
+  if(inp) inp.value = '';
+  _formBuddyRender();
+}
+
+function _formBuddyRemoveGuest(idx){
+  _formBuddyGuests.splice(idx, 1);
+  _formBuddyRender();
+}
+
+function _formProxyToggle(){
+  var chk    = document.getElementById('formProxyCheck');
+  var detail = document.getElementById('formProxyDetail');
+  var isProxy = chk && chk.checked;
+  if(detail) detail.style.display = isProxy ? '' : 'none';
+  if(isProxy){
+    /* Populate proxy owner dropdown: active members excluding self */
+    var myUid = currentUser ? (currentUser.userId||currentUser.uid||currentUser.id||'') : '';
+    var sel = document.getElementById('formProxyOwnerSel');
+    if(sel){
+      var opts = '<option value="">— 選擇代訂對象 —</option>';
+      Object.values(usersCache)
+        .filter(function(m){
+          var uid = m.userId||m.uid||'';
+          return uid && uid !== myUid && m.status!=='deleted' && m.status!=='blocked' && m.role!=='pending';
+        })
+        .sort(function(a,b){ return _mName(a).localeCompare(_mName(b),'zh-Hant'); })
+        .forEach(function(m){
+          var uid = m.userId||m.uid||'';
+          opts += '<option value="'+uid+'">'+_esc(_mName(m)||uid)+'</option>';
+        });
+      sel.innerHTML = opts;
+    }
+    /* Clear any incompatible buddy selections */
+    _formBuddyMembers = [];
+    _formBuddyGuests  = [];
+  }
+  _formBuddyRender();
 }
 
 /* Helper: normalise old mode values to canonical ones */
@@ -6473,11 +6782,16 @@ function submitBooking(){
     document.querySelectorAll('.formStudentCheck:checked').forEach(function(cb){ students.push(cb.value); });
   }
 
-  var myUid       = currentUser ? (currentUser.userId||currentUser.uid||currentUser.id||'') : '';
-  var playerUid   = (bookFor && usersCache[bookFor]) ? bookFor : myUid;
-  var displayName = usersCache[playerUid]
-    ? (usersCache[playerUid].displayName || usersCache[playerUid].realName || '—')
-    : (currentUser ? (currentUser.displayName||'—') : '—');
+  var myUid     = currentUser ? (currentUser.userId||currentUser.uid||currentUser.id||'') : '';
+  var isGeneral = (mode === 'general');
+  /* Owner determination: general uses proxy checkbox; other modes use bookFor dropdown */
+  var ownerUid = isGeneral
+    ? _formBuddyOwnerUid()
+    : ((bookFor && usersCache[bookFor]) ? bookFor : myUid);
+  var playerUid   = ownerUid;  /* used in slot-conflict join path */
+  var displayName = usersCache[ownerUid]
+    ? (usersCache[ownerUid].displayName || usersCache[ownerUid].realName || '—')
+    : (ownerUid === myUid && currentUser ? (currentUser.displayName||'—') : '—');
 
   var btn = document.getElementById('submitBookingBtn');
   if(btn){ btn.disabled=true; btn.textContent='確認中…'; }
@@ -6521,7 +6835,7 @@ function submitBooking(){
         }
         // same mode (general / pickleball) — attempt to join
         var players    = Array.isArray(ex.players) ? ex.players : [];
-        var exCapacity = ex.capacity || players.length || capacity;
+        var exCapacity = ex.capacity || players.length || (isGeneral ? 4 : capacity);
         if(players.indexOf(playerUid) >= 0){
           showToast('您已在此預約中');
           if(btn){ btn.disabled=false; btn.textContent='確認預約'; }
@@ -6550,29 +6864,40 @@ function submitBooking(){
 
       // No conflict — create new booking
       var newDoc = {
-        date:             date,
-        startTime:        start,
-        endTime:          end,
-        court:            court,
-        mode:             mode,
-        players:          [playerUid],
-        capacity:         capacity,
-        createdBy:        myUid,
-        primaryName:      displayName,   // backward compat
-        participantCount: 1,             // backward compat
-        status:           'active',
-        createdAt:        TS(),
-        updatedAt:        TS()
+        date:        date,
+        startTime:   start,
+        endTime:     end,
+        court:       court,
+        mode:        mode,
+        createdBy:   myUid,
+        createdByName: currentUser ? (currentUser.realName||currentUser.displayName||'') : '',
+        primaryName: displayName,   /* backward compat: booking owner's display name */
+        status:      'active',
+        createdAt:   TS(),
+        updatedAt:   TS()
       };
+      if(isGeneral){
+        /* General: fixed 4-cap, owner + selected buddies + guests */
+        var _gPlayers = [ownerUid].concat(_formBuddyMembers.filter(function(u){ return u !== ownerUid; }));
+        var _gGuests  = _formBuddyGuests.slice();
+        newDoc.players          = _gPlayers;
+        newDoc.guests           = _gGuests;
+        newDoc.capacity         = 4;
+        newDoc.participantCount = _gPlayers.length;
+      } else {
+        newDoc.players          = [playerUid];
+        newDoc.capacity         = capacity;
+        newDoc.participantCount = 1;
+      }
       if(mode==='teaching'){
         newDoc.coachId   = coachId;
-        newDoc.coachName = usersCache[coachId] ? (usersCache[coachId].displayName||usersCache[coachId].realName||'') : '';
+        newDoc.coachName = usersCache[coachId] ? (_mName(usersCache[coachId])||'') : '';
         newDoc.students  = students;
       } else {
         if(coachId) newDoc.coachId = coachId;
       }
       if(title) newDoc.title = title;
-      if(note)  newDoc.note  = note;
+      if(!isGeneral && note) newDoc.note = note;  /* note only for non-general modes */
 
       return db.collection('bookings').add(newDoc).then(function(){
         showToast('預約成功 · '+courtShortLabel+' '+start);
