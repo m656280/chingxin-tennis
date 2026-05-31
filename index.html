@@ -396,7 +396,8 @@ button {
   border:1px solid var(--color-border); background:var(--color-surface);
   color:var(--color-text-secondary); cursor:pointer; -webkit-tap-highlight-color:transparent; }
 .abActionBtn.danger { color:var(--color-clay); border-color:var(--color-clay); }
-.abActionBtn.void-btn { color:var(--color-text-muted); border-color:var(--color-text-muted); }
+.abActionBtn.void-btn   { color:var(--color-text-muted); border-color:var(--color-text-muted); }
+.abActionBtn.delete-btn { color:#c0392b; border-color:#c0392b; }
 
 /* ── Cancel / Void dialog ── */
 .cancelDlgBackdrop { position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:2100;
@@ -2223,6 +2224,7 @@ let myBookingsFirestore = null;     // null = not yet loaded; [] = loaded but em
 // Cancel dialog state
 let _cancelDlgBookingId = null;
 let _cancelDlgIsVoid    = false;
+let _cancelDlgIsDelete  = false;
 let _cancelDlgCallback  = null;
 let pendingUsersFirestore = [];
 let unsubMyBookings = null;
@@ -2757,11 +2759,12 @@ function _renderAllBookingsTab(el){
   var todayStr = formatDate(today);
   var all = allBookingsCache || [];
 
-  /* Sections */
+  /* Sections — cancelled/void only show within 30 days */
+  var cutoffStr30 = formatDate(new Date(Date.now()-30*24*60*60*1000));
   var todayBks   = all.filter(function(b){ return b.date===todayStr && _isActiveBooking(b); });
   var futureBks  = all.filter(function(b){ return b.date>todayStr  && _isActiveBooking(b); });
-  var cancelBks  = all.filter(function(b){ return b.status==='cancelled'; });
-  var voidBks    = all.filter(function(b){ return b.status==='void'; });
+  var cancelBks  = all.filter(function(b){ return b.status==='cancelled' && (b.date||'')>=cutoffStr30; });
+  var voidBks    = all.filter(function(b){ return b.status==='void'      && (b.date||'')>=cutoffStr30; });
 
   var role      = _currentRole();
   var isOwner   = (role==='owner');
@@ -2799,6 +2802,11 @@ function _renderAllBookingsTab(el){
         var voidLabel = (started||cutoff)?'強制作廢':'作廢';
         actions += '<button class="abActionBtn void-btn" onclick="voidBooking(\''+b.id+'\')">'+voidLabel+'</button>';
       }
+    } else {
+      /* cancelled / void — owner can permanently delete */
+      if(isOwner){
+        actions += '<button class="abActionBtn delete-btn" onclick="_showDeleteConfirmDlg(\''+b.id+'\')">永久刪除</button>';
+      }
     }
     var actionsHtml = actions ? '<div class="abRowActions">'+actions+'</div>' : '';
 
@@ -2832,8 +2840,8 @@ function _renderAllBookingsTab(el){
     +'</div>'
     + accordionSection('today',  '今日預約', todayBks,  true)
     + accordionSection('future', '未來預約', futureBks, true)
-    + accordionSection('cancelled','已取消', cancelBks, false)
-    + accordionSection('voided',   '已作廢', voidBks,   false);
+    + accordionSection('cancelled','已取消（近 30 天）', cancelBks, false)
+    + accordionSection('voided',   '已作廢（近 30 天）', voidBks,   false);
 
   el.innerHTML += html;
 }
@@ -5728,6 +5736,7 @@ function loadMyBookings(){
 function _showCancelDlg(id, isVoid, callback){
   _cancelDlgBookingId = id;
   _cancelDlgIsVoid    = isVoid;
+  _cancelDlgIsDelete  = false;
   _cancelDlgCallback  = callback || null;
   var title = isVoid ? '強制作廢' : '取消預約';
   var desc  = isVoid
@@ -5735,25 +5744,53 @@ function _showCancelDlg(id, isVoid, callback){
     : '取消後將通知相關人員，紀錄保留供查閱。請填寫原因（選填）。';
   document.getElementById('cancelDlgTitle').textContent = title;
   document.getElementById('cancelDlgDesc').textContent  = desc;
-  document.getElementById('cancelDlgReason').value = '';
+  var ta = document.getElementById('cancelDlgReason');
+  ta.value = ''; ta.style.display = '';
+  var btn = document.getElementById('cancelDlgConfirmBtn');
+  if(btn){ btn.textContent='確認'; btn.style.background=''; }
+  document.getElementById('cancelDlgBackdrop').classList.add('open');
+}
+/* ── Delete confirm dialog (owner only, cancelled/void bookings) ── */
+function _showDeleteConfirmDlg(id){
+  if(_currentRole()!=='owner'){ showToast('僅 Owner 可永久刪除'); return; }
+  var b = _findBookingById(id);
+  if(!b){ showToast('找不到預約紀錄'); return; }
+  if(_isActiveBooking(b)){ showToast('進行中的預約不可永久刪除，請先取消或作廢'); return; }
+  _cancelDlgBookingId = id;
+  _cancelDlgIsVoid    = false;
+  _cancelDlgIsDelete  = true;
+  _cancelDlgCallback  = null;
+  document.getElementById('cancelDlgTitle').textContent = '⚠️ 永久刪除預約';
+  document.getElementById('cancelDlgDesc').textContent  = '此操作無法還原，預約紀錄將從系統中完全移除。確認繼續嗎？';
+  var ta = document.getElementById('cancelDlgReason');
+  ta.value = ''; ta.style.display = 'none';
+  var btn = document.getElementById('cancelDlgConfirmBtn');
+  if(btn){ btn.textContent='確認刪除'; btn.style.background='#c0392b'; }
   document.getElementById('cancelDlgBackdrop').classList.add('open');
 }
 function _closeCancelDlg(){
   document.getElementById('cancelDlgBackdrop').classList.remove('open');
-  _cancelDlgBookingId = null; _cancelDlgIsVoid = false; _cancelDlgCallback = null;
+  _cancelDlgBookingId = null; _cancelDlgIsVoid = false; _cancelDlgIsDelete = false; _cancelDlgCallback = null;
+  /* restore button style */
+  var btn = document.getElementById('cancelDlgConfirmBtn');
+  if(btn){ btn.textContent='確認'; btn.style.background=''; }
+  var ta = document.getElementById('cancelDlgReason');
+  if(ta) ta.style.display = '';
 }
 function _cancelDlgBgClick(e){
   if(e.target===document.getElementById('cancelDlgBackdrop')) _closeCancelDlg();
 }
 function _confirmCancelDlg(){
-  var reason = (document.getElementById('cancelDlgReason').value||'').trim();
-  var id     = _cancelDlgBookingId;
-  var isVoid = _cancelDlgIsVoid;
-  var cb     = _cancelDlgCallback;
+  var reason   = (document.getElementById('cancelDlgReason').value||'').trim();
+  var id       = _cancelDlgBookingId;
+  var isVoid   = _cancelDlgIsVoid;
+  var isDelete = _cancelDlgIsDelete;
+  var cb       = _cancelDlgCallback;
   _closeCancelDlg();
   if(!id) return;
-  if(isVoid) _executeVoid(id, reason, cb);
-  else       _executeCancel(id, reason, cb);
+  if(isDelete)   _executePermanentDelete(id, cb);
+  else if(isVoid) _executeVoid(id, reason, cb);
+  else            _executeCancel(id, reason, cb);
 }
 
 /* ── Cancel Booking (soft — sets status to 'cancelled') ── */
@@ -5835,6 +5872,26 @@ function _executeVoid(id, reason, callback){
     .catch(function(e){ console.error('voidBooking error:',e); showToast('作廢失敗：'+e.message); });
 }
 
+/* ── Permanent Delete (owner only — cancelled / void bookings only) ── */
+function _executePermanentDelete(id, callback){
+  if(_currentRole()!=='owner'){ showToast('僅 Owner 可永久刪除'); return; }
+  if(!db){ showToast('無法連線，請稍後再試'); return; }
+  var b = _findBookingById(id);
+  if(b && _isActiveBooking(b)){ showToast('進行中的預約不可永久刪除'); return; }
+  db.collection('bookings').doc(id).delete()
+    .then(function(){
+      /* Remove from all local caches */
+      if(allBookingsCache){
+        var idx = allBookingsCache.findIndex(function(x){ return x.id===id; });
+        if(idx>=0) allBookingsCache.splice(idx,1);
+      }
+      showToast('預約紀錄已永久刪除');
+      if(callback) callback();
+      renderManage();
+    })
+    .catch(function(e){ console.error('permanentDelete error:',e); showToast('刪除失敗：'+e.message); });
+}
+
 /* ── Notifications on admin cancel/void ── */
 function _sendBookingNotifications(b, action, reason, actorUid, actorName){
   if(!db || !b) return;
@@ -5861,6 +5918,7 @@ function _sendBookingNotifications(b, action, reason, actorUid, actorName){
       bookingId: b.id,
       action:    action,
       createdAt: TS(),
+      expiresAt: new Date(Date.now() + 30*24*60*60*1000), /* 30 days — filter on display */
       read:      false
     }).catch(function(e){ console.warn('notification write error:',e); });
   });
