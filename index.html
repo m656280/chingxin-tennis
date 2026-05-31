@@ -2766,12 +2766,28 @@ function renderManage(){
     var ts = a.updatedAt.toDate ? a.updatedAt.toDate().getTime() : (typeof a.updatedAt==='number' ? a.updatedAt : 0);
     return ts > _announceLastReadTs;
   }).length;
+
+  /* Proactively load allBookings for admin/owner (background, enables dot without visiting tab) */
+  if(adminLike && allBookingsCache === null) loadAllBookings();
+
+  /* allBookings dot: show when cache is ready and there is any data to review */
+  var allBookingsDot = false;
+  if(adminLike && allBookingsCache !== null){
+    var _todayStr30 = formatDate(today);
+    var _cut30 = formatDate(new Date(Date.now()-30*24*60*60*1000));
+    allBookingsDot =
+      allBookingsCache.some(function(b){ return b.date===_todayStr30 && _isActiveBooking(b); }) ||
+      allBookingsCache.some(function(b){ return b.date>_todayStr30   && _isActiveBooking(b); }) ||
+      allBookingsCache.some(function(b){ return (b.status==='cancelled'||b.status==='void') && (b.date||'')>=_cut30; });
+  }
+
   var html='<div class="manageTabs">';
   TABS.forEach(function(t){
     var active = _manageTab === t.key;
     var dot = '';
-    if(t.key==='pending' && pendingCount > 0) dot = '<span class="manageTabDot"></span>';
-    if(t.key==='announcements' && announcCount > 0) dot = '<span class="manageTabDot"></span>';
+    if(t.key==='pending'      && pendingCount > 0)    dot = '<span class="manageTabDot"></span>';
+    if(t.key==='announcements'&& announcCount > 0)    dot = '<span class="manageTabDot"></span>';
+    if(t.key==='allBookings'  && allBookingsDot)      dot = '<span class="manageTabDot"></span>';
     html += '<button class="manageTabBtn'+(active?' active':'')+'" onclick="_manageTab=\''+t.key+'\';renderManage()">'+dot+t.label+'</button>';
   });
   html += '</div>';
