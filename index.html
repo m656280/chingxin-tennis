@@ -396,7 +396,6 @@ button {
   border:1px solid var(--color-border); background:var(--color-surface);
   color:var(--color-text-secondary); cursor:pointer; -webkit-tap-highlight-color:transparent; }
 .abActionBtn.danger { color:var(--color-clay); border-color:var(--color-clay); }
-.abActionBtn.void-btn   { color:var(--color-text-muted); border-color:var(--color-text-muted); }
 .abActionBtn.delete-btn { color:#c0392b; border-color:#c0392b; }
 
 /* ── Cancel / Void dialog ── */
@@ -2301,10 +2300,10 @@ function _bookingHasStarted(b){ return _minutesUntilStart(b) <= 0; }
 function _withinCancelCutoff(b){ var m=_minutesUntilStart(b); return m>=0 && m<30; }
 // Status label for display
 function _statusLabel(s){
-  return {active:'確認',confirmed:'確認',cancelled:'已取消',void:'已作廢'}[s]||s;
+  return {active:'確認',confirmed:'確認',cancelled:'已取消',void:'已取消'}[s]||s;
 }
 function _statusChipCls(s){
-  return {active:'active',confirmed:'active',cancelled:'cancelled',void:'void'}[s]||'';
+  return {active:'active',confirmed:'active',cancelled:'cancelled',void:'cancelled'}[s]||'';
 }
 function formatMonthYear(d){ return d.getFullYear()+' 年 '+MONTHS_TC[d.getMonth()]; }
 function shortDateStr(dateStr){
@@ -2663,12 +2662,10 @@ function renderBookings(){
     var cancelBtn = canSelfCancel
       ? '<div class="bookingCardActions"><button class="cancelBtn" onclick="cancelBooking(\''+b.id+'\')">取消預約</button></div>'
       : '';
-    // Cancelled/void indicator
+    // Cancelled indicator (void records in Firestore are shown as cancelled)
     var metaExtra = '';
-    if(b.status==='cancelled' && b.cancelledByName) metaExtra = ' · 由 '+_esc(b.cancelledByName)+' 取消';
-    if(b.status==='void'      && b.voidByName)      metaExtra = ' · 由 '+_esc(b.voidByName)+' 作廢';
+    if((b.status==='cancelled'||b.status==='void') && b.cancelledByName) metaExtra = ' · 由 '+_esc(b.cancelledByName)+' 取消';
     if(b.cancelReason) metaExtra += '（'+_esc(b.cancelReason)+'）';
-    if(b.voidReason)   metaExtra += '（'+_esc(b.voidReason)+'）';
     return '<div class="bookingCard'+(b.status==='cancelled'||b.status==='void'?' bk-inactive':'')+'">'+
       '<div class="bookingCardDate">'+
         '<div class="bookingCardDateNum">'+d.getDate()+'</div>'+
@@ -2760,12 +2757,11 @@ function _renderAllBookingsTab(el){
   var todayStr = formatDate(today);
   var all = allBookingsCache || [];
 
-  /* Sections — cancelled/void only show within 30 days */
+  /* Sections — cancelled (including legacy void) only show within 30 days */
   var cutoffStr30 = formatDate(new Date(Date.now()-30*24*60*60*1000));
   var todayBks   = all.filter(function(b){ return b.date===todayStr && _isActiveBooking(b); });
   var futureBks  = all.filter(function(b){ return b.date>todayStr  && _isActiveBooking(b); });
-  var cancelBks  = all.filter(function(b){ return b.status==='cancelled' && (b.date||'')>=cutoffStr30; });
-  var voidBks    = all.filter(function(b){ return b.status==='void'      && (b.date||'')>=cutoffStr30; });
+  var cancelBks  = all.filter(function(b){ return (b.status==='cancelled'||b.status==='void') && (b.date||'')>=cutoffStr30; });
 
   var role      = _currentRole();
   var isOwner   = (role==='owner');
@@ -2785,9 +2781,8 @@ function _renderAllBookingsTab(el){
         + (b.students&&b.students.length ? ' · 學生：'+b.students.map(nameOf).join('、') : '')
       : (creator + (b.players&&b.players.length>1?' · '+b.players.map(nameOf).join('、'):''));
     var statusChip = '<span class="abRowStatus '+_statusChipCls(b.status)+'" style="'
-      + (b.status==='active'||b.status==='confirmed'?'background:rgba(74,109,74,0.10);color:var(--dot-event)'
-        :b.status==='cancelled'?'background:rgba(184,92,74,0.10);color:var(--color-clay)'
-        :'background:rgba(100,100,100,0.10);color:var(--color-text-muted)')
+      + (_isActiveBooking(b)?'background:rgba(74,109,74,0.10);color:var(--dot-event)'
+        :'background:rgba(184,92,74,0.10);color:var(--color-clay)')
       + '">'+_statusLabel(b.status)+'</span>';
 
     /* Action buttons */
@@ -2799,12 +2794,8 @@ function _renderAllBookingsTab(el){
       if(!started && !cutoff && isAdminLike()){
         actions += '<button class="abActionBtn danger" onclick="cancelBooking(\''+b.id+'\')">取消</button>';
       }
-      if(isOwner){
-        var voidLabel = (started||cutoff)?'強制作廢':'作廢';
-        actions += '<button class="abActionBtn void-btn" onclick="voidBooking(\''+b.id+'\')">'+voidLabel+'</button>';
-      }
     } else {
-      /* cancelled / void — owner can permanently delete */
+      /* cancelled (or legacy void) — owner can permanently delete */
       if(isOwner){
         actions += '<button class="abActionBtn delete-btn" onclick="_showDeleteConfirmDlg(\''+b.id+'\')">永久刪除</button>';
       }
@@ -2841,8 +2832,7 @@ function _renderAllBookingsTab(el){
     +'</div>'
     + accordionSection('today',  '今日預約', todayBks,  true)
     + accordionSection('future', '未來預約', futureBks, true)
-    + accordionSection('cancelled','已取消（近 30 天）', cancelBks, false)
-    + accordionSection('voided',   '已作廢（近 30 天）', voidBks,   false);
+    + accordionSection('cancelled','已取消（近 30 天）', cancelBks, false);
 
   el.innerHTML += html;
 }
@@ -5203,7 +5193,6 @@ function _dvShowDetail(enc){
     : (data.name||'?').charAt(0);
   /* cancel / void / leave — use pre-computed flags from showBookingDetail */
   var canCancel = !!(data.bookingId && data.canCancel);
-  var canVoid   = !!(data.bookingId && data.canVoid);
   var canLeave  = !!(data.bookingId && data.canLeave);
 
   // ── Common info grid ──
@@ -5289,7 +5278,6 @@ function _dvShowDetail(enc){
     '<div class="dvDetailRows">'+infoRows+playersHtml+titleHtml+noteHtml+'</div>'+
     attHtml+
     (canCancel?'<button class="dvDetailCancelBtn" onclick="cancelBooking(\''+data.bookingId+'\')">取消預約</button>':'')+
-    (canVoid  ?'<button class="dvDetailCancelBtn" style="background:var(--color-text-muted)" onclick="voidBooking(\''+data.bookingId+'\')">強制作廢</button>':'')+
     (canLeave ?'<button class="dvDetailCancelBtn" onclick="leaveBooking(\''+data.bookingId+'\')">退出預約</button>':'')+
     '<button class="dvDetailClose" onclick="_dvCloseDetail()">關閉</button>';
   document.body.appendChild(p);
@@ -5505,14 +5493,12 @@ function showBookingDetail(id){
   var attendance  = (b.attendance && typeof b.attendance==='object') ? b.attendance : {};
   var canManageAtt = isAdminLike() || (myUid && b.coachId && myUid===b.coachId);
 
-  // ── Time-gate for cancel/void buttons ──
-  var isActive  = _isActiveBooking(b);
+  // ── Time-gate for cancel/leave buttons ──
+  var isActive   = _isActiveBooking(b);
   var hasStarted = _bookingHasStarted(b);
   var withinCut  = _withinCancelCutoff(b);
   // Cancel: soft cancel, available pre-cutoff
   var canCancel = isActive && !hasStarted && !withinCut && (isBookingCreator || isClubAdmin || isClubOwner);
-  // Void: owner only, when cancel not available (within 30 min or after start)
-  var canVoid   = isActive && isClubOwner && (hasStarted || withinCut);
   // Leave: participant self-exit, time-gated
   var canLeave  = isActive && !hasStarted && !withinCut && isInPlayers && !isBookingCreator && !isAdminLike() && !isTeach;
 
@@ -5535,7 +5521,7 @@ function showBookingDetail(id){
     bookingId:id,
     bookingStatus: b.status||'active',
     isOwner: isBookingCreator, isInPlayers:isInPlayers,
-    canCancel: canCancel, canVoid: canVoid, canLeave: canLeave
+    canCancel: canCancel, canLeave: canLeave
   }));
   _dvShowDetail(enc);
 }
