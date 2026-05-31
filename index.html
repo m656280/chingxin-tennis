@@ -168,6 +168,15 @@ button {
 .dvAttBadge.att-absent  { background:rgba(184,74,74,0.10);   color:#a83232; font-weight:600; }
 .dvAttBadge.att-excused { background:rgba(184,140,74,0.12);  color:#8a6020; font-weight:600; }
 .dvAttBadge.att-none    { background:var(--color-border-soft); color:var(--color-text-muted); }
+/* ── Participant management (general booking detail) ── */
+.dvGuestTag { font-size:9px; font-weight:700; letter-spacing:0.07em; color:var(--color-text-muted); background:var(--color-surface-alt); border-radius:4px; padding:2px 5px; flex-shrink:0; text-transform:uppercase; }
+.dvParticipantRemoveBtn { margin-left:auto; font-size:15px; line-height:1; color:var(--color-text-muted); padding:3px 7px; border-radius:6px; flex-shrink:0; }
+.dvParticipantRemoveBtn:active { color:#c0392b; background:rgba(192,57,43,0.08); }
+.dvParticipantAddRow { display:flex; gap:6px; margin-top:8px; align-items:center; }
+.dvParticipantSelect,.dvParticipantInput { flex:1; font-size:12px; padding:6px 8px; border:1px solid var(--color-border); border-radius:8px; background:var(--color-surface); color:var(--color-text-primary); min-width:0; }
+.dvParticipantAddBtn { font-size:11px; letter-spacing:0.03em; padding:6px 11px; border-radius:8px; border:1px solid var(--color-border); background:var(--color-surface-alt); color:var(--color-text-secondary); flex-shrink:0; }
+.dvParticipantAddBtn:active { background:var(--color-border); }
+.dvParticipantCap { font-size:10px; color:var(--color-text-muted); margin-top:6px; }
 
 /* ── Day View: Vertical Grid (courts=columns, time=Y) ── */
 .dvVertOuter { overflow-y:auto; -webkit-overflow-scrolling:touch; max-height:calc(100dvh - 252px); margin:0 -16px; padding:0 16px 16px; scrollbar-width:none; }
@@ -939,7 +948,7 @@ button {
 /* Week scroll container — time axis scrolls independently */
 .wkDayScrollBody { overflow-y:auto; height:calc(100dvh - 270px); min-height:240px; }
 /* Now time label in time column */
-.wkNowTimeLabel { position:absolute; right:2px; font-size:8px; color:var(--color-now); font-weight:700; white-space:nowrap; line-height:1; transform:translateY(-50%); z-index:4; pointer-events:none; }
+
 /* Booking block */
 .wkCalBlock { position:absolute; left:3px; right:3px; border-radius:4px; overflow:hidden; cursor:pointer; padding:3px 4px; display:flex; flex-direction:column; z-index:1; transition:opacity 150ms; box-sizing:border-box; }
 .wkCalBlock:active { opacity:0.65; }
@@ -2270,6 +2279,7 @@ let _cancelDlgIsVoid     = false;
 let _cancelDlgIsDelete   = false;
 let _cancelDlgShowReason = false; /* true = show reason textarea (admin/owner cancelling other, or void) */
 let _cancelDlgCallback   = null;
+var _dvCurrentBookingId  = null;  /* booking id of the currently open detail panel */
 let pendingUsersFirestore = [];
 let unsubMyBookings = null;
 /* ── NTRP 等級定義（全站共用）── */
@@ -2414,17 +2424,6 @@ function startNowLineTicker(){
       document.querySelectorAll('.wkCalNowLine').forEach(function(nl){
         nl.style.top=(inRange?newTop:-9999)+'px';
       });
-      var lbl=document.getElementById('wkNowTimeLbl');
-      if(lbl){
-        if(inRange){
-          var hh=now.getHours(), mm=now.getMinutes();
-          lbl.textContent=(hh<10?'0':'')+hh+':'+(mm<10?'0':'')+mm;
-          lbl.style.top=newTop+'px';
-          lbl.style.display='';
-        } else {
-          lbl.style.display='none';
-        }
-      }
       return;
     }
     /* ── Court/day view: update .timeGridWrapper nowLine ── */
@@ -2564,12 +2563,6 @@ function renderWeekGrid(){
     var _hhDisp = (_hh === 24) ? '24' : (_hh < 10 ? '0'+_hh : ''+_hh);
     timeCol += '<div class="wkDayTimeLabel" style="top:'+_hTop+'px">'+_hhDisp+':00</div>';
   }
-  /* Live now-time label (updated by ticker) */
-  if(nowInRange){
-    var _nh = today.getHours(), _nm = today.getMinutes();
-    var _nt = (_nh<10?'0':'')+_nh+':'+(_nm<10?'0':'')+_nm;
-    timeCol += '<div class="wkNowTimeLabel" id="wkNowTimeLbl" style="top:'+nowTop+'px">'+_nt+'</div>';
-  }
   timeCol += '</div>';
 
   // ── Court header row ──
@@ -2583,7 +2576,8 @@ function renderWeekGrid(){
   // ── Court columns for selected day ──
   var courtCols = '';
   courts.forEach(function(courtId){
-    var bks = weekBookingsCache.filter(function(b){ return b.date===selDs && b.court===courtId; });
+    /* Guard: only render active bookings (cache may briefly hold a just-cancelled entry) */
+    var bks = weekBookingsCache.filter(function(b){ return b.date===selDs && b.court===courtId && _isActiveBooking(b); });
     var blocks = '';
     bks.forEach(function(b){
       var sm = timeToMin(b.startTime) - WK_START_MIN;
@@ -2734,7 +2728,8 @@ function renderMonthView(){
     if(isT) cls+=' today';
     if(isSel) cls+=' selected';
     if(isWe) cls+=' weekend';
-    const dayBookings=(monthBookingsCache||[]).filter(b=>b.date===ds);
+    /* Guard: only render active bookings (cache may briefly hold a just-cancelled entry) */
+    const dayBookings=(monthBookingsCache||[]).filter(b=>b.date===ds && _isActiveBooking(b));
     html+='<button class="'+cls+'" onclick="selectDate(\''+ds+'\');setView(\'week\',document.getElementById(\'btnWeek\'))">'
       +'<span class="monthCellNum">'+d+'</span>';
     if(dayBookings.length>0){
@@ -2807,7 +2802,7 @@ function renderBookings(){
   var cancelEl=document.getElementById('bookCancelled');
   if(cancelEl){
     if(cancelled.length){
-      cancelEl.innerHTML='<div style="font-size:11px;font-weight:600;letter-spacing:0.06em;color:var(--color-text-muted);padding:14px 0 6px">過去取消 / 作廢</div>'
+      cancelEl.innerHTML='<div style="font-size:11px;font-weight:600;letter-spacing:0.06em;color:var(--color-text-muted);padding:14px 0 6px">過去取消</div>'
         + cancelled.slice(0,10).map(function(b){ return cardHtml(b, false); }).join('');
     } else {
       cancelEl.innerHTML='';
@@ -5347,6 +5342,8 @@ function _dvShowDetail(enc){
   /* cancel / void / leave — use pre-computed flags from showBookingDetail */
   var canCancel = !!(data.bookingId && data.canCancel);
   var canLeave  = !!(data.bookingId && data.canLeave);
+  /* Store booking id for participant management functions */
+  _dvCurrentBookingId = data.bookingId || null;
 
   // ── Common info grid ──
   var countStr = isTeach
@@ -5356,8 +5353,10 @@ function _dvShowDetail(enc){
   var infoRows =
     '<div class="dvDetailCell"><div class="dvDetailCellLabel">場地</div><div class="dvDetailCellValue">'+(data.court||'—')+'</div></div>'+
     '<div class="dvDetailCell"><div class="dvDetailCellLabel">日期</div><div class="dvDetailCellValue" style="font-size:13px">'+(data.date||'—')+'</div></div>'+
-    '<div class="dvDetailCell"><div class="dvDetailCellLabel">時間</div><div class="dvDetailCellValue" style="font-size:13px">'+data.time+'</div></div>'+
-    '<div class="dvDetailCell"><div class="dvDetailCellLabel">'+(isTeach?'學生':'人數')+'</div><div class="dvDetailCellValue">'+countStr+'</div></div>';
+    /* 時間：teaching 時佔 1 欄（右側空出給學生欄）；一般預約 時間橫跨 2 欄 */
+    '<div class="dvDetailCell"'+(isTeach?'':' style="grid-column:1/-1"')+'><div class="dvDetailCellLabel">時間</div><div class="dvDetailCellValue" style="font-size:13px">'+data.time+'</div></div>'+
+    /* 學生欄：只在教學預約顯示 */
+    (isTeach?'<div class="dvDetailCell"><div class="dvDetailCellLabel">學生</div><div class="dvDetailCellValue">'+countStr+'</div></div>':'');
 
   /* title / note (non-teaching) */
   var titleHtml = (!isTeach && data.title)
@@ -5367,14 +5366,77 @@ function _dvShowDetail(enc){
     ? '<div class="dvDetailCell" style="grid-column:1/-1"><div class="dvDetailCellLabel">備註</div><div class="dvDetailCellValue" style="font-size:12.5px">'+_esc(data.note)+'</div></div>'
     : '';
 
-  /* players row (non-teaching) */
-  var playersHtml = '';
-  if(!isTeach && Array.isArray(data.playerNames) && data.playerNames.length > 0){
-    playersHtml = '<div class="dvDetailCell" style="grid-column:1/-1">'+
-      '<div class="dvDetailCellLabel">參與者</div>'+
-      '<div class="dvDetailCellValue" style="font-size:12.5px;line-height:1.7">'+
-        data.playerNames.map(function(n){ return _esc(n); }).join('、')+
-      '</div></div>';
+  /* ── Participants section (general bookings only: interactive, replaces old playersHtml) ── */
+  var participantHtml = '';
+  if(!isTeach && !!(data.isGeneral)){
+    var _pIds   = Array.isArray(data.playerIds) ? data.playerIds : [];
+    var _guests = Array.isArray(data.guests)    ? data.guests    : [];
+    var _total  = _pIds.length + _guests.length;
+    var _cap    = 4;
+    var _canMgr = !!(data.canManageParticipants);
+
+    /* Member rows */
+    var pRows = '';
+    _pIds.forEach(function(uid){
+      var pu    = usersCache[uid] || {};
+      var pName = pu.realName || pu.displayName || uid;
+      var pPhoto= pu.photoURL || pu.lineAvatar || '';
+      var avatar= pPhoto
+        ? '<img src="'+pPhoto+'" style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display=\'none\'" alt="">'
+        : '<div style="width:28px;height:28px;border-radius:50%;background:var(--color-surface-alt);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--color-text-muted);flex-shrink:0">'+_esc(pName.charAt(0))+'</div>';
+      /* allow remove only if admin/owner/creator AND there is more than 1 player */
+      var removeBtn = (_canMgr && _pIds.length > 1)
+        ? '<button class="dvParticipantRemoveBtn" onclick="_dvRemovePlayer(\''+uid+'\')" title="移除">×</button>'
+        : '';
+      pRows += '<div class="dvAttRow">'+avatar+'<span class="dvAttName">'+_esc(pName)+'</span>'+removeBtn+'</div>';
+    });
+
+    /* Guest rows */
+    _guests.forEach(function(gName, gIdx){
+      var removeBtn = _canMgr
+        ? '<button class="dvParticipantRemoveBtn" onclick="_dvRemoveGuest('+gIdx+')" title="移除">×</button>'
+        : '';
+      pRows += '<div class="dvAttRow">'+
+        '<div class="dvGuestTag">來賓</div>'+
+        '<span class="dvAttName">'+_esc(gName)+'</span>'+
+        removeBtn+
+      '</div>';
+    });
+
+    /* Add controls (only when manageable and under cap) */
+    var addControls = '';
+    if(_canMgr && _total < _cap){
+      var memberOpts = '<option value="">— 選擇會員 —</option>';
+      Object.keys(usersCache).sort(function(a,b){
+        var na=(usersCache[a].realName||usersCache[a].displayName||'');
+        var nb=(usersCache[b].realName||usersCache[b].displayName||'');
+        return na.localeCompare(nb,'zh-Hant');
+      }).forEach(function(uid){
+        var m = usersCache[uid];
+        if(!m) return;
+        var s = m.status||'active';
+        if(s==='pending'||s==='blocked'||s==='deleted'||s==='resigned') return;
+        if(_pIds.indexOf(uid) >= 0) return; /* skip already-in players */
+        var mName = m.realName || m.displayName || uid;
+        memberOpts += '<option value="'+uid+'">'+_esc(mName)+'</option>';
+      });
+      addControls =
+        '<div class="dvParticipantAddRow">'+
+          '<select id="dvMemberAddSel" class="dvParticipantSelect">'+memberOpts+'</select>'+
+          '<button class="dvParticipantAddBtn" onclick="_dvAddMember()">新增會員</button>'+
+        '</div>'+
+        '<div class="dvParticipantAddRow">'+
+          '<input id="dvGuestAddInp" class="dvParticipantInput" placeholder="來賓姓名（如：王先生）" />'+
+          '<button class="dvParticipantAddBtn" onclick="_dvAddGuest()">新增來賓</button>'+
+        '</div>';
+    }
+
+    var _capLabel = '（'+_total+' / '+_cap+' 人）';
+    participantHtml = '<div class="dvAttSection">'+
+      '<div class="dvAttSectionLabel">參與者 <span style="font-weight:600;color:var(--color-text-secondary);font-size:10px">'+_capLabel+'</span></div>'+
+      (pRows || '<div style="font-size:12px;color:var(--color-text-muted);padding:4px 0">尚無參與者</div>')+
+      addControls+
+    '</div>';
   }
 
   // ── Teaching: student list (read-only, with LINE photo + tap for info) ──
@@ -5428,7 +5490,8 @@ function _dvShowDetail(enc){
         '<div class="dvDetailMode">'+_esc(data.mode)+(isTeach?' · 教練':'')+'</div>'+
       '</div>'+
     '</div>'+
-    '<div class="dvDetailRows">'+infoRows+playersHtml+titleHtml+noteHtml+'</div>'+
+    '<div class="dvDetailRows">'+infoRows+titleHtml+noteHtml+'</div>'+
+    participantHtml+
     attHtml+
     (canCancel?'<button class="dvDetailCancelBtn" onclick="cancelBooking(\''+data.bookingId+'\')">取消預約</button>':'')+
     (canLeave ?'<button class="dvDetailCancelBtn" onclick="leaveBooking(\''+data.bookingId+'\')">退出預約</button>':'')+
@@ -5445,10 +5508,96 @@ function _dvCloseDetail(){
   var p=document.getElementById('dvDetailPanel');
   if(p) p.classList.remove('open');
   if(bd) bd.classList.remove('open');
+  _dvCurrentBookingId = null;
   setTimeout(function(){
     if(p&&p.parentNode) p.parentNode.removeChild(p);
     if(bd&&bd.parentNode) bd.parentNode.removeChild(bd);
   },300);
+}
+
+/* ── General booking: participant management helpers ── */
+function _dvRefreshDetail(){
+  /* Re-open the detail panel for the currently open booking (after participant change) */
+  if(_dvCurrentBookingId) showBookingDetail(_dvCurrentBookingId);
+}
+function _dvAddMember(){
+  if(!db){ showToast('無法連線'); return; }
+  var sel = document.getElementById('dvMemberAddSel');
+  var uid = sel ? sel.value : '';
+  if(!uid){ showToast('請選擇會員'); return; }
+  var bid = _dvCurrentBookingId;
+  if(!bid) return;
+  var b = _findBookingById(bid);
+  if(!b){ showToast('找不到預約'); return; }
+  var players = Array.isArray(b.players) ? b.players.slice() : [];
+  var guests  = Array.isArray(b.guests)  ? b.guests  : [];
+  if(players.indexOf(uid) >= 0){ showToast('此會員已在預約中'); return; }
+  if(players.length + guests.length >= 4){ showToast('已達 4 人上限'); return; }
+  db.collection('bookings').doc(bid).update({
+    players: firebase.firestore.FieldValue.arrayUnion(uid),
+    updatedAt: TS()
+  }).then(function(){
+    players.push(uid);
+    _patchBookingInAllCaches(bid, { players: players });
+    loadMyBookings();
+    _dvRefreshDetail();
+  }).catch(function(e){ showToast('新增失敗：'+e.message); });
+}
+function _dvAddGuest(){
+  if(!db){ showToast('無法連線'); return; }
+  var inp  = document.getElementById('dvGuestAddInp');
+  var name = inp ? inp.value.trim() : '';
+  if(!name){ showToast('請輸入來賓姓名'); return; }
+  var bid = _dvCurrentBookingId;
+  if(!bid) return;
+  var b = _findBookingById(bid);
+  if(!b){ showToast('找不到預約'); return; }
+  var players   = Array.isArray(b.players) ? b.players  : [];
+  var guests    = Array.isArray(b.guests)  ? b.guests.slice() : [];
+  if(players.length + guests.length >= 4){ showToast('已達 4 人上限'); return; }
+  var newGuests = guests.concat([name]);
+  db.collection('bookings').doc(bid).update({
+    guests: newGuests,
+    updatedAt: TS()
+  }).then(function(){
+    _patchBookingInAllCaches(bid, { guests: newGuests });
+    _dvRefreshDetail();
+  }).catch(function(e){ showToast('新增失敗：'+e.message); });
+}
+function _dvRemovePlayer(uid){
+  if(!db){ showToast('無法連線'); return; }
+  var bid = _dvCurrentBookingId;
+  if(!bid||!uid) return;
+  var b = _findBookingById(bid);
+  if(!b){ showToast('找不到預約'); return; }
+  var players = Array.isArray(b.players) ? b.players.slice() : [];
+  if(players.length <= 1){ showToast('至少保留一位會員'); return; }
+  var newPlayers = players.filter(function(x){ return x !== uid; });
+  db.collection('bookings').doc(bid).update({
+    players:  firebase.firestore.FieldValue.arrayRemove(uid),
+    updatedAt: TS()
+  }).then(function(){
+    _patchBookingInAllCaches(bid, { players: newPlayers });
+    loadMyBookings();
+    _dvRefreshDetail();
+  }).catch(function(e){ showToast('移除失敗：'+e.message); });
+}
+function _dvRemoveGuest(guestIdx){
+  if(!db){ showToast('無法連線'); return; }
+  var bid = _dvCurrentBookingId;
+  if(!bid) return;
+  var b = _findBookingById(bid);
+  if(!b){ showToast('找不到預約'); return; }
+  var guests = Array.isArray(b.guests) ? b.guests.slice() : [];
+  if(guestIdx < 0 || guestIdx >= guests.length){ showToast('找不到此來賓'); return; }
+  guests.splice(guestIdx, 1);
+  db.collection('bookings').doc(bid).update({
+    guests:    guests,
+    updatedAt: TS()
+  }).then(function(){
+    _patchBookingInAllCaches(bid, { guests: guests });
+    _dvRefreshDetail();
+  }).catch(function(e){ showToast('移除失敗：'+e.message); });
 }
 
 /* ── Update student attendance on a teaching booking ── */
@@ -5664,21 +5813,29 @@ function showBookingDetail(id){
   // Leave: participant self-exit, time-gated
   var canLeave  = isActive && !hasStarted && !withinCut && isInPlayers && !isBookingCreator && !isAdminLike() && !isTeach;
 
+  /* Participant management: available to creator/admin/owner on active general bookings */
+  var isGeneral = (nm === 'general');
+  var canManageParticipants = isGeneral && isActive && (isBookingCreator || isClubAdmin || isClubOwner);
+
   var enc=encodeURIComponent(JSON.stringify({
     name:name, photoURL:photoURL, court:courtLabel, date:b.date,
     time:b.startTime+'–'+b.endTime, mode:modeLabel,
     count: isTeach ? students.length : (players.length||b.participantCount||1),
     capacity: cap,
     playerNames: playerNames,
+    playerIds:   players,
+    guests:      Array.isArray(b.guests) ? b.guests : [],
     title: b.title||'',
     note:  b.note||'',
     isCoach: isTeach,
+    isGeneral: isGeneral,
     coachId:    b.coachId||'',
     coachName:  name,
     studentIds: students,
     studentNames: studentNames,
     attendance: attendance,
     canManageAtt: canManageAtt,
+    canManageParticipants: canManageParticipants,
     ntrp:ntrp, pos:pos, att:'—',
     bookingId:id,
     bookingStatus: b.status||'active',
@@ -6356,9 +6513,12 @@ function submitBooking(){
           updatedAt:        TS()
         }).then(function(){
           showToast('已加入預約 · '+courtShortLabel+' '+start);
+          allBookingsCache = null;       /* invalidate admin cache */
+          courtBookingsFirestore = null; /* invalidate day view cache */
           closeBookingForm();
           loadWeekBookings();
           loadMyBookings();
+          loadMonthBookings();
         });
       }
 
@@ -6390,7 +6550,9 @@ function submitBooking(){
 
       return db.collection('bookings').add(newDoc).then(function(){
         showToast('預約成功 · '+courtShortLabel+' '+start);
-        teachingBookings = null; // invalidate coach stats cache
+        teachingBookings = null;       /* invalidate coach stats cache */
+        allBookingsCache = null;       /* invalidate admin 預約管理 cache */
+        courtBookingsFirestore = null; /* invalidate day view cache */
         closeBookingForm();
         loadWeekBookings();
         loadMyBookings();
