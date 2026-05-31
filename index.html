@@ -5241,12 +5241,13 @@ function renderDayView(){
       var _dvTeach = (_dvNm === 'teaching');
       var isLock   = (b.mode === 'event_lock');
       var modeLabel= MODE_LABELS[_dvNm] || _dvNm || '一般預約';
-      /* For teaching: use coach; for general: use players[0]; else: createdBy */
-      var _dvIsGen = (_dvNm === 'general');
+      /* For teaching/groupClass: use coach; for general: use players[0]; else: createdBy */
+      var _dvIsGen     = (_dvNm === 'general');
+      var _dvCoachMode = (_dvTeach || _dvNm === 'groupClass');
       var dvName, dvPhoto, mem;
-      if(_dvTeach && b.coachId && usersCache[b.coachId]){
-        mem     = usersCache[b.coachId];
-        dvName  = _mName(mem)||b.coachName||'教練';
+      if(_dvCoachMode && b.coachId){
+        mem     = usersCache[b.coachId] || null;
+        dvName  = (mem ? _mName(mem) : null) || b.coachName || (_dvTeach ? '教練' : '教學會員');
         dvPhoto = _mPic(mem);
       } else if(_dvIsGen){
         var _dvGenPls = Array.isArray(b.players) ? b.players : [];
@@ -5257,7 +5258,7 @@ function renderDayView(){
         mem     = (b.createdBy&&usersCache[b.createdBy])
           ||Object.values(usersCache).find(function(x){return (x.displayName||'')===(b.primaryName||'');})
           ||null;
-        dvName  = mem ? (_mName(mem)||'?') : (_dvTeach ? (b.coachName||b.primaryName||'教練') : (b.primaryName||'?'));
+        dvName  = mem ? (_mName(mem)||'?') : (_dvCoachMode ? (b.coachName||b.primaryName||'教練') : (b.primaryName||'?'));
         dvPhoto = _mPic(mem);
       }
       var ntrp=mem?(mem.ntrp||'—'):'—';
@@ -5922,15 +5923,16 @@ function showBookingDetail(id){
   var isClubAdmin = (role==='admin');
   var courtLabel= {hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[b.court]||b.court;
 
-  // ── Name / photo: teaching→coach, general→players[0], else→createdBy ──
-  var isGeneral = (normMode === 'general');
+  // ── Name / photo: teaching/groupClass→coach, general→players[0], else→createdBy ──
+  var isGeneral   = (normMode === 'general');
+  var isCoachMode = (isTeach || normMode === 'groupClass');
   var name, photoURL, ntrp, pos;
-  if(isTeach && b.coachId && usersCache[b.coachId]){
-    var _c = usersCache[b.coachId];
-    name     = _mName(_c)||b.coachName||'教練';
+  if(isCoachMode && b.coachId){
+    var _c   = usersCache[b.coachId] || null;
+    name     = (_c ? _mName(_c) : null) || b.coachName || (isTeach ? '教練' : '教學會員');
     photoURL = _mPic(_c);
-    ntrp     = _c.ntrp||'—';
-    pos      = _c.preferredPosition||'—';
+    ntrp     = _c ? (_c.ntrp||'—') : '—';
+    pos      = _c ? (_c.preferredPosition||'—') : '—';
   } else if(isGeneral){
     var _gPls  = Array.isArray(b.players) ? b.players : [];
     var _gOwn  = _gPls.length ? (usersCache[_gPls[0]]||null) : null;
@@ -5940,7 +5942,7 @@ function showBookingDetail(id){
     pos      = _gOwn ? (_gOwn.preferredPosition||'—') : '—';
   } else {
     var _u   = b.createdBy?usersCache[b.createdBy]:null;
-    name     = isTeach ? (b.coachName||b.primaryName||'教練') : (_mName(_u)||b.primaryName||'?');
+    name     = isCoachMode ? (b.coachName||b.primaryName||'教練') : (_mName(_u)||b.primaryName||'?');
     photoURL = _mPic(_u);
     ntrp     = _u?(_u.ntrp||'—'):'—';
     pos      = _u?(_u.preferredPosition||'—'):'—';
@@ -6778,10 +6780,9 @@ function _normaliseMode(m){
 }
 
 /* ── GroupClass: auto-create announcement on booking date only ── */
-function _createGroupClassAnnouncement(coachUid, date, startTime, endTime, court){
+function _createGroupClassAnnouncement(coachUid, coachName, date, startTime, endTime, court){
   if(!db) return;
-  var coachUser  = usersCache[coachUid] || {};
-  var coachName  = _mName(coachUser) || coachUid;
+  if(!coachName) coachName = _mName(usersCache[coachUid]||{}) || coachUid;
   var courtLabel = {hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[court]||court;
   var title   = '感謝會員公益教學';
   var content = '感謝【'+coachName+'】熱心投入公益教學，協助推廣網球運動，讓更多孩子有機會接觸網球。\n\n清心網球協會感謝您的付出。\n\n日期：'+date+'\n時段：'+startTime+'–'+endTime+'\n場地：'+courtLabel;
@@ -6946,7 +6947,10 @@ function submitBooking(){
         newDoc.coachName = usersCache[coachId] ? (_mName(usersCache[coachId])||'') : '';
         newDoc.students  = students;
       } else {
-        if(coachId) newDoc.coachId = coachId;
+        if(coachId){
+          newDoc.coachId   = coachId;
+          newDoc.coachName = usersCache[coachId] ? (_mName(usersCache[coachId])||'') : '';
+        }
       }
       if(title) newDoc.title = title;
       if(!isGeneral && note) newDoc.note = note;  /* note only for non-general modes */
@@ -6958,7 +6962,7 @@ function submitBooking(){
         courtBookingsFirestore = null; /* invalidate day view cache */
         /* GroupClass: auto-create announcement visible only on booking date */
         if(mode==='groupClass' && coachId){
-          _createGroupClassAnnouncement(coachId, date, start, end, court);
+          _createGroupClassAnnouncement(coachId, newDoc.coachName, date, start, end, court);
         }
         closeBookingForm();
         loadWeekBookings();
