@@ -28,7 +28,7 @@
   --event-clay-bar: rgba(184,92,74,0.55);
   --event-lock-bg: rgba(26,31,28,0.05);
   --event-lock-bar: rgba(26,31,28,0.35);
-  --color-now: #6b8a6b;
+  --color-now: #B86A4A;
   --grid-line: #e9e7e0;
   --grid-line-soft: #f1efe9;
   --font-display: 'Cormorant Garamond','Noto Serif TC','Times New Roman',Georgia,serif;
@@ -907,8 +907,12 @@ button {
 .wkCalHalfLine { position:absolute; left:0; right:0; border-top:1px dashed rgba(0,0,0,0.05); pointer-events:none; z-index:0; }
 /* Now indicator */
 .wkCalNowLine { position:absolute; left:0; right:0; pointer-events:none; z-index:2; }
-.wkCalNowLine::before { content:''; display:block; border-top:1.5px solid var(--color-now); }
-.wkCalNowDot { position:absolute; left:-3px; top:-3.5px; width:7px; height:7px; border-radius:50%; background:var(--color-now); }
+.wkCalNowLine::before { content:''; display:block; border-top:2.5px solid var(--color-now); }
+.wkCalNowDot { position:absolute; left:-5px; top:-5px; width:10px; height:10px; border-radius:50%; background:var(--color-now); }
+/* Week scroll container — time axis scrolls independently */
+.wkDayScrollBody { overflow-y:auto; height:calc(100dvh - 270px); min-height:240px; }
+/* Now time label in time column */
+.wkNowTimeLabel { position:absolute; right:2px; font-size:8px; color:var(--color-now); font-weight:700; white-space:nowrap; line-height:1; transform:translateY(-50%); z-index:4; pointer-events:none; }
 /* Booking block */
 .wkCalBlock { position:absolute; left:3px; right:3px; border-radius:4px; overflow:hidden; cursor:pointer; padding:3px 4px; display:flex; flex-direction:column; z-index:1; transition:opacity 150ms; box-sizing:border-box; }
 .wkCalBlock:active { opacity:0.65; }
@@ -2346,11 +2350,27 @@ function scrollToNow(){
 function startNowLineTicker(){
   if(_nowTickInterval) clearInterval(_nowTickInterval);
   _nowTickInterval=setInterval(function(){
-    if(currentView!=='week'||!isSameDay(selectedDate,today)) return;
-    var we=isWeekend(selectedDate);
-    var openMin=timeToMin(we?'05:30':'17:30');
+    if(!isSameDay(selectedDate,today)) return;
     var now=new Date();
     var nowMin=now.getHours()*60+now.getMinutes();
+    /* ── Week view: update all nowLines + time label ── */
+    if(currentView==='week'){
+      var WK_S=7, H_PX=44;
+      var newTop=((nowMin-WK_S*60)/60)*H_PX;
+      document.querySelectorAll('.wkCalNowLine').forEach(function(nl){
+        nl.style.top=newTop+'px';
+      });
+      var lbl=document.getElementById('wkNowTimeLbl');
+      if(lbl){
+        var hh=now.getHours(), mm=now.getMinutes();
+        lbl.textContent=(hh<10?'0':'')+hh+':'+(mm<10?'0':'')+mm;
+        lbl.style.top=newTop+'px';
+      }
+      return;
+    }
+    /* ── Court/day view: update .timeGridWrapper nowLine ── */
+    var we=isWeekend(selectedDate);
+    var openMin=timeToMin(we?'05:30':'17:30');
     var nl=document.querySelector('.timeGridWrapper .nowLine');
     if(nl&&nowMin>=openMin&&nowMin<timeToMin('24:00')){
       var offset=(nowMin-openMin)/SLOT_MIN;
@@ -2414,10 +2434,10 @@ function loadWeekBookings(){
 /* ── Render: Week View (day-picker + single-day dual-court grid) ── */
 function renderWeekGrid(){
   var WK_START = 7;    // 07:00
-  var WK_END   = 22;   // 22:00
-  var WK_HOURS = WK_END - WK_START; // 15
+  var WK_END   = 23;   // 23:00
+  var WK_HOURS = WK_END - WK_START; // 16
   var HOUR_PX  = 44;   // px per hour
-  var GRID_H   = WK_HOURS * HOUR_PX; // 660px
+  var GRID_H   = WK_HOURS * HOUR_PX; // 704px
 
   var el = document.getElementById('weekGridContent');
   if(!el) return;
@@ -2470,6 +2490,12 @@ function renderWeekGrid(){
   var timeCol = '<div class="wkDayTimeCol" style="height:'+GRID_H+'px">';
   for(var h = WK_START; h <= WK_END; h++){
     timeCol += '<div class="wkDayTimeLabel" style="top:'+((h-WK_START)*HOUR_PX)+'px">'+(h<10?'0':'')+h+':00</div>';
+  }
+  /* Live now-time label (clay red, updated by ticker) */
+  if(isToday && nowTop >= 0 && nowTop <= GRID_H){
+    var _nh = today.getHours(), _nm = today.getMinutes();
+    var _nt = (_nh<10?'0':'')+_nh+':'+(_nm<10?'0':'')+_nm;
+    timeCol += '<div class="wkNowTimeLabel" id="wkNowTimeLbl" style="top:'+nowTop+'px">'+_nt+'</div>';
   }
   timeCol += '</div>';
 
@@ -2529,9 +2555,22 @@ function renderWeekGrid(){
   });
 
   var bodyRow = '<div class="wkDayBodyRow">'+timeCol+courtCols+'</div>';
-  var dayGrid = '<div class="wkDayGrid">'+hdrRow+bodyRow+'</div>';
+  var dayGrid = '<div class="wkDayGrid">'
+    + hdrRow
+    + '<div class="wkDayScrollBody" id="wkScrollBody">'+bodyRow+'</div>'
+    + '</div>';
 
   el.innerHTML = picker + dayGrid;
+
+  /* Auto-scroll to now − 1 hour on initial render of today */
+  if(isToday){
+    var _nowTopSnap = nowTop; // capture before timeout
+    var _hpxSnap = HOUR_PX;
+    setTimeout(function(){
+      var sb = document.getElementById('wkScrollBody');
+      if(sb) sb.scrollTop = Math.max(0, _nowTopSnap - _hpxSnap);
+    }, 30);
+  }
 }
 
 /* ── Select a specific day within the current week ── */
