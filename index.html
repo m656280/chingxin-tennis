@@ -946,7 +946,7 @@ button {
 .wkCalNowLine::before { content:''; display:block; border-top:2.5px solid var(--color-now); }
 .wkCalNowDot { position:absolute; left:-5px; top:-5px; width:10px; height:10px; border-radius:50%; background:var(--color-now); }
 /* Week scroll container — time axis scrolls independently */
-.wkDayScrollBody { overflow-y:auto; height:calc(100dvh - 270px); min-height:240px; }
+.wkDayScrollBody { overflow-y:auto; max-height:calc(100dvh - 270px); min-height:240px; }
 /* Now time label in time column */
 
 /* Booking block */
@@ -1349,7 +1349,6 @@ button {
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       新增預約
     </button>
-    <div id="bookingsDebugLine" style="font-size:10px;color:var(--color-text-muted);padding:2px 0 6px;letter-spacing:0.03em"></div>
     <div id="bookUpcoming"></div>
     <div id="bookCancelled"></div>
   </div>
@@ -1495,7 +1494,7 @@ button {
         HARD A · HARD B — 硬地標準場<br>
         CLAY A · CLAY B — 紅土場地<br>
         平日開放時段：17:30 – 24:00<br>
-        週末 / 假日：05:30 – 24:00
+        週末 / 假日：06:00 – 24:00
       </div>
     </div>
     <div class="aboutDivider"></div>
@@ -2751,11 +2750,6 @@ function renderMonthView(){
 function renderBookings(){
   var todayStr=formatDate(today);
   var source=myBookingsFirestore||[];
-  // Debug info (remove when stable)
-  var myUidStr=currentUser?(currentUser.uid||currentUser.userId||currentUser.id||'—'):'—';
-  var _dbgEl=document.getElementById('bookingsDebugLine');
-  if(_dbgEl){ _dbgEl.textContent='uid: '+myUidStr+' | 撈到: '+source.length+' 筆'; }
-
   // Upcoming: active/confirmed AND date >= today
   var upcoming = source.filter(function(b){ return _isActiveBooking(b) && b.date>=todayStr; })
     .sort(function(a,b){ return (a.date||'').localeCompare(b.date||''); });
@@ -6333,13 +6327,15 @@ function openBookingForm(){
   var startSel=document.getElementById('formStart');
   var endSel=document.getElementById('formEnd');
   if(!startSel||!endSel) return;
-  var times=[]; var cur=timeToMin('06:00');
-  while(cur<timeToMin('24:00')){ times.push(minToTime(cur)); cur+=30; }
-  startSel.innerHTML=times.map(function(t){ return '<option value="'+t+'">'+t+'</option>'; }).join('');
-  endSel.innerHTML=times.map(function(t){ return '<option value="'+t+'">'+t+'</option>'; }).join('');
-  startSel.value='19:00'; endSel.value='21:00';
+  /* Set date first so time selectors reflect correct open hours */
   var di=document.getElementById('formDate');
-  if(di){ di.value=formatDate(today); di.min=formatDate(today); }
+  if(di){
+    di.value=formatDate(today); di.min=formatDate(today);
+    /* Re-populate time selectors whenever the user changes the date */
+    di.onchange=function(){ _populateFormTimeSels(di.value); };
+  }
+  /* Populate time selectors based on today's open hours */
+  _populateFormTimeSels(formatDate(today));
   // Reset mode to default and trigger visibility update
   var modeSel = document.getElementById('formMode');
   if(modeSel){ modeSel.value='general'; }
@@ -6413,6 +6409,28 @@ function closeBookingForm(){
   document.getElementById('bookingFormSheet').classList.remove('open');
   document.getElementById('sheetBackdrop').classList.remove('open');
 }
+/* ── Populate booking form time selectors based on date's open hours ── */
+function _populateFormTimeSels(dateStr){
+  var startSel = document.getElementById('formStart');
+  var endSel   = document.getElementById('formEnd');
+  if(!startSel || !endSel) return;
+  /* Parse date without timezone shift */
+  var parts = dateStr ? dateStr.split('-') : null;
+  var d = parts && parts.length === 3
+    ? new Date(parseInt(parts[0],10), parseInt(parts[1],10)-1, parseInt(parts[2],10))
+    : today;
+  var hours    = getCourtOpenHours(d);
+  var startMin = timeToMin(hours.start);
+  var times = []; var cur = startMin;
+  while(cur < timeToMin('24:00')){ times.push(minToTime(cur)); cur += 30; }
+  var opts = times.map(function(t){ return '<option value="'+t+'">'+t+'</option>'; }).join('');
+  startSel.innerHTML = opts;
+  endSel.innerHTML   = opts;
+  /* Keep sensible defaults; 19:00 / 21:00 always fall within open range */
+  startSel.value = times.indexOf('19:00') >= 0 ? '19:00' : times[0] || '';
+  endSel.value   = times.indexOf('21:00') >= 0 ? '21:00' : (times[Math.min(4, times.length-1)] || '');
+}
+
 /* Helper: normalise old mode values to canonical ones */
 function _normaliseMode(m){
   if(m==='normal')      return 'general';
@@ -6438,6 +6456,14 @@ function submitBooking(){
   if(!date||!start||!end){ showToast('請填寫完整資料'); return; }
   if((court==='clay_a'||court==='clay_b')&&!isAdminLike()){ showToast('紅土場地僅管理員可預約'); return; }
   if(timeToMin(end)<=timeToMin(start)){ showToast('結束時間需晚於開始時間'); return; }
+  /* Validate start time against the date's open hours */
+  var _fp=date.split('-');
+  var _fd=new Date(parseInt(_fp[0],10),parseInt(_fp[1],10)-1,parseInt(_fp[2],10));
+  var _oh=getCourtOpenHours(_fd);
+  if(timeToMin(start)<timeToMin(_oh.start)){
+    showToast('此日期場地開放時間為 '+_oh.start+'，請重新選擇開始時間');
+    return;
+  }
   // Teaching: coach is required
   if(mode==='teaching' && !coachId){ showToast('請選擇教練'); return; }
 
