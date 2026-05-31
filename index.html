@@ -2246,6 +2246,7 @@ let _memberSearch='';        // member directory: text search
 let _memberNtrpFilter='';    // member directory: NTRP filter
 let _memberPosFilter='';     // member directory: position filter
 let _memberFeeFilter='';     // member directory: fee status filter ('paid'|'expiring'|'overdue'|'none'|'')
+let _memberRoleFilter='';    // member directory: role filter ('owner'|'admin'|'coach'|'member'|'')
 let _coachTabSelected  = null;   // manage: currently viewed coach uid
 let _coachStatsYear    = new Date().getFullYear(); // coach stats: selected year
 let _coachStatsMonth   = new Date().getMonth() + 1; // coach stats: selected month (1-12)
@@ -2958,26 +2959,24 @@ function _memberFeeStatusHtml(m){
 function _renderMembersTab(el){
   var _cu    = currentUser || {};
   var _myId  = _cu.uid || _cu.userId || '';
-  var _cuRole= _cu.role || '';
-  var ROLE_LABEL={owner:'擁有者',admin:'管理員',coach:'教練',annual_member:'年費會員',monthly_member:'月費會員',member:'會員'};
-  var members=Object.values(usersCache).filter(function(m){
-    return m.status==='approved' || m.status==='active';
-  }).sort(function(a,b){
-    return (a.realName||a.displayName||'').localeCompare(b.realName||b.displayName||'','zh-Hant');
-  });
-  if(!members.length){
-    el.innerHTML+='<div class="emptyState"><div class="emptyStateIcon">—</div>尚無會員資料</div>';
-    return;
-  }
+  var _cuRole   = _currentRole();
+  var adminLike = isAdminLike();
+  var isOwner   = (_cuRole === 'owner');
+
   var html='<div style="padding:0 2px">';
-  if(isAdminLike()){
-    // ── 未繳費快速區塊（admin only：無紀錄 + 已到期）──
-    var unpaidMembers = members.filter(function(m){
+
+  // ── Admin-only: 未繳費快速摘要 + 已離會 / 已封鎖 accordion ──
+  if(adminLike){
+    var allActive = Object.values(usersCache).filter(function(m){
+      var s = m.status || '';
+      return s !== 'pending' && s !== 'blocked' && s !== 'rejected' && s !== 'deleted';
+    });
+    var unpaidMembers = allActive.filter(function(m){
       var s = _calcMemberFeeStatus(m).status;
       return s === 'none' || s === 'overdue';
     });
     if(unpaidMembers.length){
-      html += '<div style="background:rgba(231,76,60,0.06);border:1px solid rgba(231,76,60,0.22);border-radius:10px;padding:10px 12px;margin-bottom:16px">';
+      html += '<div style="background:rgba(231,76,60,0.06);border:1px solid rgba(231,76,60,0.22);border-radius:10px;padding:10px 12px;margin-bottom:14px">';
       html += '<div style="font-size:11px;font-weight:600;letter-spacing:0.07em;color:#c0392b;margin-bottom:8px">未繳費會員（'+unpaidMembers.length+'）</div>';
       unpaidMembers.forEach(function(m){
         var fs = _calcMemberFeeStatus(m);
@@ -2988,168 +2987,143 @@ function _renderMembersTab(el){
       });
       html += '</div>';
     }
-    // ── 進階視圖（owner / admin）──
-    members.forEach(function(m){
-      var initials=(m.realName||m.displayName||'?').charAt(0);
-      var avatarSrc=m.photoURL||m.lineAvatar||'';
-      var avatarHtml=avatarSrc
-        ?'<img src="'+avatarSrc+'" style="width:44px;height:44px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1px solid var(--color-border-soft)" onerror="this.style.display=\'none\'" alt="">'
-        :'<svg width="44" height="44" viewBox="0 0 44 44" style="flex-shrink:0"><rect width="44" height="44" rx="22" fill="#d4c9b5"/><text x="22" y="29" text-anchor="middle" fill="#8a7f6e" font-size="17" font-family="serif">'+initials+'</text></svg>';
-      var roleLabel=ROLE_LABEL[m.role]||m.role||'會員';
-      var rawUid=m.userId||m.uid||'';
-      var shortUid=rawUid.length>12?rawUid.slice(0,12)+'…':rawUid;
-      var meta2=[];
-      if(m.ntrp) meta2.push(_esc(_ntrpDisplay(m.ntrp)));
-      html+='<div style="display:flex;align-items:center;gap:12px;padding:12px 0 4px 0">'+
-        '<div style="flex-shrink:0">'+avatarHtml+'</div>'+
-        '<div style="flex:1;min-width:0">'+
-          '<div style="font-size:14px;font-weight:500;color:var(--color-text-primary)">'+_esc(m.realName||m.displayName||'未知')+'</div>'+
-          (m.realName?'<div style="font-size:11px;color:var(--color-text-muted);margin-top:1px">LINE：'+_esc(m.displayName||'')+'</div>':'')+
-          '<div style="margin-top:5px">'+_memberFeeStatusHtml(m)+'</div>'+
-          (meta2.length?'<div style="font-size:11px;color:var(--color-text-muted);margin-top:4px">'+meta2.join(' · ')+'</div>':'')+
-          '<div style="font-size:10px;color:var(--color-text-muted);margin-top:2px;opacity:0.7">'+_esc(shortUid)+'</div>'+
-        '</div>'+
-        '<div class="memberBadge'+(m.role==='coach'?' coach':'')+'">'+roleLabel+'</div>'+
-      '</div>'+
-      (rawUid===_myId
-        ? '<div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 0 16px 56px">'+
-            '<span style="font-size:11px;color:var(--color-text-muted);letter-spacing:0.5px;padding:4px 0">YOU &nbsp;永久</span>'+
-            '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="editMemberRealName(\''+rawUid+'\')">編輯姓名</button>'+
-          '</div>'
-        : '<details style="padding:4px 0 16px 56px">'+
-            '<summary style="cursor:pointer;font-size:11px;color:var(--color-text-muted);list-style:none;display:inline-flex;align-items:center;padding:4px 8px;border-radius:6px;border:1px solid var(--color-border);user-select:none">管理 ›</summary>'+
-            '<div style="display:flex;flex-wrap:wrap;gap:6px;padding-top:8px">'+
-              '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="editMemberRealName(\''+rawUid+'\')">編輯姓名</button>'+
-              '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="setMemberRole(\''+rawUid+'\',\'member\')">設為會員</button>'+
-              '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="setMemberRole(\''+rawUid+'\',\'coach\')">設為教練</button>'+
-              (_cuRole==='owner'?'<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="setMemberRole(\''+rawUid+'\',\'admin\')">設為管理員</button>':'')+
-              '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="blockMember(\''+rawUid+'\')">封鎖</button>'+
-              '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid #e74c3c;background:transparent;color:#e74c3c;cursor:pointer" onclick="removeMember(\''+rawUid+'\')">離會</button>'+
-            '</div>'+
-          '</details>');
-    });
-    // ── 已離會 Accordion ──
+    // 已離會
     var deleted=Object.values(usersCache).filter(function(m){ return m.status==='deleted'; });
     if(deleted.length){
       deleted.sort(function(a,b){ return (a.displayName||'').localeCompare(b.displayName||'','zh-Hant'); });
-      html+='<details style="margin-top:20px;border-top:1px solid var(--color-border-soft);padding-top:14px">'+
-        '<summary style="cursor:pointer;font-size:12px;font-weight:600;letter-spacing:0.06em;color:var(--color-text-muted);padding:4px 0;user-select:none">'+
-          '已離會會員（'+deleted.length+'）</summary>'+
-        '<div style="margin-top:10px">';
+      html+='<details style="margin-bottom:10px;border:1px solid var(--color-border-soft);border-radius:8px">';
+      html+='<summary style="cursor:pointer;font-size:12px;font-weight:600;letter-spacing:0.06em;color:var(--color-text-muted);padding:9px 12px;user-select:none;list-style:none">已離會（'+deleted.length+'）</summary>';
+      html+='<div style="padding:4px 12px 10px">';
       deleted.forEach(function(m){
-        var initials=(m.realName||m.displayName||'?').charAt(0);
-        var avatarSrc=m.photoURL||m.lineAvatar||'';
         var dUid=m.userId||m.uid||'';
-        var avatarHtml=avatarSrc
-          ?'<img src="'+avatarSrc+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0;opacity:0.45" onerror="this.style.display=\'none\'" alt="">'
-          :'<svg width="40" height="40" viewBox="0 0 40 40" style="flex-shrink:0;opacity:0.45"><rect width="40" height="40" rx="20" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="15" font-family="serif">'+initials+'</text></svg>';
-        html+='<div style="display:flex;align-items:center;gap:12px;padding:8px 0">'+
-          '<div style="flex-shrink:0">'+avatarHtml+'</div>'+
-          '<div style="flex:1;min-width:0">'+
-            '<div style="font-size:14px;color:var(--color-text-muted)">'+_esc(m.realName||m.displayName||'未知')+'</div>'+
-            '<div style="font-size:10px;color:var(--color-text-muted);opacity:0.6;margin-top:2px">已離會</div>'+
-          '</div>'+
-          '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="restoreMember(\''+dUid+'\')">恢復會員</button>'+
+        html+='<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0">'+
+          '<span style="font-size:13px;color:var(--color-text-muted)">'+_esc(m.realName||m.displayName||'未知')+'</span>'+
+          '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="restoreMember(\''+dUid+'\')">恢復</button>'+
         '</div>';
       });
       html+='</div></details>';
     }
-    // ── 已封鎖 Accordion ──
+    // 已封鎖
     var blockedList=Object.values(usersCache).filter(function(m){ return m.status==='blocked'; });
     if(blockedList.length){
       blockedList.sort(function(a,b){ return (a.displayName||'').localeCompare(b.displayName||'','zh-Hant'); });
-      html+='<details style="margin-top:16px;border-top:1px solid var(--color-border-soft);padding-top:14px">'+
-        '<summary style="cursor:pointer;font-size:12px;font-weight:600;letter-spacing:0.06em;color:var(--color-text-muted);padding:4px 0;user-select:none">'+
-          '已封鎖會員（'+blockedList.length+'）</summary>'+
-        '<div style="margin-top:10px">';
+      html+='<details style="margin-bottom:14px;border:1px solid var(--color-border-soft);border-radius:8px">';
+      html+='<summary style="cursor:pointer;font-size:12px;font-weight:600;letter-spacing:0.06em;color:var(--color-text-muted);padding:9px 12px;user-select:none;list-style:none">已封鎖（'+blockedList.length+'）</summary>';
+      html+='<div style="padding:4px 12px 10px">';
       blockedList.forEach(function(m){
-        var initials=(m.realName||m.displayName||'?').charAt(0);
-        var avatarSrc=m.photoURL||m.lineAvatar||'';
         var bUid=m.userId||m.uid||'';
-        var avatarHtml=avatarSrc
-          ?'<img src="'+avatarSrc+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0;opacity:0.45" onerror="this.style.display=\'none\'" alt="">'
-          :'<svg width="40" height="40" viewBox="0 0 40 40" style="flex-shrink:0;opacity:0.45"><rect width="40" height="40" rx="20" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="15" font-family="serif">'+initials+'</text></svg>';
-        html+='<div style="display:flex;align-items:center;gap:12px;padding:8px 0">'+
-          '<div style="flex-shrink:0">'+avatarHtml+'</div>'+
-          '<div style="flex:1;min-width:0">'+
-            '<div style="font-size:14px;color:var(--color-text-muted)">'+_esc(m.realName||m.displayName||'未知')+'</div>'+
-            '<div style="font-size:10px;color:var(--color-text-muted);opacity:0.6;margin-top:2px">已封鎖</div>'+
-          '</div>'+
+        html+='<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0">'+
+          '<span style="font-size:13px;color:var(--color-text-muted)">'+_esc(m.displayName||m.realName||'未知')+'</span>'+
           '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="unblockMember(\''+bUid+'\')">解除封鎖</button>'+
         '</div>';
       });
       html+='</div></details>';
     }
-  } else {
-    // ── 會員名錄視圖（一般 member，含搜尋 / 篩選）──
-    var _sv=function(v){ return (v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
-    html+=
-      '<div style="margin-bottom:14px">'+
-        '<input type="text" id="memberDirSearch"'+
-          ' placeholder="搜尋姓名、暱稱、NTRP、位置…"'+
-          ' style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-primary);font-size:13px;outline:none"'+
-          ' value="'+_sv(_memberSearch)+'"'+
-          ' oninput="_memberSearch=this.value;_renderMemberListInTab()">'+
-        '<div style="display:flex;gap:8px;margin-top:8px">'+
-          '<select id="memberDirNtrp"'+
-            ' style="flex:1;padding:6px 8px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-primary);font-size:12px"'+
-            ' onchange="_memberNtrpFilter=this.value;_renderMemberListInTab()">'+
-            '<option value="">全部 NTRP</option>'+
-            NTRP_OPTIONS.map(function(o){
-              return '<option value="'+o.v+'"'+(_memberNtrpFilter===o.v?' selected':'')+'>'+o.v+' '+o.label+'</option>';
-            }).join('')+
-          '</select>'+
-          '<select id="memberDirPos"'+
-            ' style="flex:1;padding:6px 8px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-primary);font-size:12px"'+
-            ' onchange="_memberPosFilter=this.value;_renderMemberListInTab()">'+
-            '<option value="">全部位置</option>'+
-            '<option value="前場"'+(_memberPosFilter==='前場'?' selected':'')+'>前場</option>'+
-            '<option value="後場"'+(_memberPosFilter==='後場'?' selected':'')+'>後場</option>'+
-            '<option value="雙打"'+(_memberPosFilter==='雙打'?' selected':'')+'>雙打</option>'+
-            '<option value="全能"'+(_memberPosFilter==='全能'?' selected':'')+'>全能</option>'+
-          '</select>'+
-        '</div>'+
-        '<select id="memberDirFee"'+
-          ' style="width:100%;box-sizing:border-box;padding:6px 8px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-primary);font-size:12px;margin-top:6px"'+
-          ' onchange="_memberFeeFilter=this.value;_renderMemberListInTab()">'+
-          '<option value="">全部繳費狀態</option>'+
-          '<option value="paid"'+(_memberFeeFilter==='paid'?' selected':'')+'>✅ 已繳清</option>'+
-          '<option value="expiring"'+(_memberFeeFilter==='expiring'?' selected':'')+'>🟡 即將到期</option>'+
-          '<option value="overdue"'+(_memberFeeFilter==='overdue'?' selected':'')+'>🔴 已到期</option>'+
-          '<option value="none"'+(_memberFeeFilter==='none'?' selected':'')+'>🔴 未繳費</option>'+
+  }
+
+  // ── 統一會員名錄（搜尋 / 篩選）— 所有角色一律顯示 ──
+  var _sv=function(v){ return (v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+  html+=
+    '<div style="margin-bottom:14px">'+
+      '<input type="text" id="memberDirSearch"'+
+        ' placeholder="搜尋姓名、暱稱、NTRP、位置、角色…"'+
+        ' style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-primary);font-size:13px;outline:none"'+
+        ' value="'+_sv(_memberSearch)+'"'+
+        ' oninput="_memberSearch=this.value;_renderMemberListInTab()">'+
+      '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">'+
+        '<select id="memberDirNtrp"'+
+          ' style="flex:1;min-width:80px;padding:6px 8px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-primary);font-size:12px"'+
+          ' onchange="_memberNtrpFilter=this.value;_renderMemberListInTab()">'+
+          '<option value="">全部 NTRP</option>'+
+          NTRP_OPTIONS.map(function(o){
+            return '<option value="'+o.v+'"'+(_memberNtrpFilter===o.v?' selected':'')+'>'+o.v+' '+o.label+'</option>';
+          }).join('')+
+        '</select>'+
+        '<select id="memberDirPos"'+
+          ' style="flex:1;min-width:80px;padding:6px 8px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-primary);font-size:12px"'+
+          ' onchange="_memberPosFilter=this.value;_renderMemberListInTab()">'+
+          '<option value="">全部位置</option>'+
+          '<option value="前場"'+(_memberPosFilter==='前場'?' selected':'')+'>前場</option>'+
+          '<option value="後場"'+(_memberPosFilter==='後場'?' selected':'')+'>後場</option>'+
+          '<option value="雙打"'+(_memberPosFilter==='雙打'?' selected':'')+'>雙打</option>'+
+          '<option value="全能"'+(_memberPosFilter==='全能'?' selected':'')+'>全能</option>'+
+        '</select>'+
+        '<select id="memberDirRole"'+
+          ' style="flex:1;min-width:80px;padding:6px 8px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-primary);font-size:12px"'+
+          ' onchange="_memberRoleFilter=this.value;_renderMemberListInTab()">'+
+          '<option value="">全部角色</option>'+
+          '<option value="owner"'+(_memberRoleFilter==='owner'?' selected':'')+'>擁有者</option>'+
+          '<option value="admin"'+(_memberRoleFilter==='admin'?' selected':'')+'>管理員</option>'+
+          '<option value="coach"'+(_memberRoleFilter==='coach'?' selected':'')+'>教練</option>'+
+          '<option value="member"'+(_memberRoleFilter==='member'?' selected':'')+'>會員</option>'+
         '</select>'+
       '</div>'+
-      '<div id="memberDirList"></div>';
-  }
+      '<select id="memberDirFee"'+
+        ' style="width:100%;box-sizing:border-box;padding:6px 8px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-primary);font-size:12px;margin-top:6px"'+
+        ' onchange="_memberFeeFilter=this.value;_renderMemberListInTab()">'+
+        '<option value="">全部繳費狀態</option>'+
+        '<option value="paid"'+(_memberFeeFilter==='paid'?' selected':'')+'>✅ 已繳清</option>'+
+        '<option value="expiring"'+(_memberFeeFilter==='expiring'?' selected':'')+'>🟡 即將到期</option>'+
+        '<option value="overdue"'+(_memberFeeFilter==='overdue'?' selected':'')+'>🔴 已到期</option>'+
+        '<option value="none"'+(_memberFeeFilter==='none'?' selected':'')+'>— 未繳費</option>'+
+      '</select>'+
+    '</div>'+
+    '<div id="memberDirList"></div>';
+
   html+='</div>';
   el.innerHTML+=html;
-  if(!isAdminLike()) _renderMemberListInTab();
+  _renderMemberListInTab();
 }
 
-/* ── 會員名錄：即時過濾列表 ── */
+/* ── 會員名錄：即時過濾列表（所有角色統一） ── */
 function _renderMemberListInTab(){
   var el=document.getElementById('memberDirList');
   if(!el) return;
   var f=(_memberSearch||'').toLowerCase();
+  var adminLike = isAdminLike();
+  var isOwner   = (_currentRole() === 'owner');
+  var _myId     = currentUser?(currentUser.uid||currentUser.userId||''):'';
+
   var ROLE_LABEL={owner:'擁有者',admin:'管理員',coach:'教練',annual_member:'年費會員',monthly_member:'月費會員',member:'會員'};
+  var ROLE_SEARCH={owner:'擁有者',admin:'管理員',coach:'教練',member:'會員',annual_member:'年費會員',monthly_member:'月費會員'};
+
+  // Include all non-banned/pending/deleted users — owner/admin included regardless of status
   var list=Object.values(usersCache).filter(function(m){
-    return m.status==='approved'||m.status==='active';
+    var s = m.status || '';
+    return s !== 'pending' && s !== 'blocked' && s !== 'rejected' && s !== 'deleted';
   }).filter(function(m){
-    if(f&&!(m.realName||'').toLowerCase().includes(f)&&
+    if(f){
+      var roleStr = ROLE_SEARCH[m.role] || '';
+      if(!(m.realName||'').toLowerCase().includes(f)&&
          !(m.displayName||'').toLowerCase().includes(f)&&
          !String(m.ntrp||'').toLowerCase().includes(f)&&
-         !(m.preferredPosition||'').toLowerCase().includes(f)) return false;
+         !(m.preferredPosition||'').toLowerCase().includes(f)&&
+         !roleStr.includes(f)) return false;
+    }
     if(_memberNtrpFilter&&String(m.ntrp||'')!==_memberNtrpFilter) return false;
     if(_memberPosFilter&&(m.preferredPosition||'')!==_memberPosFilter) return false;
+    if(_memberRoleFilter){
+      if(_memberRoleFilter==='member'){
+        if(m.role!=='member'&&m.role!=='annual_member'&&m.role!=='monthly_member') return false;
+      } else {
+        if(m.role!==_memberRoleFilter) return false;
+      }
+    }
     if(_memberFeeFilter&&_calcMemberFeeStatus(m).status!==_memberFeeFilter) return false;
     return true;
   }).sort(function(a,b){
+    var ORDER={owner:0,admin:1,coach:2,member:3,annual_member:3,monthly_member:3};
+    var oa=ORDER[a.role]!=null?ORDER[a.role]:4;
+    var ob=ORDER[b.role]!=null?ORDER[b.role]:4;
+    if(oa!==ob) return oa-ob;
     return (a.realName||a.displayName||'').localeCompare(b.realName||b.displayName||'','zh-Hant');
   });
+
   if(!list.length){
     el.innerHTML='<div class="emptyState"><div class="emptyStateIcon">—</div>沒有符合條件的會員</div>';
     return;
   }
+
   var html='';
   list.forEach(function(m){
     var initials=(m.realName||m.displayName||'?').charAt(0);
@@ -3158,22 +3132,53 @@ function _renderMemberListInTab(){
       ?'<img src="'+avatarSrc+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display=\'none\'" alt="">'
       :'<svg width="40" height="40" viewBox="0 0 40 40" style="flex-shrink:0"><rect width="40" height="40" rx="20" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="16" font-family="serif">'+initials+'</text></svg>';
     var roleLabel=ROLE_LABEL[m.role]||m.role||'會員';
+    var badgeCls='memberBadge'+(m.role==='coach'?' coach':'');
     var meta=[];
     if(m.ntrp) meta.push(_esc(_ntrpDisplay(m.ntrp)));
     if(m.preferredPosition) meta.push(_esc(m.preferredPosition));
-    html+='<div class="memberCard">'+
-      '<div class="memberAvatar">'+avatarHtml+'</div>'+
-      '<div class="memberInfo">'+
-        '<div class="memberName">'+_esc(m.realName||m.displayName||'未知')+'</div>'+
-        (m.realName?'<div style="font-size:11px;color:var(--color-text-muted);margin-top:1px">'+_esc(m.displayName||'')+'</div>':'')+
-        '<div style="margin-top:5px;line-height:1.8">'+_memberFeeStatusHtml(m)+'</div>'+
-        (meta.length?'<div class="memberMeta">'+meta.join(' · ')+'</div>':'')+
+    var rawUid=m.userId||m.uid||'';
+    var isSelf=(rawUid===_myId);
+
+    // Management controls — admin/owner only
+    var mgmtHtml='';
+    if(adminLike){
+      if(isSelf){
+        mgmtHtml='<div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 0 2px">'+
+          '<span style="font-size:10px;color:var(--color-text-muted);padding:3px 0">YOU</span>'+
+          '<button style="font-size:11px;padding:3px 9px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="editMemberRealName(\''+rawUid+'\')">編輯姓名</button>'+
+        '</div>';
+      } else if(m.role!=='owner'){
+        var roleButtons='';
+        roleButtons+='<button style="font-size:11px;padding:3px 9px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="editMemberRealName(\''+rawUid+'\')">編輯姓名</button>';
+        roleButtons+='<button style="font-size:11px;padding:3px 9px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="setMemberRole(\''+rawUid+'\',\'member\')">設會員</button>';
+        roleButtons+='<button style="font-size:11px;padding:3px 9px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="setMemberRole(\''+rawUid+'\',\'coach\')">設教練</button>';
+        if(isOwner) roleButtons+='<button style="font-size:11px;padding:3px 9px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="setMemberRole(\''+rawUid+'\',\'admin\')">設管理員</button>';
+        roleButtons+='<button style="font-size:11px;padding:3px 9px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="blockMember(\''+rawUid+'\')">封鎖</button>';
+        roleButtons+='<button style="font-size:11px;padding:3px 9px;border-radius:6px;border:1px solid #e74c3c;background:transparent;color:#e74c3c;cursor:pointer" onclick="removeMember(\''+rawUid+'\')">離會</button>';
+        mgmtHtml='<details style="margin-top:4px">'+
+          '<summary style="cursor:pointer;font-size:11px;color:var(--color-text-muted);list-style:none;display:inline-flex;align-items:center;padding:3px 8px;border-radius:6px;border:1px solid var(--color-border);user-select:none">管理 ›</summary>'+
+          '<div style="display:flex;flex-wrap:wrap;gap:6px;padding-top:8px;padding-bottom:4px">'+roleButtons+'</div>'+
+        '</details>';
+      }
+    }
+
+    html+='<div class="memberCard" style="flex-direction:column;align-items:stretch;padding:10px 0">'+
+      '<div style="display:flex;align-items:center;gap:10px">'+
+        '<div class="memberAvatar">'+avatarHtml+'</div>'+
+        '<div class="memberInfo" style="min-width:0;flex:1">'+
+          '<div class="memberName">'+_esc(m.realName||m.displayName||'未知')+'</div>'+
+          (m.realName?'<div style="font-size:11px;color:var(--color-text-muted);margin-top:1px">'+_esc(m.displayName||'')+'</div>':'')+
+          '<div style="margin-top:5px;line-height:1.8">'+_memberFeeStatusHtml(m)+'</div>'+
+          (meta.length?'<div class="memberMeta">'+meta.join(' · ')+'</div>':'')+
+        '</div>'+
+        '<div class="'+badgeCls+'" style="flex-shrink:0;align-self:flex-start">'+roleLabel+'</div>'+
       '</div>'+
-      '<div class="memberBadge'+(m.role==='coach'?' coach':'')+'">'+roleLabel+'</div>'+
+      (mgmtHtml?'<div style="padding-left:50px;margin-top:4px">'+mgmtHtml+'</div>':'')+
     '</div>';
   });
   el.innerHTML=html;
 }
+
 
 /* ── 教練管理 tab ── */
 /* ── Load Teaching Bookings (all mode=teaching bookings) ── */
