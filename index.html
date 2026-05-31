@@ -367,9 +367,55 @@ button {
   padding:2px 8px; border-radius:99px;
   font-size:10px; letter-spacing:0.06em; font-weight:500;
 }
-.statusChip.confirmed { background:rgba(74,109,74,0.10); color:var(--dot-event); }
+.statusChip.confirmed,.statusChip.active { background:rgba(74,109,74,0.10); color:var(--dot-event); }
 .statusChip.completed { background:var(--color-surface-alt); color:var(--color-text-muted); }
 .statusChip.cancelled { background:rgba(184,92,74,0.10); color:var(--color-clay); }
+.statusChip.void      { background:rgba(100,100,100,0.10); color:var(--color-text-muted); }
+.bk-inactive { opacity:0.55; }
+
+/* ── All-Bookings accordion ── */
+.abSection { border:1px solid var(--color-border); border-radius:10px; margin-bottom:10px; overflow:hidden; }
+.abSectionHdr { display:flex; align-items:center; justify-content:space-between; padding:11px 14px;
+  background:var(--color-surface); cursor:pointer; gap:8px; -webkit-tap-highlight-color:transparent; }
+.abSectionTitle { font-size:13px; font-weight:600; color:var(--color-text-primary); }
+.abSectionCount { font-size:11px; color:var(--color-text-muted); margin-left:auto; }
+.abSectionChevron { font-size:12px; color:var(--color-text-muted); transition:transform 150ms; }
+.abSectionChevron.open { transform:rotate(180deg); }
+.abSectionBody { display:none; border-top:1px solid var(--color-border); }
+.abSectionBody.open { display:block; }
+.abRow { display:grid; grid-template-columns:72px 1fr; gap:6px 10px; padding:10px 14px;
+  border-bottom:1px solid var(--color-border-soft); font-size:12px; }
+.abRow:last-child { border-bottom:none; }
+.abRowDate { font-size:11px; font-weight:600; color:var(--color-text-secondary); line-height:1.6; }
+.abRowMain { display:flex; flex-direction:column; gap:2px; }
+.abRowTime  { font-size:12px; font-weight:500; color:var(--color-text-primary); }
+.abRowMeta  { font-size:11px; color:var(--color-text-muted); line-height:1.5; }
+.abRowStatus{ font-size:10px; padding:1px 7px; border-radius:99px; align-self:flex-start; }
+.abRowActions { grid-column:1/-1; display:flex; gap:8px; padding-top:2px; }
+.abActionBtn { font-size:11px; padding:4px 12px; border-radius:99px;
+  border:1px solid var(--color-border); background:var(--color-surface);
+  color:var(--color-text-secondary); cursor:pointer; -webkit-tap-highlight-color:transparent; }
+.abActionBtn.danger { color:var(--color-clay); border-color:var(--color-clay); }
+.abActionBtn.void-btn { color:var(--color-text-muted); border-color:var(--color-text-muted); }
+
+/* ── Cancel / Void dialog ── */
+.cancelDlgBackdrop { position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:2100;
+  display:flex; align-items:flex-end; justify-content:center;
+  opacity:0; pointer-events:none; transition:opacity 200ms; }
+.cancelDlgBackdrop.open { opacity:1; pointer-events:auto; }
+.cancelDlg { width:100%; max-width:480px; background:var(--color-surface); border-radius:18px 18px 0 0;
+  padding:20px 20px 32px; transform:translateY(100%); transition:transform 240ms cubic-bezier(0.32,0.72,0,1); }
+.cancelDlgBackdrop.open .cancelDlg { transform:translateY(0); }
+.cancelDlgTitle { font-size:15px; font-weight:700; color:var(--color-text-primary); margin-bottom:6px; }
+.cancelDlgDesc  { font-size:12.5px; color:var(--color-text-secondary); margin-bottom:14px; line-height:1.5; }
+.cancelDlgTextarea { width:100%; box-sizing:border-box; border:1px solid var(--color-border);
+  border-radius:8px; padding:9px 11px; font-size:13px; color:var(--color-text-primary);
+  background:var(--color-bg); resize:none; font-family:inherit; margin-bottom:14px; }
+.cancelDlgBtns { display:flex; gap:10px; }
+.cancelDlgConfirm { flex:1; padding:11px; border-radius:10px; border:none;
+  background:var(--color-clay); color:#fff; font-size:14px; font-weight:600; cursor:pointer; }
+.cancelDlgCancel  { flex:1; padding:11px; border-radius:10px; border:1px solid var(--color-border);
+  background:var(--color-surface); color:var(--color-text-secondary); font-size:14px; cursor:pointer; }
 
 /* ── Schedule Items ── */
 .scheduleItem {
@@ -1264,6 +1310,7 @@ button {
     </button>
     <div id="bookingsDebugLine" style="font-size:10px;color:var(--color-text-muted);padding:2px 0 6px;letter-spacing:0.03em"></div>
     <div id="bookUpcoming"></div>
+    <div id="bookCancelled"></div>
   </div>
 
   <!-- ── Screen: 管理 ── -->
@@ -1500,6 +1547,10 @@ button {
     <!-- join-notice: shown when submitting into an existing booking -->
     <div id="formJoinNotice" style="display:none;margin-bottom:12px;padding:9px 12px;border-radius:8px;background:rgba(61,90,128,0.08);border:1px solid rgba(61,90,128,0.25);font-size:12.5px;color:#3d5a80;line-height:1.45">
       此時段已有相同模式的預約，確認後將加入現有預約。
+    </div>
+    <!-- 30-min cancel cutoff notice -->
+    <div style="margin-bottom:12px;padding:9px 12px;border-radius:8px;background:rgba(140,96,32,0.07);border:1px solid rgba(140,96,32,0.2);font-size:11.5px;color:#8a6020;line-height:1.5">
+      ⚠️ 請注意：預約開始前 30 分鐘後即無法自行取消，請確認時段後再送出。
     </div>
     <button class="primaryBtn" id="submitBookingBtn" onclick="submitBooking()">確認預約</button>
   </div>
@@ -2167,7 +2218,12 @@ let usersCache = {};          // uid → user doc
 let courtBookingsFirestore = null;  // null = not yet loaded; [] = loaded but empty
 let weekBookingsCache = [];         // all confirmed bookings for current week view
 let monthBookingsCache = [];        // all confirmed bookings for current month view
+let allBookingsCache  = null;       // admin/owner: all bookings (null = not yet loaded)
 let myBookingsFirestore = null;     // null = not yet loaded; [] = loaded but empty
+// Cancel dialog state
+let _cancelDlgBookingId = null;
+let _cancelDlgIsVoid    = false;
+let _cancelDlgCallback  = null;
 let pendingUsersFirestore = [];
 let unsubMyBookings = null;
 /* ── NTRP 等級定義（全站共用）── */
@@ -2225,6 +2281,27 @@ function minToTime(m){ return pad(Math.floor(m/60))+':'+pad(m%60); }
 function offsetDays(n){ return formatDate(addDays(today,n)); }
 function offsetToNext(dow){ const diff=(dow-today.getDay()+7)%7; return diff===0?7:diff; }
 function formatDayLabel(d){ return MONTHS_TC[d.getMonth()]+d.getDate()+'日 週'+DAYS_TC[d.getDay()]; }
+
+/* ── Booking status helpers ── */
+// Treat legacy 'confirmed' same as new 'active'
+function _isActiveBooking(b){ var s=b.status||'active'; return s==='active'||s==='confirmed'; }
+// Return a Date for the booking's start datetime
+function _bookingStartDt(b){
+  var parts=(b.date||'').split('-').map(Number);
+  var tp=(b.startTime||'00:00').split(':').map(Number);
+  return new Date(parts[0], parts[1]-1, parts[2], tp[0], tp[1], 0);
+}
+// Minutes until booking start (negative = already started)
+function _minutesUntilStart(b){ return Math.floor((_bookingStartDt(b).getTime()-Date.now())/60000); }
+function _bookingHasStarted(b){ return _minutesUntilStart(b) <= 0; }
+function _withinCancelCutoff(b){ var m=_minutesUntilStart(b); return m>=0 && m<30; }
+// Status label for display
+function _statusLabel(s){
+  return {active:'確認',confirmed:'確認',cancelled:'已取消',void:'已作廢'}[s]||s;
+}
+function _statusChipCls(s){
+  return {active:'active',confirmed:'active',cancelled:'cancelled',void:'void'}[s]||'';
+}
 function formatMonthYear(d){ return d.getFullYear()+' 年 '+MONTHS_TC[d.getMonth()]; }
 function shortDateStr(dateStr){
   const d=new Date(dateStr+'T00:00:00');
@@ -2321,7 +2398,7 @@ function loadWeekBookings(){
     .then(function(snap){
       weekBookingsCache = snap.docs
         .map(function(d){ return Object.assign({id:d.id},d.data()); })
-        .filter(function(b){ return b.status === 'confirmed'; });
+        .filter(function(b){ return _isActiveBooking(b); });
       renderWeekGrid();
     })
     .catch(function(e){
@@ -2556,22 +2633,39 @@ function renderMonthView(){
 
 /* ── Render: Booking Records ── */
 function renderBookings(){
-  const todayStr=formatDate(today);
-  const source=myBookingsFirestore||[];
-  // 只顯示 currentUser 自己的有效預約（confirmed 且日期 >= 今天）
-  const upcoming=source.filter(b=>b.status==='confirmed'&&b.date>=todayStr)
-    .sort((a,b)=>a.date.localeCompare(b.date));
+  var todayStr=formatDate(today);
+  var source=myBookingsFirestore||[];
   // Debug info (remove when stable)
-  const myUidStr=currentUser?(currentUser.uid||currentUser.userId||currentUser.id||'—'):'—';
-  const _dbgEl=document.getElementById('bookingsDebugLine');
-  if(_dbgEl){ _dbgEl.textContent='uid: '+myUidStr+' | 撈到: '+source.length+' 筆 | 顯示: '+upcoming.length+' 筆'; }
+  var myUidStr=currentUser?(currentUser.uid||currentUser.userId||currentUser.id||'—'):'—';
+  var _dbgEl=document.getElementById('bookingsDebugLine');
+  if(_dbgEl){ _dbgEl.textContent='uid: '+myUidStr+' | 撈到: '+source.length+' 筆'; }
+
+  // Upcoming: active/confirmed AND date >= today
+  var upcoming = source.filter(function(b){ return _isActiveBooking(b) && b.date>=todayStr; })
+    .sort(function(a,b){ return (a.date||'').localeCompare(b.date||''); });
+  // Cancelled / void (all dates)
+  var cancelled = source.filter(function(b){ return b.status==='cancelled'||b.status==='void'; })
+    .sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
 
   function courtDisplay(court){ return {hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[court]||court; }
-  function cardHtml(b){
-    const d=new Date(b.date+'T00:00:00');
-    const courtLabel=b.courtLabel||courtDisplay(b.court);
-    const partners=b.partners?b.partners.join('、'):'';
-    return '<div class="bookingCard">'+
+  function cardHtml(b, showCancel){
+    var d=new Date(b.date+'T00:00:00');
+    var courtLabel=b.courtLabel||courtDisplay(b.court);
+    var partners=b.partners?b.partners.join('、'):'';
+    var statusLabel = _statusLabel(b.status);
+    var chipCls = _statusChipCls(b.status);
+    // Time-gate cancel button
+    var canSelfCancel = showCancel && _isActiveBooking(b) && !_bookingHasStarted(b) && !_withinCancelCutoff(b);
+    var cancelBtn = canSelfCancel
+      ? '<div class="bookingCardActions"><button class="cancelBtn" onclick="cancelBooking(\''+b.id+'\')">取消預約</button></div>'
+      : '';
+    // Cancelled/void indicator
+    var metaExtra = '';
+    if(b.status==='cancelled' && b.cancelledByName) metaExtra = ' · 由 '+_esc(b.cancelledByName)+' 取消';
+    if(b.status==='void'      && b.voidByName)      metaExtra = ' · 由 '+_esc(b.voidByName)+' 作廢';
+    if(b.cancelReason) metaExtra += '（'+_esc(b.cancelReason)+'）';
+    if(b.voidReason)   metaExtra += '（'+_esc(b.voidReason)+'）';
+    return '<div class="bookingCard'+(b.status==='cancelled'||b.status==='void'?' bk-inactive':'')+'">'+
       '<div class="bookingCardDate">'+
         '<div class="bookingCardDateNum">'+d.getDate()+'</div>'+
         '<div class="bookingCardDateMon">'+(d.getMonth()+1)+'月 '+DAYS_TC[d.getDay()]+'</div>'+
@@ -2579,16 +2673,27 @@ function renderBookings(){
       '<div class="bookingCardBody">'+
         '<div class="bookingCardTime">'+
           b.startTime+' – '+b.endTime+' &nbsp;'+courtLabel+
-          '&nbsp;<span class="statusChip '+b.status+'">確認</span></div>'+
-        '<div class="bookingCardMeta">'+(MODE_LABELS[_normaliseMode(b.mode)]||b.mode||'一般')+(partners?' · '+partners:'')+'</div>'+
-        '<div class="bookingCardActions"><button class="cancelBtn" onclick="cancelBooking(\''+b.id+'\')">取消預約</button></div>'+
+          '&nbsp;<span class="statusChip '+chipCls+'">'+statusLabel+'</span></div>'+
+        '<div class="bookingCardMeta">'+(MODE_LABELS[_normaliseMode(b.mode)]||b.mode||'一般')+(partners?' · '+partners:'')+metaExtra+'</div>'+
+        cancelBtn+
       '</div>'+
     '</div>';
   }
-  const upEl=document.getElementById('bookUpcoming');
+  var upEl=document.getElementById('bookUpcoming');
   if(upEl) upEl.innerHTML=upcoming.length
-    ? upcoming.map(b=>cardHtml(b)).join('')
+    ? upcoming.map(function(b){ return cardHtml(b, true); }).join('')
     : '<div class="emptyState"><div class="emptyStateIcon">—</div>目前沒有預約</div>';
+
+  // Render cancelled section if present (injected below bookUpcoming)
+  var cancelEl=document.getElementById('bookCancelled');
+  if(cancelEl){
+    if(cancelled.length){
+      cancelEl.innerHTML='<div style="font-size:11px;font-weight:600;letter-spacing:0.06em;color:var(--color-text-muted);padding:14px 0 6px">過去取消 / 作廢</div>'
+        + cancelled.slice(0,10).map(function(b){ return cardHtml(b, false); }).join('');
+    } else {
+      cancelEl.innerHTML='';
+    }
+  }
 }
 
 /* ── Render: 管理 (5 tabs) ── */
@@ -2600,11 +2705,12 @@ function renderManage(){
   var isCoach=role==='coach';
 
   var ALL_TABS=[
-    {key:'pending',       label:'待審核',   show:adminLike},
+    {key:'pending',       label:'待審核',    show:adminLike},
     {key:'members',       label:adminLike?'會員管理':'會員名單', show:true},
-    {key:'coach',         label:'教練管理', show:isCoach||adminLike},
-    {key:'adminSettings', label:'管理員設定',show:adminLike},
-    {key:'announcements', label:'公告',     show:true},
+    {key:'coach',         label:'教練管理',  show:isCoach||adminLike},
+    {key:'allBookings',   label:'預約管理',  show:adminLike},
+    {key:'adminSettings', label:'管理員設定', show:adminLike},
+    {key:'announcements', label:'公告',      show:true},
   ];
   var TABS=ALL_TABS.filter(function(t){return t.show;});
 
@@ -2635,8 +2741,108 @@ function renderManage(){
   if(_manageTab==='pending')           _renderPendingTab(el);
   else if(_manageTab==='members')      _renderMembersTab(el);
   else if(_manageTab==='coach')        _renderCoachTab(el);
+  else if(_manageTab==='allBookings')  _renderAllBookingsTab(el);
   else if(_manageTab==='adminSettings')_renderAdminSettingsTab(el);
   else                                  _renderAnnouncementsTab(el);
+}
+
+/* ── 所有預約管理 tab (admin / owner) ── */
+function _renderAllBookingsTab(el){
+  if(allBookingsCache===null){
+    el.innerHTML+='<div style="padding:24px;text-align:center;color:var(--color-text-muted);font-size:13px">載入中…</div>';
+    loadAllBookings();
+    return;
+  }
+  var todayStr = formatDate(today);
+  var all = allBookingsCache || [];
+
+  /* Sections */
+  var todayBks   = all.filter(function(b){ return b.date===todayStr && _isActiveBooking(b); });
+  var futureBks  = all.filter(function(b){ return b.date>todayStr  && _isActiveBooking(b); });
+  var cancelBks  = all.filter(function(b){ return b.status==='cancelled'; });
+  var voidBks    = all.filter(function(b){ return b.status==='void'; });
+
+  var role      = _currentRole();
+  var isOwner   = (role==='owner');
+  var myUid     = currentUser?(currentUser.uid||currentUser.userId||currentUser.id||''):'';
+  var myName    = currentUser?(currentUser.realName||currentUser.displayName||''):'';
+
+  function courtLbl(c){ return {hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[c]||c||'—'; }
+  function modeLbl(m){ return MODE_LABELS[_normaliseMode(m)]||m||'一般'; }
+  function nameOf(uid){ var u=usersCache[uid]; return u?(u.realName||u.displayName||uid):uid; }
+
+  function rowHtml(b){
+    var nm = _normaliseMode(b.mode);
+    var isTeach = (nm==='teaching');
+    var creator = nameOf(b.createdBy||'');
+    var parts   = isTeach
+      ? (b.coachName||nameOf(b.coachId||'')||'—') + ' (教練)'
+        + (b.students&&b.students.length ? ' · 學生：'+b.students.map(nameOf).join('、') : '')
+      : (creator + (b.players&&b.players.length>1?' · '+b.players.map(nameOf).join('、'):''));
+    var statusChip = '<span class="abRowStatus '+_statusChipCls(b.status)+'" style="'
+      + (b.status==='active'||b.status==='confirmed'?'background:rgba(74,109,74,0.10);color:var(--dot-event)'
+        :b.status==='cancelled'?'background:rgba(184,92,74,0.10);color:var(--color-clay)'
+        :'background:rgba(100,100,100,0.10);color:var(--color-text-muted)')
+      + '">'+_statusLabel(b.status)+'</span>';
+
+    /* Action buttons */
+    var actions = '';
+    var isActive = _isActiveBooking(b);
+    var started  = _bookingHasStarted(b);
+    var cutoff   = _withinCancelCutoff(b);
+    if(isActive){
+      if(!started && !cutoff && isAdminLike()){
+        actions += '<button class="abActionBtn danger" onclick="cancelBooking(\''+b.id+'\')">取消</button>';
+      }
+      if(isOwner){
+        var voidLabel = (started||cutoff)?'強制作廢':'作廢';
+        actions += '<button class="abActionBtn void-btn" onclick="voidBooking(\''+b.id+'\')">'+voidLabel+'</button>';
+      }
+    }
+    var actionsHtml = actions ? '<div class="abRowActions">'+actions+'</div>' : '';
+
+    return '<div class="abRow">'+
+      '<div class="abRowDate">'+b.date+'<br>'+b.startTime+'–'+b.endTime+'</div>'+
+      '<div class="abRowMain">'+
+        '<div class="abRowTime">'+courtLbl(b.court)+'　'+modeLbl(b.mode)+'　'+statusChip+'</div>'+
+        '<div class="abRowMeta">'+_esc(parts)+'</div>'+
+      '</div>'+
+      actionsHtml+
+    '</div>';
+  }
+
+  function accordionSection(id, title, items, openByDefault){
+    var open = openByDefault ? ' open' : '';
+    var body = items.length
+      ? items.map(rowHtml).join('')
+      : '<div style="padding:12px 14px;font-size:12px;color:var(--color-text-muted)">無紀錄</div>';
+    return '<div class="abSection">'+
+      '<div class="abSectionHdr" onclick="_toggleAbSection(\''+id+'\')">'+
+        '<span class="abSectionTitle">'+title+'</span>'+
+        '<span class="abSectionCount">'+items.length+' 筆</span>'+
+        '<span class="abSectionChevron'+(openByDefault?' open':'') +'" id="abChev_'+id+'">▾</span>'+
+      '</div>'+
+      '<div class="abSectionBody'+open+'" id="abBody_'+id+'">'+body+'</div>'+
+    '</div>';
+  }
+
+  var html = '<div style="padding:12px 0 4px">'
+    +'<button class="abActionBtn" style="margin-left:0;font-size:11px" onclick="allBookingsCache=null;renderManage()">↺ 重新載入</button>'
+    +'</div>'
+    + accordionSection('today',  '今日預約', todayBks,  true)
+    + accordionSection('future', '未來預約', futureBks, true)
+    + accordionSection('cancelled','已取消', cancelBks, false)
+    + accordionSection('voided',   '已作廢', voidBks,   false);
+
+  el.innerHTML += html;
+}
+
+function _toggleAbSection(id){
+  var body  = document.getElementById('abBody_'+id);
+  var chev  = document.getElementById('abChev_'+id);
+  if(!body) return;
+  body.classList.toggle('open');
+  if(chev) chev.classList.toggle('open');
 }
 
 /* ── 待審核 tab ── */
@@ -4981,9 +5187,10 @@ function _dvShowDetail(enc){
   var avatarInner = data.photoURL
     ? '<img src="'+data.photoURL+'" style="width:100%;height:100%;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'" alt="">'
     : (data.name||'?').charAt(0);
-  /* cancel / leave */
-  var canCancel = data.bookingId && (data.isOwner || isAdminLike());
-  var canLeave  = data.bookingId && data.isInPlayers && !data.isOwner && !isAdminLike() && !isTeach;
+  /* cancel / void / leave — use pre-computed flags from showBookingDetail */
+  var canCancel = !!(data.bookingId && data.canCancel);
+  var canVoid   = !!(data.bookingId && data.canVoid);
+  var canLeave  = !!(data.bookingId && data.canLeave);
 
   // ── Common info grid ──
   var countStr = isTeach
@@ -5068,7 +5275,8 @@ function _dvShowDetail(enc){
     '<div class="dvDetailRows">'+infoRows+playersHtml+titleHtml+noteHtml+'</div>'+
     attHtml+
     (canCancel?'<button class="dvDetailCancelBtn" onclick="cancelBooking(\''+data.bookingId+'\')">取消預約</button>':'')+
-    (canLeave?'<button class="dvDetailCancelBtn" onclick="leaveBooking(\''+data.bookingId+'\')">退出預約</button>':'')+
+    (canVoid  ?'<button class="dvDetailCancelBtn" style="background:var(--color-text-muted)" onclick="voidBooking(\''+data.bookingId+'\')">強制作廢</button>':'')+
+    (canLeave ?'<button class="dvDetailCancelBtn" onclick="leaveBooking(\''+data.bookingId+'\')">退出預約</button>':'')+
     '<button class="dvDetailClose" onclick="_dvCloseDetail()">關閉</button>';
   document.body.appendChild(p);
   requestAnimationFrame(function(){
@@ -5240,14 +5448,21 @@ function showToast(msg){
 
 /* ── Booking Detail (tap event on court grid) ── */
 function showBookingDetail(id){
-  var source = weekBookingsCache.length ? weekBookingsCache : (courtBookingsFirestore||[]);
-  var b=source.find(function(x){ return x.id===id; });
+  var b = _findBookingById(id);
+  if(!b){
+    // Fallback: search in week/day caches
+    var src = weekBookingsCache.length ? weekBookingsCache : (courtBookingsFirestore||[]);
+    b = src.find(function(x){ return x.id===id; });
+  }
   if(!b) return;
   var normMode  = _normaliseMode(b.mode);
   var modeLabel = MODE_LABELS[normMode] || normMode || '一般預約';
   var isTeach   = (normMode === 'teaching');
   var myUid     = currentUser?(currentUser.uid||currentUser.userId||currentUser.id||''):'';
-  var isOwner   = (b.createdBy===myUid);
+  var isBookingCreator = (b.createdBy===myUid);
+  var role      = _currentRole();
+  var isClubOwner = (role==='owner');
+  var isClubAdmin = (role==='admin');
   var courtLabel= {hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[b.court]||b.court;
 
   // ── Name / photo: for teaching, show coach; otherwise show creator ──
@@ -5274,9 +5489,18 @@ function showBookingDetail(id){
   var playerNames = players.map(function(uid){ var pu=usersCache[uid]; return pu?(pu.realName||pu.displayName||uid):uid; });
   var studentNames= students.map(function(uid){ var su=usersCache[uid]; return su?(su.realName||su.displayName||uid):uid; });
   var attendance  = (b.attendance && typeof b.attendance==='object') ? b.attendance : {};
-
-  // Coach/admin can manage attendance; also the coach themselves
   var canManageAtt = isAdminLike() || (myUid && b.coachId && myUid===b.coachId);
+
+  // ── Time-gate for cancel/void buttons ──
+  var isActive  = _isActiveBooking(b);
+  var hasStarted = _bookingHasStarted(b);
+  var withinCut  = _withinCancelCutoff(b);
+  // Cancel: soft cancel, available pre-cutoff
+  var canCancel = isActive && !hasStarted && !withinCut && (isBookingCreator || isClubAdmin || isClubOwner);
+  // Void: owner only, when cancel not available (within 30 min or after start)
+  var canVoid   = isActive && isClubOwner && (hasStarted || withinCut);
+  // Leave: participant self-exit, time-gated
+  var canLeave  = isActive && !hasStarted && !withinCut && isInPlayers && !isBookingCreator && !isAdminLike() && !isTeach;
 
   var enc=encodeURIComponent(JSON.stringify({
     name:name, photoURL:photoURL, court:courtLabel, date:b.date,
@@ -5294,7 +5518,10 @@ function showBookingDetail(id){
     attendance: attendance,
     canManageAtt: canManageAtt,
     ntrp:ntrp, pos:pos, att:'—',
-    bookingId:id, isOwner:isOwner, isInPlayers:isInPlayers
+    bookingId:id,
+    bookingStatus: b.status||'active',
+    isOwner: isBookingCreator, isInPlayers:isInPlayers,
+    canCancel: canCancel, canVoid: canVoid, canLeave: canLeave
   }));
   _dvShowDetail(enc);
 }
@@ -5383,10 +5610,11 @@ function loadCourtBookings(dateStr){
   if(!db){ renderGrid(); return; }
   db.collection('bookings')
     .where('date','==',dateStr)
-    .where('status','==','confirmed')
     .get()
     .then(function(snap){
-      courtBookingsFirestore=snap.docs.map(function(d){ return Object.assign({id:d.id},d.data()); });
+      courtBookingsFirestore=snap.docs
+        .map(function(d){ return Object.assign({id:d.id},d.data()); })
+        .filter(function(b){ return _isActiveBooking(b); });
       renderGrid();
     })
     .catch(function(e){
@@ -5410,13 +5638,34 @@ function loadMonthBookings(){
     .then(function(snap){
       monthBookingsCache = snap.docs
         .map(function(d){ return Object.assign({id:d.id},d.data()); })
-        .filter(function(b){ return b.status==='confirmed'; });
+        .filter(function(b){ return _isActiveBooking(b); });
       renderMonthView();
     })
     .catch(function(e){
       console.warn('loadMonthBookings error:',e);
       monthBookingsCache = [];
       renderMonthView();
+    });
+}
+
+/* ── Load All Bookings (admin/owner only) — last 90 days + all future ── */
+function loadAllBookings(){
+  if(!db||!isAdminLike()){ renderManage(); return; }
+  var cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate()-90);
+  var cutoff = formatDate(cutoffDate);
+  db.collection('bookings')
+    .where('date','>=',cutoff)
+    .get()
+    .then(function(snap){
+      allBookingsCache = snap.docs.map(function(d){ return Object.assign({id:d.id},d.data()); });
+      allBookingsCache.sort(function(a,b){ return (b.date||'').localeCompare(a.date||'') || (b.startTime||'').localeCompare(a.startTime||''); });
+      renderManage();
+    })
+    .catch(function(e){
+      console.warn('loadAllBookings error:',e);
+      allBookingsCache = [];
+      renderManage();
     });
 }
 
@@ -5470,25 +5719,176 @@ function loadMyBookings(){
     });
 }
 
-/* ── Cancel Booking (owner / admin — deletes entire booking) ── */
-function cancelBooking(id){
-  if(!confirm('確認取消此預約？\n\n整筆預約將被刪除，所有參與者都會失去此預約。')) return;
+/* ── Cancel / Void dialog ── */
+function _showCancelDlg(id, isVoid, callback){
+  _cancelDlgBookingId = id;
+  _cancelDlgIsVoid    = isVoid;
+  _cancelDlgCallback  = callback || null;
+  var title = isVoid ? '強制作廢' : '取消預約';
+  var desc  = isVoid
+    ? '此操作無法還原，預約將標記為作廢並通知相關人員。請填寫原因。'
+    : '取消後將通知相關人員，紀錄保留供查閱。請填寫原因（選填）。';
+  document.getElementById('cancelDlgTitle').textContent = title;
+  document.getElementById('cancelDlgDesc').textContent  = desc;
+  document.getElementById('cancelDlgReason').value = '';
+  document.getElementById('cancelDlgBackdrop').classList.add('open');
+}
+function _closeCancelDlg(){
+  document.getElementById('cancelDlgBackdrop').classList.remove('open');
+  _cancelDlgBookingId = null; _cancelDlgIsVoid = false; _cancelDlgCallback = null;
+}
+function _cancelDlgBgClick(e){
+  if(e.target===document.getElementById('cancelDlgBackdrop')) _closeCancelDlg();
+}
+function _confirmCancelDlg(){
+  var reason = (document.getElementById('cancelDlgReason').value||'').trim();
+  var id     = _cancelDlgBookingId;
+  var isVoid = _cancelDlgIsVoid;
+  var cb     = _cancelDlgCallback;
+  _closeCancelDlg();
+  if(!id) return;
+  if(isVoid) _executeVoid(id, reason, cb);
+  else       _executeCancel(id, reason, cb);
+}
+
+/* ── Cancel Booking (soft — sets status to 'cancelled') ── */
+function cancelBooking(id, callback){
+  /* Find booking in any cache for time-gate check */
+  var b = _findBookingById(id);
+  if(!b){ showToast('找不到此預約'); return; }
+  if(!_isActiveBooking(b)){ showToast('此預約已取消或作廢'); return; }
+  if(_bookingHasStarted(b)){ showToast('預約已開始，無法取消'); return; }
+  if(_withinCancelCutoff(b)){ showToast('距開始不足 30 分鐘，無法取消'); return; }
+  _showCancelDlg(id, false, callback);
+}
+function _executeCancel(id, reason, callback){
   if(!db){ showToast('無法連線，請稍後再試'); return; }
-  db.collection('bookings').doc(id).delete()
+  var myUid  = currentUser?(currentUser.uid||currentUser.userId||currentUser.id||''):'';
+  var myName = currentUser?(currentUser.realName||currentUser.displayName||''):'';
+  /* Find booking snapshot for notification */
+  var b = _findBookingById(id);
+  var updateObj = {
+    status:          'cancelled',
+    cancelledBy:     myUid,
+    cancelledByName: myName,
+    cancelledAt:     TS(),
+    updatedAt:       TS()
+  };
+  if(reason) updateObj.cancelReason = reason;
+  db.collection('bookings').doc(id).update(updateObj)
     .then(function(){
       showToast('預約已取消');
       _dvCloseDetail();
+      /* Patch caches */
+      _patchBookingInAllCaches(id, updateObj);
       loadMyBookings();
       loadWeekBookings();
       loadMonthBookings();
+      if(allBookingsCache) loadAllBookings();
+      /* Send notifications if admin/owner cancelled on behalf of others */
+      if(b && (isAdminLike()) && b.createdBy !== myUid){
+        _sendBookingNotifications(b, 'cancelled', reason||'管理員取消', myUid, myName);
+      }
+      if(callback) callback();
     })
     .catch(function(e){ console.error('cancelBooking error:',e); showToast('取消失敗：'+e.message); });
 }
 
+/* ── Void Booking (owner only — force-void even after start) ── */
+function voidBooking(id, callback){
+  var b = _findBookingById(id);
+  if(!b){ showToast('找不到此預約'); return; }
+  if(!_isActiveBooking(b)){ showToast('此預約已取消或作廢'); return; }
+  if(_currentRole()!=='owner'){ showToast('僅 Owner 可強制作廢'); return; }
+  _showCancelDlg(id, true, callback);
+}
+function _executeVoid(id, reason, callback){
+  if(!db){ showToast('無法連線，請稍後再試'); return; }
+  var myUid  = currentUser?(currentUser.uid||currentUser.userId||currentUser.id||''):'';
+  var myName = currentUser?(currentUser.realName||currentUser.displayName||''):'';
+  var b = _findBookingById(id);
+  var updateObj = {
+    status:      'void',
+    voidBy:      myUid,
+    voidByName:  myName,
+    voidAt:      TS(),
+    updatedAt:   TS()
+  };
+  if(reason) updateObj.voidReason = reason;
+  db.collection('bookings').doc(id).update(updateObj)
+    .then(function(){
+      showToast('預約已作廢');
+      _dvCloseDetail();
+      _patchBookingInAllCaches(id, updateObj);
+      loadMyBookings();
+      loadWeekBookings();
+      loadMonthBookings();
+      if(allBookingsCache) loadAllBookings();
+      if(b) _sendBookingNotifications(b, 'void', reason||'管理員作廢', myUid, myName);
+      if(callback) callback();
+    })
+    .catch(function(e){ console.error('voidBooking error:',e); showToast('作廢失敗：'+e.message); });
+}
+
+/* ── Notifications on admin cancel/void ── */
+function _sendBookingNotifications(b, action, reason, actorUid, actorName){
+  if(!db || !b) return;
+  var actionLabel = action==='void' ? '作廢' : '取消';
+  var nm = _normaliseMode(b.mode);
+  var courtLabel = {hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[b.court]||b.court;
+  var timeStr = b.date+' '+b.startTime+' '+courtLabel;
+  var msg = '您的 '+timeStr+' 預約已由管理員'+actionLabel+'。' + (reason?'原因：'+reason:'');
+  /* Collect recipients (deduplicated) */
+  var recipients = {};
+  var isTeach = (nm==='teaching');
+  if(isTeach){
+    if(b.coachId) recipients[b.coachId]=true;
+    (b.students||[]).forEach(function(uid){ recipients[uid]=true; });
+  } else {
+    if(b.createdBy) recipients[b.createdBy]=true;
+    (b.players||[]).forEach(function(uid){ recipients[uid]=true; });
+  }
+  delete recipients[actorUid]; /* don't notify the actor */
+  Object.keys(recipients).forEach(function(uid){
+    db.collection('notifications').add({
+      uid:       uid,
+      message:   msg,
+      bookingId: b.id,
+      action:    action,
+      createdAt: TS(),
+      read:      false
+    }).catch(function(e){ console.warn('notification write error:',e); });
+  });
+}
+
+/* ── Find booking across all caches ── */
+function _findBookingById(id){
+  return (weekBookingsCache||[]).find(function(x){return x.id===id;})
+      || (courtBookingsFirestore||[]).find(function(x){return x.id===id;})
+      || (monthBookingsCache||[]).find(function(x){return x.id===id;})
+      || (allBookingsCache||[]).find(function(x){return x.id===id;})
+      || (myBookingsFirestore||[]).find(function(x){return x.id===id;})
+      || (teachingBookings||[]).find(function(x){return x.id===id;})
+      || null;
+}
+
+/* ── Patch booking fields in all local caches (optimistic UI) ── */
+function _patchBookingInAllCaches(id, patch){
+  [weekBookingsCache, courtBookingsFirestore||[], monthBookingsCache, allBookingsCache||[],
+   myBookingsFirestore||[], teachingBookings||[]].forEach(function(arr){
+    if(!Array.isArray(arr)) return;
+    var idx=arr.findIndex(function(x){return x.id===id;});
+    if(idx>=0) Object.assign(arr[idx], patch);
+  });
+}
+
 /* ── Leave Booking (participant — removes self from players[]) ── */
 function leaveBooking(id){
-  if(!confirm('確認退出此預約？')) return;
   if(!db){ showToast('無法連線，請稍後再試'); return; }
+  var b = _findBookingById(id);
+  if(b && _bookingHasStarted(b)){ showToast('預約已開始，無法退出'); return; }
+  if(b && _withinCancelCutoff(b)){ showToast('距開始不足 30 分鐘，無法退出'); return; }
+  if(!confirm('確認退出此預約？')) return;
   var myUid = currentUser?(currentUser.uid||currentUser.userId||currentUser.id||''):'';
   if(!myUid){ showToast('無法識別使用者'); return; }
   db.collection('bookings').doc(id).update({
@@ -5676,16 +6076,17 @@ function submitBooking(){
   var courtShortLabel = (COURT_LABELS[court]||{}).surface+' '+(COURT_LABELS[court]||{}).letter;
   var isExclusive = (mode==='teaching'||mode==='groupClass');
 
-  // Step 1: check for existing confirmed bookings in the same slot
+  // Step 1: check for existing active bookings in the same slot
   db.collection('bookings')
     .where('court','==',court)
     .where('date','==',date)
     .where('startTime','==',start)
     .where('endTime','==',end)
-    .where('status','==','confirmed')
     .get()
     .then(function(snap){
-      var existing = snap.docs.map(function(d){ return Object.assign({id:d.id},d.data()); });
+      var existing = snap.docs
+        .map(function(d){ return Object.assign({id:d.id},d.data()); })
+        .filter(function(b){ return _isActiveBooking(b); });
 
       if(existing.length > 0){
         var ex = existing[0];
@@ -5747,7 +6148,7 @@ function submitBooking(){
         createdBy:        myUid,
         primaryName:      displayName,   // backward compat
         participantCount: 1,             // backward compat
-        status:           'confirmed',
+        status:           'active',
         createdAt:        TS(),
         updatedAt:        TS()
       };
@@ -5790,5 +6191,18 @@ function render(){
 // Production → renders fire only after status === 'active' confirmed.
 initAuth();
 </script>
+
+<!-- ── Cancel / Void Dialog ── -->
+<div class="cancelDlgBackdrop" id="cancelDlgBackdrop" onclick="_cancelDlgBgClick(event)">
+  <div class="cancelDlg">
+    <div class="cancelDlgTitle" id="cancelDlgTitle">取消預約</div>
+    <div class="cancelDlgDesc"  id="cancelDlgDesc">請填寫取消原因（選填）</div>
+    <textarea class="cancelDlgTextarea" id="cancelDlgReason" rows="3" placeholder="取消原因…"></textarea>
+    <div class="cancelDlgBtns">
+      <button class="cancelDlgCancel"  onclick="_closeCancelDlg()">返回</button>
+      <button class="cancelDlgConfirm" id="cancelDlgConfirmBtn" onclick="_confirmCancelDlg()">確認</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
