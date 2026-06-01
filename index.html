@@ -2050,8 +2050,8 @@ function _liffDbg(label, val){
   _liffDebugLines.push(line);
 }
 function _showLiffDebug(){
-  if(!DEV_ROLE) return; // production: never show debug panel
-  _showAuthGate('login');
+  _showAuthGate('login'); // always switch away from loading spinner
+  if(!DEV_ROLE) return;   // production: hide debug panel content, but keep login screen visible
   var existing = document.getElementById('liffDebugPanel');
   if(existing) existing.remove();
   var pre = document.createElement('pre');
@@ -2166,16 +2166,19 @@ async function initAuth(){
     _liffDbg('permanentLink', _permLink + ' (fallback, err:' + (e.message||e) + ')');
   }
 
-  // Step 2: not logged in
+  // Step 2a: external browser — unconditional check, regardless of isLoggedIn()
+  // isLoggedIn() can be true in external browser if LINE token is cached,
+  // which previously caused liff.getProfile() to hang and block the loading spinner.
+  if(!_inClient){
+    _liffDbg('not in LINE client → show external browser guide');
+    _showAuthGate('login');
+    _showOpenInLineGuide(_permLink);
+    return;
+  }
+
+  // Step 2b: inside LINE but not yet authorized → show login button
   if(!_loggedIn){
-    if(!_inClient){
-      // External browser (Safari): LIFF OAuth unreliable → guide to open via LINE
-      _showLiffDebug();
-      _showOpenInLineGuide(_permLink);
-    } else {
-      // Inside LINE but not yet authorized → show login button
-      _showLiffDebug();
-    }
+    _showLiffDebug();
     return;
   }
 
