@@ -4691,7 +4691,9 @@ function _renderFinDetail(source, isAdmin, fmt){
 
 /* ── Finance: Chart tab (router) ── */
 function _renderFinChart(source, income, expense, annual, monthly, donate, fmt){
-  var modes = [{key:'income',label:'收入類別'},{key:'expense',label:'支出類別'},{key:'member',label:'成員貢獻'}];
+  var modes = [{key:'income',label:'收入類別'},{key:'expense',label:'支出類別'}];
+  // reset stale 'member' mode if user had it selected before
+  if(_finChartMode === 'member') _finChartMode = 'income';
   var html = '<div class="finChartModeSwitcher">';
   modes.forEach(function(m){
     var a = _finChartMode===m.key;
@@ -4699,8 +4701,7 @@ function _renderFinChart(source, income, expense, annual, monthly, donate, fmt){
   });
   html += '</div>';
   if(_finChartMode==='income')  html += _finChartIncome(source, income, annual, monthly, donate, fmt);
-  else if(_finChartMode==='expense') html += _finChartExpense(source, expense, fmt);
-  else                          html += _finChartMember(source, fmt);
+  else                          html += _finChartExpense(source, expense, fmt);
   return html;
 }
 
@@ -4733,8 +4734,6 @@ function _finChartIncome(source, income, annual, monthly, donate, fmt){
       +'</div>';
   });
   html += '</div>';
-  html += '<div class="finChartSummaryRow"><span class="finChartSummaryLabel">平均每日收入</span>'
-    +'<span class="finChartSummaryVal">'+fmt(Math.round(income/365))+'</span></div>';
   return html;
 }
 
