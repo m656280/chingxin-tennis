@@ -2338,6 +2338,7 @@ const today = new Date();
 let selectedDate = new Date(today);
 let currentView = 'week';
 let _courtSurfaceFilter = 'hard'; // 'hard' | 'clay'
+var _wkRenderedHourPx = 44;  /* last HOUR_PX used in renderWeekGrid — for nowLine ticker sync */
 /* Firebase state — null = use mock data fallback */
 let currentUser = null;
 let usersCache = {};          // uid → user doc
@@ -2494,8 +2495,8 @@ function startNowLineTicker(){
     /* ── Week view: update all nowLines + time label ── */
     if(currentView==='week'){
       var _wkH=getCourtOpenHours(selectedDate);
-      var WK_S_MIN=timeToMin(_wkH.start), WK_E_MIN=timeToMin(_wkH.end), H_PX=44;
-      var newTop=((nowMin-WK_S_MIN)/60)*H_PX;
+      var WK_S_MIN=timeToMin(_wkH.start), WK_E_MIN=timeToMin(_wkH.end);
+      var newTop=((nowMin-WK_S_MIN)/60)*_wkRenderedHourPx;
       var inRange=(nowMin>=WK_S_MIN && nowMin<WK_E_MIN);
       document.querySelectorAll('.wkCalNowLine').forEach(function(nl){
         nl.style.top=(inRange?newTop:-9999)+'px';
@@ -2567,14 +2568,24 @@ function loadWeekBookings(){
 
 /* ── Render: Week View (day-picker + single-day dual-court grid) ── */
 function renderWeekGrid(){
-  var HOUR_PX  = 44;   // px per hour
+  var HOUR_PX  = 44;   // px per hour (weekends / overridden below for weekdays)
 
   /* Dynamic open hours based on date type */
   var _wkOpenHours = getCourtOpenHours(selectedDate);
   var WK_START_MIN = timeToMin(_wkOpenHours.start); // e.g. 1050 (17:30) or 360 (06:00)
   var WK_END_MIN   = timeToMin(_wkOpenHours.end);   // e.g. 1440 (24:00)
   var WK_HOURS_MIN = WK_END_MIN - WK_START_MIN;     // total minutes in grid
+
+  /* Weekday (17:30–24:00 only): expand HOUR_PX so the grid fills the scroll container.
+   * Scroll container max-height ≈ window.innerHeight − 270px (matches CSS calc).
+   * Floor avoids triggering a scrollbar; min 48 so bookings stay readable. */
+  if(_wkOpenHours.start === '17:30'){
+    var _wdAvail = Math.max(260, window.innerHeight - 270);
+    HOUR_PX = Math.max(48, Math.floor(_wdAvail / (WK_HOURS_MIN / 60)));
+  }
+
   var GRID_H       = (WK_HOURS_MIN / 60) * HOUR_PX;
+  _wkRenderedHourPx = HOUR_PX; /* sync to ticker */
 
   var el = document.getElementById('weekGridContent');
   if(!el) return;
@@ -4372,6 +4383,8 @@ function renderFinance(){
   // Admin button visibility
   const exportBtn = document.getElementById('finExportBtn');
   if(exportBtn) exportBtn.style.display = isAdmin ? '' : 'none';
+  const addBtn = document.getElementById('finAddBtn');
+  if(addBtn) addBtn.style.display = isAdmin ? '' : 'none';
 
   // Search bar: only on detail tab
   const searchBar = document.getElementById('finSearchInput');
@@ -4515,6 +4528,12 @@ function _finOpenMemberSheet(enc){
   var expInput=document.getElementById('fmsExpireInput');
   if(expInput) expInput.value=(data.expireDate||'').replace(/\//g,'-');
   sheet.dataset.memberId = data.id||'';
+  // Layer 1 — UI: hide admin-only actions for non-admins
+  var _fmsCanEdit = _isFinanceAdmin();
+  var _fmsActions = sheet.querySelector('.fmsActions');
+  var _fmsResign  = sheet.querySelector('.fmsResignBtn');
+  if(_fmsActions) _fmsActions.style.display = _fmsCanEdit ? '' : 'none';
+  if(_fmsResign)  _fmsResign.style.display  = _fmsCanEdit ? '' : 'none';
   backdrop.classList.add('open');
   setTimeout(function(){ sheet.classList.add('open'); },10);
 }
@@ -4525,33 +4544,36 @@ function _finCloseMemberSheet(){
   if(backdrop) backdrop.classList.remove('open');
 }
 function _finMarkPaid(){
+  if(!_isFinanceAdmin()){ showToast('僅管理員可操作'); return; } // Layer 2
   var sheet=document.getElementById('finMemberSheet');
   if(!sheet) return;
   var mid=sheet.dataset.memberId;
-  if(db && mid){ db.collection('members').doc(mid).update({expirePaid:true}).catch(function(){}); }
+  if(db && mid && _isFinanceAdmin()){ db.collection('members').doc(mid).update({expirePaid:true}).catch(function(){}); } // Layer 3
   if(usersCache[mid]) usersCache[mid].expirePaid=true;
   _finCloseMemberSheet();
   setTimeout(function(){ renderFinance(); showToast('已標記收費，從提醒清單移除'); },260);
 }
 function _finUpdateExpiry(){
+  if(!_isFinanceAdmin()){ showToast('僅管理員可操作'); return; } // Layer 2
   var sheet=document.getElementById('finMemberSheet');
   if(!sheet) return;
   var mid=sheet.dataset.memberId;
   var val=(document.getElementById('fmsExpireInput')||{}).value;
   if(!val){ showToast('請選擇新到期日'); return; }
   var newDate=val.replace(/-/g,'/');
-  if(db && mid){ db.collection('members').doc(mid).update({expireDate:newDate,expirePaid:false}).catch(function(){}); }
+  if(db && mid && _isFinanceAdmin()){ db.collection('members').doc(mid).update({expireDate:newDate,expirePaid:false}).catch(function(){}); } // Layer 3
   if(usersCache[mid]){ usersCache[mid].expireDate=newDate; usersCache[mid].expirePaid=false; }
   _finCloseMemberSheet();
   setTimeout(function(){ renderFinance(); showToast('到期日已更新'); },260);
 }
 function _finMarkResigned(){
+  if(!_isFinanceAdmin()){ showToast('僅管理員可操作'); return; } // Layer 2
   if(!confirm('確定將此會員標記為退會？財務紀錄將保留。')) return;
   var sheet=document.getElementById('finMemberSheet');
   if(!sheet) return;
   var mid=sheet.dataset.memberId;
   var now=new Date().toISOString();
-  if(db && mid){ db.collection('members').doc(mid).update({status:'resigned',resignedAt:now}).catch(function(){}); }
+  if(db && mid && _isFinanceAdmin()){ db.collection('members').doc(mid).update({status:'resigned',resignedAt:now}).catch(function(){}); } // Layer 3
   if(usersCache[mid]){ usersCache[mid].status='resigned'; usersCache[mid].resignedAt=now; }
   _finCloseMemberSheet();
   setTimeout(function(){ renderFinance(); showToast('已標記退會（財務紀錄保留）'); },260);
@@ -4970,17 +4992,144 @@ function exportFinanceCSV(){
   const bom = '﻿';
   const csv = bom + [header.join(',')].concat(rows).join('\r\n');
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-  const url  = URL.createObjectURL(blob);
-
   const filename = 'chingxin-finance-'+_finYear+'.csv';
 
-  const a = document.createElement('a');
+  // iOS / LINE WebView: a.download unreliable — show export action sheet instead
+  var _csvIsIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  var _csvIsLine = /Line\//i.test(navigator.userAgent);
+  if(_csvIsIOS || _csvIsLine){
+    _showExportSheet(csv, blob, filename);
+    return;
+  }
+
+  // Desktop / Android Chrome: existing download behavior unchanged
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
   a.href = url; a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
   showToast('已匯出 '+filename);
+}
+
+/* ── Finance: Export Action Sheet (iOS / LINE WebView) ── */
+function _showExportSheet(csvText, blob, filename){
+  var old = document.getElementById('_finExpSheet');
+  if(old) old.remove();
+  var oldBd = document.getElementById('_finExpBd');
+  if(oldBd) oldBd.remove();
+
+  // Web Share API capability detection
+  var csvFile = null;
+  try{ csvFile = new File([blob], filename, {type:'text/csv'}); }catch(e){}
+  var canShareFiles = false;
+  try{ canShareFiles = !!(navigator.canShare && csvFile && navigator.canShare({files:[csvFile]})); }catch(e){}
+  var canShare = !!navigator.share;
+
+  var bd = document.createElement('div');
+  bd.id = '_finExpBd';
+  bd.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.28);z-index:299;';
+  bd.onclick = _closeExportSheet;
+
+  var sh = document.createElement('div');
+  sh.id = '_finExpSheet';
+  sh.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:var(--color-surface);'
+    +'border-radius:18px 18px 0 0;z-index:300;padding:0 0 env(safe-area-inset-bottom,16px);'
+    +'box-shadow:0 -4px 32px rgba(0,0,0,0.14);transform:translateY(100%);'
+    +'transition:transform 280ms cubic-bezier(0.32,0.72,0,1);';
+
+  var _btnSt = 'display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;'
+    +'background:var(--color-surface-alt);border:1px solid var(--color-border-soft);cursor:pointer;'
+    +'font-size:14px;color:var(--color-text-primary);text-align:left;font-family:var(--font-body);width:100%;';
+
+  var shareRowHtml = canShare
+    ? '<button id="_expShareBtn" style="'+_btnSt+'">'
+        +'<span style="font-size:18px">&#x2197;</span>'
+        +'<div style="flex:1"><div>分享檔案</div>'
+        +(canShareFiles?'':'<div style="font-size:11px;color:var(--color-text-muted)">以文字格式分享</div>')
+        +'</div></button>'
+    : '';
+
+  sh.innerHTML = [
+    '<div style="width:36px;height:4px;border-radius:2px;background:var(--color-border);margin:10px auto 0"></div>',
+    '<div style="padding:16px 20px 14px;border-bottom:1px solid var(--color-border-soft)">',
+      '<div style="font-family:var(--font-display);font-size:16px;color:var(--color-text-primary)">已產生 CSV 檔案</div>',
+      '<div style="font-size:12px;color:var(--color-text-muted);margin-top:4px">'+filename+'</div>',
+    '</div>',
+    '<div style="margin:10px 20px 2px;padding:10px 14px;background:var(--color-surface-alt);border-radius:10px;'
+      +'font-size:12px;color:var(--color-text-muted);line-height:1.6">',
+      '手機瀏覽器可能不會顯示儲存位置，請從分享或下載項目中查看',
+    '</div>',
+    '<div style="padding:10px 20px;display:flex;flex-direction:column;gap:9px">',
+      '<button id="_expDownloadBtn" style="'+_btnSt+'">'
+        +'<span style="font-size:18px">&#x2B07;</span><span>下載檔案</span></button>',
+      shareRowHtml,
+      '<button id="_expCopyBtn" style="'+_btnSt+'">'
+        +'<span style="font-size:18px">&#x2398;</span><span>複製 CSV 內容</span></button>',
+    '</div>',
+    '<button onclick="_closeExportSheet()" style="width:calc(100% - 40px);margin:0 20px 4px;padding:12px;'
+      +'text-align:center;border-radius:10px;background:transparent;font-size:13px;'
+      +'color:var(--color-text-muted);border:1px solid var(--color-border-soft);cursor:pointer;'
+      +'font-family:var(--font-body)">關閉</button>',
+  ].join('');
+
+  document.body.appendChild(bd);
+  document.body.appendChild(sh);
+  setTimeout(function(){ sh.style.transform = 'translateY(0)'; }, 10);
+
+  // Download button — keep blob alive by deferring revoke
+  document.getElementById('_expDownloadBtn').onclick = function(){
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1500);
+    showToast('請查看下載項目或通知列');
+  };
+
+  // Share button
+  var shareBtn = document.getElementById('_expShareBtn');
+  if(shareBtn && canShare){
+    shareBtn.onclick = function(){
+      var shareData = (canShareFiles && csvFile)
+        ? {files:[csvFile], title:filename}
+        : {text:csvText, title:filename};
+      navigator.share(shareData)
+        .then(function(){ _closeExportSheet(); })
+        .catch(function(e){ if(e.name !== 'AbortError') showToast('分享失敗，請改用複製'); });
+    };
+  }
+
+  // Copy button — strip BOM before writing to clipboard
+  document.getElementById('_expCopyBtn').onclick = function(){
+    var cleanCsv = csvText.replace(/^﻿/, '');
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(cleanCsv)
+        .then(function(){ showToast('CSV 已複製到剪貼簿'); _closeExportSheet(); })
+        .catch(function(){ _expFallbackCopy(cleanCsv); });
+    } else {
+      _expFallbackCopy(cleanCsv);
+    }
+  };
+}
+function _closeExportSheet(){
+  var sh = document.getElementById('_finExpSheet');
+  var bd = document.getElementById('_finExpBd');
+  if(sh){ sh.style.transform = 'translateY(100%)'; setTimeout(function(){ if(sh.parentNode) sh.remove(); }, 300); }
+  if(bd) bd.remove();
+}
+function _expFallbackCopy(text){
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  var ok = false;
+  try{ ok = document.execCommand('copy'); }catch(e){}
+  document.body.removeChild(ta);
+  showToast(ok ? 'CSV 已複製到剪貼簿' : '複製失敗，請手動選取內容');
+  if(ok) _closeExportSheet();
 }
 
 /* ── Finance: 會籍到期日計算 ── */
