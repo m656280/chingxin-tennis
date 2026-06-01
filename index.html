@@ -2050,6 +2050,7 @@ function _liffDbg(label, val){
   _liffDebugLines.push(line);
 }
 function _showLiffDebug(){
+  if(!DEV_ROLE) return; // production: never show debug panel
   _showAuthGate('login');
   var existing = document.getElementById('liffDebugPanel');
   if(existing) existing.remove();
