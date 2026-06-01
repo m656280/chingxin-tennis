@@ -1237,8 +1237,8 @@ button {
 .authCenter { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100dvh; padding:40px 32px; text-align:center; }
 .authSpinner { width:28px; height:28px; border:2px solid var(--color-border-soft); border-top-color:var(--color-text-muted); border-radius:50%; animation:spin 0.75s linear infinite; }
 .authBrand { font-family:var(--font-display); font-size:26px; letter-spacing:0.18em; color:var(--color-text-primary); margin-bottom:5px; }
-.authBrandSub { font-size:10px; letter-spacing:0.12em; color:var(--color-text-muted); }
-.authBrandCn  { font-size:9.5px; letter-spacing:0.03em; color:var(--color-text-muted); margin-top:4px; }
+.authBrandSub { font-size:10px; letter-spacing:0.12em; color:var(--color-text-muted); margin-top:10px; }
+.authBrandCn  { font-size:22px; letter-spacing:0.05em; color:#222; font-weight:600; }
 .authLineBtn { display:inline-flex; align-items:center; gap:10px; padding:14px 28px; border-radius:12px; background:#06C755; color:#fff; border:none; font-size:15px; letter-spacing:0.04em; cursor:pointer; font-family:var(--font-body); box-shadow:0 2px 16px rgba(6,199,85,0.25); transition:opacity 150ms; margin-top:40px; }
 .authLineBtn:active { opacity:0.8; }
 .authStateIcon { font-size:38px; margin-bottom:20px; }
@@ -1269,8 +1269,7 @@ button {
   </div>
   <!-- LINE Login — two sub-states toggled by _showAuthGate('login') -->
   <div id="authLoginScreen" class="authCenter" style="display:none">
-    <div style="margin-bottom:40px">
-      <div class="authBrand">CHING XIN</div>
+    <div style="margin-bottom:40px;text-align:center">
       <div class="authBrandCn">高雄市清心網球協會</div>
       <div class="authBrandSub">Kaohsiung Ching Xin Tennis Association</div>
     </div>
@@ -1891,13 +1890,10 @@ function _renderProfileSheet(){
   if(!isLoggedIn){
     body.innerHTML =
       '<div style="padding:48px 28px 36px;text-align:center">' +
-        '<div style="font-family:var(--font-display);font-size:24px;font-weight:600;' +
-             'color:var(--color-text-primary);letter-spacing:0.12em;margin-bottom:5px">' +
-          'CHING XIN</div>' +
-        '<div style="font-size:9.5px;letter-spacing:0.03em;' +
-             'color:var(--color-text-muted);margin-top:4px">高雄市清心網球協會</div>' +
+        '<div style="font-size:22px;font-weight:600;letter-spacing:0.05em;color:#222">' +
+          '高雄市清心網球協會</div>' +
         '<div style="font-size:10px;letter-spacing:0.12em;' +
-             'color:var(--color-text-muted);margin-bottom:40px">Kaohsiung Ching Xin Tennis Association</div>' +
+             'color:var(--color-text-muted);margin-top:10px;margin-bottom:40px">Kaohsiung Ching Xin Tennis Association</div>' +
         '<p style="font-size:13px;color:var(--color-text-secondary);margin-bottom:32px;line-height:1.7">' +
           '登入後可查看個人資料、<br>預約管理與通知。</p>' +
         '<button class="authLineBtn" style="margin-top:0" ' +
