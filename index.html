@@ -1585,6 +1585,7 @@ button {
         <option value="general">一般</option>
         <option value="teaching">教學</option>
         <option value="groupClass" id="formModeGroupClass">公益團課</option>
+        <option value="event_lock" id="formModeEventLock">活動</option>
       </select>
     </div>
     <div class="formRow" id="formCapacityRow">
@@ -1608,6 +1609,19 @@ button {
     <div class="formRow" id="formTitleRow" style="display:none">
       <label class="formLabel">課程名稱</label>
       <input class="formInput" id="formTitle" type="text" placeholder="例：入門班 Week 3">
+    </div>
+    <!-- Event mode: nature picker (stored as booking title) -->
+    <div class="formRow" id="formEventNatureRow" style="display:none">
+      <label class="formLabel">性質</label>
+      <select class="formSelect" id="formEventNature">
+        <option value="會內賽">會內賽</option>
+        <option value="邀請賽">邀請賽</option>
+        <option value="聯誼賽">聯誼賽</option>
+        <option value="議長盃">議長盃</option>
+        <option value="場地維護">場地維護</option>
+        <option value="協會活動">協會活動</option>
+        <option value="其他">其他</option>
+      </select>
     </div>
     <!-- GroupClass mode: teaching member picker (maps to coachId / coachName) -->
     <div class="formRow" id="formGroupCoachRow" style="display:none">
@@ -2691,7 +2705,8 @@ function renderWeekGrid(){
         photoURL = _mPic(_wkOwn);
       } else {
         var _u   = b.createdBy ? usersCache[b.createdBy] : null;
-        name     = _u ? (_mName(_u)||'—') : (b.primaryName||b.coachName||'—');
+        // event_lock: show title (nature) as card label instead of creator name
+        name     = (nm === 'event_lock') ? (b.title || '活動') : (_u ? (_mName(_u)||'—') : (b.primaryName||b.coachName||'—'));
         photoURL = _mPic(_u);
       }
       var students = Array.isArray(b.students) ? b.students : [];
@@ -4967,9 +4982,11 @@ function exportFinanceCSV(){
   if(!_isFinanceAdmin()){ showToast('僅管理員可匯出'); return; }
   const allRecs = financeRecords;
   const source = allRecs.filter(function(r){
-    return (r.year || parseInt(r.date.slice(0,4),10)) === _finYear;
+    var st = r.status || 'active';
+    return (r.year || parseInt(r.date.slice(0,4),10)) === _finYear
+      && st !== 'void' && st !== 'cancelled' && st !== 'deleted' && st !== 'archived';
   });
-  if(!source.length){ showToast(_finYear+' 年沒有資料可匯出'); return; }
+  if(!source.length){ showToast(_finYear+' 年沒有有效資料可匯出'); return; }
 
   const sorted = source.slice().sort(function(a,b){ return a.date.localeCompare(b.date); });
   const header = ['日期','會員','類型','金額','備註','登記人'];
@@ -5776,8 +5793,9 @@ function _dvShowDetail(enc){
   p.className='dvDetailPanel';
   var isTeach      = !!data.isCoach;
   var isGroupClass = !!data.isGroupClass;
+  var isEventLock  = !!data.isEventLock;
   var isCoachLike  = isTeach || isGroupClass;
-  var modeColor  = isCoachLike ? 'var(--color-clay)' : 'var(--color-hard)';
+  var modeColor  = isCoachLike ? 'var(--color-clay)' : (isEventLock ? 'var(--dot-event)' : 'var(--color-hard)');
   /* avatar */
   var avatarInner = data.photoURL
     ? '<img src="'+data.photoURL+'" style="width:100%;height:100%;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'" alt="">'
@@ -5802,8 +5820,9 @@ function _dvShowDetail(enc){
     (isCoachLike?'<div class="dvDetailCell"><div class="dvDetailCellLabel">學生</div><div class="dvDetailCellValue">'+countStr+'</div></div>':'');
 
   /* title / note (non-teaching) */
+  var _titleLabel = isEventLock ? '性質' : '課程名稱';
   var titleHtml = (!isTeach && data.title)
-    ? '<div class="dvDetailCell" style="grid-column:1/-1"><div class="dvDetailCellLabel">課程名稱</div><div class="dvDetailCellValue">'+_esc(data.title)+'</div></div>'
+    ? '<div class="dvDetailCell" style="grid-column:1/-1"><div class="dvDetailCellLabel">'+_titleLabel+'</div><div class="dvDetailCellValue">'+_esc(data.title)+'</div></div>'
     : '';
   var noteHtml = data.note
     ? '<div class="dvDetailCell" style="grid-column:1/-1"><div class="dvDetailCellLabel">備註</div><div class="dvDetailCellValue" style="font-size:12.5px">'+_esc(data.note)+'</div></div>'
@@ -6276,6 +6295,7 @@ function showBookingDetail(id){
     isCoach: isTeach,
     isGroupClass: isGroupClass,
     isGeneral: isGeneral,
+    isEventLock: normMode === 'event_lock',
     coachId:    b.coachId||'',
     coachName:  name,
     studentIds: students,
@@ -6742,10 +6762,17 @@ function onFormModeChange(){
   var isGroupClass = mode === 'groupClass';
   var isGeneral    = mode === 'general';
 
+  var isEventLock = mode === 'event_lock';
+
   /* Reject groupClass selection for non-admin (extra safety, UI should already hide option) */
   if(isGroupClass && !isAdmin){
     document.getElementById('formMode').value = 'general';
     isGroupClass = false; isGeneral = true;
+  }
+  /* Reject event_lock selection for non-admin */
+  if(isEventLock && !isAdmin){
+    document.getElementById('formMode').value = 'general';
+    isEventLock = false; isGeneral = true;
   }
 
   // Coach row: teaching only, admin-only (required)
@@ -6764,6 +6791,9 @@ function onFormModeChange(){
   // Title row: groupClass only
   var titleRow = document.getElementById('formTitleRow');
   if(titleRow) titleRow.style.display = isGroupClass ? '' : 'none';
+  // Event nature row: event_lock only
+  var evtNatureRow = document.getElementById('formEventNatureRow');
+  if(evtNatureRow) evtNatureRow.style.display = isEventLock ? '' : 'none';
 
   // GroupClass teaching member picker: groupClass admin-only
   var gcRow = document.getElementById('formGroupCoachRow');
@@ -6814,6 +6844,11 @@ function openBookingForm(){
   if(modeSel){ modeSel.value='general'; }
   var gcOpt = document.getElementById('formModeGroupClass');
   if(gcOpt){ gcOpt.hidden = !isAdminLike(); gcOpt.disabled = !isAdminLike(); }
+  var evtOpt = document.getElementById('formModeEventLock');
+  if(evtOpt){ evtOpt.hidden = !isAdminLike(); evtOpt.disabled = !isAdminLike(); }
+  // Reset event nature select to first option
+  var evtNature = document.getElementById('formEventNature');
+  if(evtNature) evtNature.selectedIndex = 0;
   onFormModeChange();
   // Reset extra fields
   var titleEl = document.getElementById('formTitle');
@@ -6862,9 +6897,9 @@ function openBookingForm(){
     Array.from(courtSel.options).forEach(function(opt){
       var isClay = opt.value==='clay_a' || opt.value==='clay_b';
       if(isClay){
+        opt.text     = (opt.value==='clay_a' ? 'Clay A' : 'Clay B') + ' — 紅土';
+        opt.hidden   = !isAdminLike();
         opt.disabled = !isAdminLike();
-        var label = opt.value==='clay_a' ? 'Clay A' : 'Clay B';
-        opt.text = label + ' — 紅土' + (!isAdminLike() ? '（管理員限定）' : '');
       }
     });
     if(!isAdminLike() && (courtSel.value==='clay_a' || courtSel.value==='clay_b')){
@@ -7134,13 +7169,18 @@ function submitBooking(){
   var capacity = parseInt((document.getElementById('formCapacity')||{}).value||'2', 10) || 2;
   var coachId  = ((document.getElementById('formCoach')||{}).value||'') || null;
   var title    = (((document.getElementById('formTitle')||{}).value)||'').trim();
+  // event_lock: nature value stored as title
+  if(mode === 'event_lock'){
+    title = ((document.getElementById('formEventNature')||{}).value) || '其他';
+  }
   var note     = (((document.getElementById('formNote')||{}).value)||'').trim();
   var bookFor  = ((document.getElementById('formBookFor')||{}).value)||'';
 
   if(!date||!start||!end){ showToast('請填寫完整資料'); return; }
-  if((court==='clay_a'||court==='clay_b')&&!isAdminLike()){ showToast('紅土場地僅管理員可預約'); return; }
-  /* Permission check: groupClass is Owner/Admin only */
-  if(mode==='groupClass' && !isAdminLike()){ showToast('公益團課僅管理員可建立'); return; }
+  if((court==='clay_a'||court==='clay_b')&&!isAdminLike()){ showToast('紅土場地僅限管理員預約'); return; }
+  /* Permission check: groupClass / event_lock are Owner/Admin only */
+  if(mode==='groupClass'  && !isAdminLike()){ showToast('公益團課僅管理員可建立'); return; }
+  if(mode==='event_lock'  && !isAdminLike()){ showToast('活動模式僅管理員可建立'); return; }
   if(timeToMin(end)<=timeToMin(start)){ showToast('結束時間需晚於開始時間'); return; }
   /* Validate start time against the date's open hours */
   var _fp=date.split('-');
@@ -7182,7 +7222,7 @@ function submitBooking(){
   if(btn){ btn.disabled=true; btn.textContent='確認中…'; }
 
   var courtShortLabel = (COURT_LABELS[court]||{}).surface+' '+(COURT_LABELS[court]||{}).letter;
-  var isExclusive = (mode==='teaching'||mode==='groupClass');
+  var isExclusive = (mode==='teaching'||mode==='groupClass'||mode==='event_lock');
 
   // Step 1: check for existing active bookings in the same slot
   db.collection('bookings')
@@ -7200,15 +7240,15 @@ function submitBooking(){
         var ex = existing[0];
         var exMode = _normaliseMode(ex.mode);
 
-        // lesson / groupClass cannot share a slot with anything
+        // exclusive modes cannot share a slot with anything
         if(isExclusive){
-          showToast('此時段已有預約，教學／團課需獨占場地');
+          showToast(mode==='event_lock' ? '此時段已有預約，活動需獨占場地' : '此時段已有預約，教學／團課需獨占場地');
           if(btn){ btn.disabled=false; btn.textContent='確認預約'; }
           return;
         }
-        // existing is lesson/groupClass → block
-        if(exMode==='teaching'||exMode==='groupClass'){
-          showToast('此時段已被教學或團課佔用');
+        // existing is exclusive mode → block
+        if(exMode==='teaching'||exMode==='groupClass'||exMode==='event_lock'){
+          showToast(exMode==='event_lock' ? '此時段已被活動佔用' : '此時段已被教學或團課佔用');
           if(btn){ btn.disabled=false; btn.textContent='確認預約'; }
           return;
         }
