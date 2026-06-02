@@ -1593,8 +1593,8 @@ button {
       <div class="aboutBlockText">
         HARD A · HARD B — 硬地標準場<br>
         CLAY A · CLAY B — 紅土場地<br>
-        平日開放時段：17:30 – 24:00<br>
-        週末 / 假日：06:00 – 24:00
+        平日開放時段：17:30 – 21:30<br>
+        週末 / 假日：08:00 – 21:30
       </div>
     </div>
     <div class="aboutDivider"></div>
@@ -2630,14 +2630,20 @@ function scrollToNow(){
 /* ── Court: Live nowLine ticker (every minute) ── */
 /* ── Court open hours by date type ── */
 /* Priority: weekend → national holiday → school holiday → weekday */
+/* ── Business Hours — single source of truth for all views & form selectors ── */
+const BUSINESS_HOURS = {
+  weekday: { start: '17:30', end: '21:30' },
+  holiday: { start: '08:00', end: '21:30' },
+};
+
 function getCourtOpenHours(date){
   var ds  = formatDate(date);
   var dow = date.getDay();
-  if(dow === 0 || dow === 6) return { start:'06:00', end:'24:00' };
-  if(nationalHolidays.indexOf(ds) >= 0) return { start:'06:00', end:'24:00' };
+  if(dow === 0 || dow === 6) return BUSINESS_HOURS.holiday;
+  if(nationalHolidays.indexOf(ds) >= 0) return BUSINESS_HOURS.holiday;
   var inHoliday = schoolHolidayRanges.some(function(r){ return ds >= r.start && ds <= r.end; });
-  if(inHoliday) return { start:'06:00', end:'24:00' };
-  return { start:'17:30', end:'24:00' };
+  if(inHoliday) return BUSINESS_HOURS.holiday;
+  return BUSINESS_HOURS.weekday;
 }
 
 function startNowLineTicker(){
@@ -2659,9 +2665,10 @@ function startNowLineTicker(){
     }
     /* ── Court/day view: update .timeGridWrapper nowLine ── */
     var we=isWeekend(selectedDate);
-    var openMin=timeToMin(we?'05:30':'17:30');
+    var _doh=getCourtOpenHours(selectedDate);
+    var openMin=timeToMin(_doh.start);
     var nl=document.querySelector('.timeGridWrapper .nowLine');
-    if(nl&&nowMin>=openMin&&nowMin<timeToMin('24:00')){
+    if(nl&&nowMin>=openMin&&nowMin<=timeToMin(_doh.end)){
       var offset=(nowMin-openMin)/SLOT_MIN;
       nl.style.top=(offset*SLOT_HEIGHT)+'px';
     }
@@ -2670,9 +2677,9 @@ function startNowLineTicker(){
 
 /* ── Week / Grid Helpers ── */
 function getDaySlots(weekend){
-  const open=weekend?'05:30':'17:30';
-  const out=[]; let cur=timeToMin(open);
-  while(cur<timeToMin('24:00')){ out.push(minToTime(cur)); cur+=SLOT_MIN; }
+  const h = weekend ? BUSINESS_HOURS.holiday : BUSINESS_HOURS.weekday;
+  const out=[]; let cur=timeToMin(h.start);
+  while(cur<=timeToMin(h.end)){ out.push(minToTime(cur)); cur+=SLOT_MIN; }
   return out;
 }
 function getSlotPosition(start,end,open){
@@ -2730,10 +2737,10 @@ function renderWeekGrid(){
   var WK_END_MIN   = timeToMin(_wkOpenHours.end);   // e.g. 1440 (24:00)
   var WK_HOURS_MIN = WK_END_MIN - WK_START_MIN;     // total minutes in grid
 
-  /* Weekday (17:30–24:00 only): expand HOUR_PX so the grid fills the scroll container.
+  /* Weekday (17:30–21:30): expand HOUR_PX so the grid fills the scroll container.
    * Scroll container max-height ≈ window.innerHeight − 270px (matches CSS calc).
    * Floor avoids triggering a scrollbar; min 48 so bookings stay readable. */
-  if(_wkOpenHours.start === '17:30'){
+  if(_wkOpenHours.start === BUSINESS_HOURS.weekday.start){
     var _wdAvail = Math.max(260, window.innerHeight - 270);
     HOUR_PX = Math.max(48, Math.floor(_wdAvail / (WK_HOURS_MIN / 60)));
   }
@@ -2921,7 +2928,7 @@ function renderDayHeader(){
 /* ── Render: Time Grid ── */
 function renderGrid(){
   const we=isWeekend(selectedDate);
-  const open=we?'05:30':'17:30';
+  const _rgh=getCourtOpenHours(selectedDate); const open=_rgh.start;
   const slots=getDaySlots(we);
   const grid=document.getElementById('grid');
   grid.style.gridTemplateRows='repeat('+slots.length+', '+SLOT_HEIGHT+'px)';
@@ -2960,7 +2967,7 @@ function renderGrid(){
   if(isSameDay(selectedDate,today)){
     const nowMin=today.getHours()*60+today.getMinutes();
     const openMin=timeToMin(open);
-    if(nowMin>=openMin&&nowMin<timeToMin('24:00')){
+    if(nowMin>=openMin&&nowMin<=timeToMin(_rgh.end)){
       const offset=(nowMin-openMin)/SLOT_MIN;
       html+='<div class="nowLine" style="top:'+(offset*SLOT_HEIGHT)+'px"></div>';
     }
@@ -7408,13 +7415,14 @@ function _populateFormTimeSels(dateStr){
     : today;
   var hours    = getCourtOpenHours(d);
   var startMin = timeToMin(hours.start);
+  var endMin   = timeToMin(hours.end);
   var times = []; var cur = startMin;
-  while(cur < timeToMin('24:00')){ times.push(minToTime(cur)); cur += 30; }
+  while(cur <= endMin){ times.push(minToTime(cur)); cur += 30; }
   var opts = times.map(function(t){ return '<option value="'+t+'">'+t+'</option>'; }).join('');
   startSel.innerHTML = opts;
   endSel.innerHTML   = opts;
-  /* Keep sensible defaults; 19:00 / 21:00 always fall within open range */
-  startSel.value = times.indexOf('19:00') >= 0 ? '19:00' : times[0] || '';
+  /* Default: start 19:00 (weekday) / 09:00 (holiday), end 21:00 */
+  startSel.value = times.indexOf('19:00') >= 0 ? '19:00' : (times.indexOf('09:00') >= 0 ? '09:00' : times[0] || '');
   endSel.value   = times.indexOf('21:00') >= 0 ? '21:00' : (times[Math.min(4, times.length-1)] || '');
 }
 
@@ -7868,6 +7876,10 @@ function submitBooking(){
   var _oh=getCourtOpenHours(_fd);
   if(timeToMin(start)<timeToMin(_oh.start)){
     showToast('此日期場地開放時間為 '+_oh.start+'，請重新選擇開始時間');
+    return;
+  }
+  if(timeToMin(end)>timeToMin(_oh.end)){
+    showToast('此日期場地關閉時間為 '+_oh.end+'，請重新選擇結束時間');
     return;
   }
   // Coach self-booking: coachId = own uid (formCoach is hidden for coach role)
