@@ -413,6 +413,14 @@ button {
 .bk-inactive { opacity:0.55; }
 
 /* ── All-Bookings accordion ── */
+.notifCard { background:var(--color-surface); border:1px solid var(--color-border); border-radius:10px;
+  margin-bottom:8px; padding:12px 14px; cursor:pointer; transition:background 120ms; }
+.notifCard:active { background:var(--color-surface-alt); }
+.notifCard.unread { border-left:3px solid var(--color-clay); padding-left:11px; }
+.notifCardTitle { font-size:12.5px; font-weight:700; color:var(--color-clay); margin-bottom:4px; letter-spacing:0.03em; }
+.notifCardTime  { font-size:13px; color:var(--color-text-primary); font-weight:500; margin-bottom:3px; }
+.notifCardMeta  { font-size:11.5px; color:var(--color-text-muted); line-height:1.6; }
+.notifEmptyHint { font-size:12.5px; color:var(--color-text-muted); padding:12px 0; text-align:center; }
 .abSection { border:1px solid var(--color-border); border-radius:10px; margin-bottom:10px; overflow:hidden; }
 .abSectionHdr { display:flex; align-items:center; justify-content:space-between; padding:11px 14px;
   background:var(--color-surface); cursor:pointer; gap:8px; -webkit-tap-highlight-color:transparent; }
@@ -1913,6 +1921,7 @@ function _showMainApp(){
   loadFinanceRecords();   // sets up Firestore listener; will call renderFinance() when data arrives
   loadUsersCache();
   loadMyBookings();
+  loadMyNotifications();  // personal notifications (booking cancelled by admin etc.)
 }
 
 /* ── Profile Sheet: auth-aware renderer ────────────────────────────────
@@ -2520,6 +2529,8 @@ let _coachStatsMonth   = new Date().getMonth() + 1; // coach stats: selected mon
 let teachingBookings   = null;   // null=not loaded; Array=loaded teaching booking docs
 let announcementsCache = [];  // manage: announcements from Firestore
 let _announceLastReadTs = parseInt(localStorage.getItem('qx_announceLastRead')||'0',10); // 未讀追蹤
+let notificationsCache = []; // user's personal notifications (booking cancelled etc.)
+let _notifUnsubscribe  = null; // Firestore onSnapshot unsubscribe fn for notifications
 let financeRecords = [];      // local array; Firestore layer can be added later
 let _finSearchQuery = '';     // finance search filter state
 let _finYear = 2026;    // active year ledger (fixed range 2026–2036)
@@ -3351,11 +3362,23 @@ function _renderAllBookingsTab(el){
     }
     var actionsHtml = actions ? '<div class="abRowActions">'+actions+'</div>' : '';
 
+    // For cancelled/void bookings: show cancel details inline
+    var cancelMeta = '';
+    if(!_isActiveBooking(b)){
+      if(b.cancelledByName) cancelMeta += '取消：'+_esc(b.cancelledByName);
+      if(b.cancelReason)    cancelMeta += '　原因：'+_esc(b.cancelReason);
+      if(b.cancelledAt){
+        var _abCat = b.cancelledAt.toDate ? b.cancelledAt.toDate() : new Date(b.cancelledAt);
+        if(!isNaN(_abCat.getTime()))
+          cancelMeta += '　'+_abCat.toLocaleDateString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
+      }
+    }
     return '<div class="abRow">'+
       '<div class="abRowDate">'+b.date+'<br>'+b.startTime+'–'+b.endTime+'</div>'+
       '<div class="abRowMain">'+
         '<div class="abRowTime">'+courtLbl(b.court)+'　'+modeLbl(b.mode)+'　'+statusChip+'</div>'+
         '<div class="abRowMeta">'+_esc(parts)+'</div>'+
+        (cancelMeta?'<div class="abRowMeta" style="color:var(--color-clay);margin-top:2px;font-size:11.5px">'+cancelMeta+'</div>':'')+
       '</div>'+
       actionsHtml+
     '</div>';
@@ -3997,7 +4020,8 @@ function _getManageBadgeCount(){
            : (typeof a.updatedAt === 'number' ? a.updatedAt : 0);
     return ts > _announceLastReadTs;
   }).length;
-  return pendingCount + sysCount + unreadNormal;
+  var unreadNotifs = _getUnreadNotifCount();
+  return pendingCount + sysCount + unreadNormal + unreadNotifs;
 }
 function _updateManageNavBadge(){
   var badge = document.getElementById('manageBadge');
@@ -4093,6 +4117,20 @@ function _generateSystemAnnouncements(){
 
 /* ── 公告 tab (Firestore-backed + system 即時) ── */
 function _renderAnnouncementsTab(el){
+  // ── 個人通知區塊（預約被取消通知） ────────────────────────────────────
+  if(notificationsCache.length > 0){
+    var unreadCount = _getUnreadNotifCount();
+    var notifTitle = '通知' + (unreadCount > 0 ? '（'+unreadCount+' 則未讀）' : '');
+    var notifHtml = '<div style="margin-bottom:16px">'
+      +'<div style="font-size:11px;font-weight:600;letter-spacing:0.08em;color:var(--color-text-muted);margin-bottom:8px;text-transform:uppercase">'
+      +notifTitle+'</div>';
+    notificationsCache.forEach(function(n){ notifHtml += _renderNotifCard(n); });
+    if(unreadCount > 0){
+      notifHtml += '<button style="font-size:12px;color:var(--color-text-muted);background:none;border:none;cursor:pointer;padding:4px 0;letter-spacing:0.04em" onclick="_markNotifsAsRead()">全部標為已讀</button>';
+    }
+    notifHtml += '</div>';
+    el.innerHTML += notifHtml;
+  }
   // 開啟公告頁即標記已讀，清除 badge
   _markAnnouncementsRead();
 
@@ -7078,15 +7116,100 @@ function _sendBookingNotifications(b, action, reason, actorUid, actorName){
   delete recipients[actorUid]; /* don't notify the actor */
   Object.keys(recipients).forEach(function(uid){
     db.collection('notifications').add({
-      uid:       uid,
-      message:   msg,
-      bookingId: b.id,
-      action:    action,
-      createdAt: TS(),
-      expiresAt: new Date(Date.now() + 30*24*60*60*1000), /* 30 days — filter on display */
-      read:      false
+      uid:              uid,
+      type:             'booking_' + action,  // 'booking_cancelled' / 'booking_void'
+      action:           action,
+      bookingId:        b.id,
+      date:             b.date       || '',
+      startTime:        b.startTime  || '',
+      endTime:          b.endTime    || '',
+      court:            b.court      || '',
+      courtLabel:       courtLabel,
+      cancelledByName:  actorName,
+      cancelledByUid:   actorUid,
+      cancelReason:     reason       || '',
+      message:          msg,  /* kept for backward compat */
+      createdAt:        TS(),
+      expiresAt:        new Date(Date.now() + 30*24*60*60*1000),
+      read:             false,
     }).catch(function(e){ console.warn('notification write error:',e); });
   });
+}
+
+/* ── Personal Notifications ── */
+function loadMyNotifications(){
+  if(!db || !currentUser) return;
+  var myUid = currentUser.uid || currentUser.userId || currentUser.id || '';
+  if(!myUid) return;
+  if(_notifUnsubscribe) _notifUnsubscribe();  // stop previous listener
+  _notifUnsubscribe = db.collection('notifications')
+    .where('uid', '==', myUid)
+    .onSnapshot(function(snap){
+      var now = new Date();
+      notificationsCache = snap.docs
+        .map(function(d){ return Object.assign({id:d.id}, d.data()); })
+        .filter(function(n){
+          // Keep within 30 days
+          var exp = n.expiresAt ? (n.expiresAt.toDate ? n.expiresAt.toDate() : new Date(n.expiresAt)) : null;
+          return !exp || exp > now;
+        })
+        .sort(function(a,b){
+          var ta = a.createdAt && a.createdAt.toDate ? a.createdAt.toDate().getTime() : 0;
+          var tb = b.createdAt && b.createdAt.toDate ? b.createdAt.toDate().getTime() : 0;
+          return tb - ta;  // newest first
+        });
+      _updateManageNavBadge();
+      // Re-render manage tab if visible
+      var manScreen = document.getElementById('screen-manage');
+      if(manScreen && manScreen.classList.contains('active')) renderManage();
+    }, function(e){ console.warn('[loadMyNotifications] error:', e); });
+}
+
+function _getUnreadNotifCount(){
+  return notificationsCache.filter(function(n){ return !n.read; }).length;
+}
+
+function _markNotifsAsRead(){
+  if(!db) return;
+  var unread = notificationsCache.filter(function(n){ return !n.read; });
+  unread.forEach(function(n){
+    db.collection('notifications').doc(n.id).update({ read: true })
+      .catch(function(e){ console.warn('markRead error:', e); });
+    n.read = true;  // optimistic local update
+  });
+  _updateManageNavBadge();
+}
+
+function _renderNotifCard(n){
+  var actionLabel = n.action === 'void' ? '強制作廢' : '已取消';
+  var timeStr = (n.startTime||'') + (n.endTime ? '–'+n.endTime : '');
+  var metaParts = [];
+  if(n.cancelledByName) metaParts.push('取消人：'+_esc(n.cancelledByName));
+  if(n.cancelReason)    metaParts.push('原因：'+_esc(n.cancelReason));
+  var createdStr = '';
+  if(n.createdAt && n.createdAt.toDate){
+    var cd = n.createdAt.toDate();
+    createdStr = cd.toLocaleDateString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  }
+  return '<div class="notifCard'+(n.read?'':' unread')+'" onclick="_onNotifTap(\''+n.id+'\')">'
+    +'<div class="notifCardTitle">【預約'+actionLabel+'】</div>'
+    +'<div class="notifCardTime">'+_esc(n.date||'')+'　'+_esc(timeStr)+'　'+_esc(n.courtLabel||n.court||'')+'</div>'
+    +(metaParts.length?'<div class="notifCardMeta">'+metaParts.join('　')+'</div>':'')
+    +(createdStr?'<div class="notifCardMeta" style="opacity:0.7;margin-top:2px">'+createdStr+'</div>':'')
+    +'</div>';
+}
+
+function _onNotifTap(notifId){
+  // Mark this notification as read
+  var n = notificationsCache.find(function(x){ return x.id===notifId; });
+  if(n && !n.read){
+    n.read = true;
+    if(db) db.collection('notifications').doc(notifId).update({read:true}).catch(function(){});
+    _updateManageNavBadge();
+    // Re-render to remove unread style
+    var manScreen = document.getElementById('screen-manage');
+    if(manScreen && manScreen.classList.contains('active')) renderManage();
+  }
 }
 
 /* ── Find booking across all caches ── */
