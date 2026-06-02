@@ -5,6 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#faf9f5">
 <title>清心網球協會</title>
+<!-- Open Graph / LINE share preview -->
+<meta property="og:type"        content="website">
+<meta property="og:site_name"   content="清心網球協會">
+<meta property="og:title"       content="高雄市清心網球協會">
+<meta property="og:description" content="CHING XIN — 私人會員制網球場地預約系統">
+<meta property="og:url"         content="https://chingxin-tennis.web.app">
+<meta property="og:image"       content="https://chingxin-tennis.web.app/public/og-preview.png">
+<meta property="og:image:width"  content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:type"   content="image/png">
+<meta name="twitter:card"       content="summary_large_image">
+<meta name="twitter:title"      content="高雄市清心網球協會">
+<meta name="twitter:description" content="CHING XIN — 私人會員制網球場地預約系統">
+<meta name="twitter:image"      content="https://chingxin-tennis.web.app/public/og-preview.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=Noto+Sans+TC:wght@400;500&family=Noto+Serif+TC:wght@400;500&display=swap" rel="stylesheet">
@@ -1308,10 +1322,18 @@ button {
     <p class="authStateDesc">感謝您曾經是清心網球協會的一員。<br>如有疑問請聯繫管理員。</p>
     <button class="authLogoutBtn" onclick="_doLogout()">登出</button>
   </div>
+  <!-- Reapply (deleted / removed / expired / inactive) -->
+  <div id="authReapplyScreen" class="authCenter" style="display:none">
+    <div class="authStateIcon">🎾</div>
+    <div class="authStateTitle">會員資格已結束</div>
+    <p class="authStateDesc">如需重新加入，請重新送出申請。<br>管理員核准後即可使用全部功能。</p>
+    <button class="authLineBtn" style="margin-bottom:12px" onclick="_doReapply()">重新申請加入</button>
+    <button class="authLogoutBtn" onclick="_doLogout()">登出</button>
+  </div>
   <!-- Blocked -->
   <div id="authBlockedScreen" class="authCenter" style="display:none">
     <div class="authStateIcon">🔒</div>
-    <div class="authStateTitle">帳號已停用</div>
+    <div class="authStateTitle">帳號已封鎖</div>
     <p class="authStateDesc">您的帳號目前無法使用。<br>如有疑問請聯繫管理員。</p>
     <button class="authLogoutBtn" onclick="_doLogout()">登出</button>
   </div>
@@ -1856,7 +1878,7 @@ function _showAuthGate(state){
   var gate = document.getElementById('authGate');
   if(!gate) return;
   gate.style.display = 'block';
-  ['Loading','Login','Pending','Resigned','Blocked','Rejected'].forEach(function(s){
+  ['Loading','Login','Pending','Resigned','Reapply','Blocked','Rejected'].forEach(function(s){
     var el = document.getElementById('auth'+s+'Screen');
     if(el) el.style.display = 'none';
   });
@@ -1940,15 +1962,43 @@ function _renderProfileSheet(){
     return;
   }
 
-  // ── Resigned / Blocked ─────────────────────────────────────────────
-  if(u.status === 'resigned' || u.status === 'blocked'){
-    var _icon  = u.status === 'resigned' ? '🎾' : '🔒';
-    var _title = u.status === 'resigned' ? '會員資格已結束' : '帳號已停用';
+  // ── Resigned ───────────────────────────────────────────────────────
+  if(u.status === 'resigned'){
     body.innerHTML =
       '<div style="padding:48px 28px 36px;text-align:center">' +
-        '<div style="font-size:40px;margin-bottom:18px">' + _icon + '</div>' +
+        '<div style="font-size:40px;margin-bottom:18px">🎾</div>' +
         '<div style="font-family:var(--font-display);font-size:20px;color:var(--color-text-primary);' +
-             'margin-bottom:12px;letter-spacing:0.03em">' + _title + '</div>' +
+             'margin-bottom:12px;letter-spacing:0.03em">會員資格已結束</div>' +
+        '<p style="font-size:13px;color:var(--color-text-muted);line-height:1.85;margin-bottom:28px">' +
+          '感謝您曾經是清心網球協會的一員。</p>' +
+        '<button class="authLogoutBtn" onclick="closeProfile();_doLogout()">登出</button>' +
+      '</div>';
+    return;
+  }
+  // ── Deleted / Removed / Expired / Inactive → can re-apply ──────────
+  var _reapplySet = {deleted:1, removed:1, expired:1, inactive:1};
+  if(_reapplySet[u.status]){
+    body.innerHTML =
+      '<div style="padding:48px 28px 36px;text-align:center">' +
+        '<div style="font-size:40px;margin-bottom:18px">🎾</div>' +
+        '<div style="font-family:var(--font-display);font-size:20px;color:var(--color-text-primary);' +
+             'margin-bottom:12px;letter-spacing:0.03em">會員資格已結束</div>' +
+        '<p style="font-size:13px;color:var(--color-text-muted);line-height:1.85;margin-bottom:28px">' +
+          '如需重新加入，請重新送出申請。<br>管理員核准後即可使用全部功能。</p>' +
+        '<button class="authLineBtn" style="margin-bottom:12px" onclick="closeProfile();_doReapply()">重新申請加入</button>' +
+        '<button class="authLogoutBtn" onclick="closeProfile();_doLogout()">登出</button>' +
+      '</div>';
+    return;
+  }
+  // ── Blocked / Banned ───────────────────────────────────────────────
+  if(u.status === 'blocked' || u.status === 'banned'){
+    body.innerHTML =
+      '<div style="padding:48px 28px 36px;text-align:center">' +
+        '<div style="font-size:40px;margin-bottom:18px">🔒</div>' +
+        '<div style="font-family:var(--font-display);font-size:20px;color:var(--color-text-primary);' +
+             'margin-bottom:12px;letter-spacing:0.03em">帳號已封鎖</div>' +
+        '<p style="font-size:13px;color:var(--color-text-muted);line-height:1.85;margin-bottom:28px">' +
+          '如有疑問請聯繫管理員。</p>' +
         '<button class="authLogoutBtn" onclick="closeProfile();_doLogout()">登出</button>' +
       '</div>';
     return;
@@ -2306,11 +2356,13 @@ async function _upsertAndRoute(profile){
 function _routeByStatus(d, profile){
   var canEnter = _canEnter(d);
   var s = d.status || '';
+  var _reapplyStatuses = {deleted:1, removed:1, expired:1, inactive:1};
   var destination = canEnter ? 'mainApp'
-    : (s === 'resigned' ? 'resigned'
-    : (s === 'blocked'  ? 'blocked'
-    : (s === 'rejected' ? 'rejected'
-    : 'pending')));
+    : (s === 'resigned'               ? 'resigned'
+    : (s === 'blocked' || s === 'banned' ? 'blocked'
+    : (s === 'rejected'               ? 'rejected'
+    : (_reapplyStatuses[s]            ? 'reapply'
+    : 'pending'))));
 
   console.log('[AUTH] _routeByStatus uid:', profile.userId,
     '| role:', d.role, '| status:', d.status, '| approved:', d.approved,
@@ -2329,8 +2381,8 @@ function _routeByStatus(d, profile){
   };
   if(canEnter){ _showMainApp(); return; }
   if(s === 'resigned'){ _showAuthGate('resigned'); return; }
-  if(s === 'deleted'){  _showAuthGate('resigned'); return; }
-  if(s === 'blocked'){  _showAuthGate('blocked');  return; }
+  if(_reapplyStatuses[s]){ _showAuthGate('reapply'); return; }
+  if(s === 'blocked' || s === 'banned'){ _showAuthGate('blocked'); return; }
   if(s === 'rejected'){ _showAuthGate('rejected'); return; }
   _showAuthGate('pending');
 }
@@ -2340,6 +2392,26 @@ function _doLineLogin(){
   _dbg('_doLineLogin → liff.login()');
   // Fixed redirectUri prevents LIFF receiving unexpected query/hash params on return
   liff.login({ redirectUri: 'https://chingxin-tennis.web.app' });
+}
+
+/* Re-apply: set status back to pending so the admin review flow restarts */
+function _doReapply(){
+  if(!currentUser || !db){ showToast('無法連線，請稍後再試'); return; }
+  var uid = currentUser.uid || currentUser.userId || '';
+  if(!uid){ showToast('找不到帳號資訊'); return; }
+  db.collection('members').doc(uid).update({
+    status:      'pending',
+    reappliedAt: TS(),
+    updatedAt:   TS(),
+  }).then(function(){
+    currentUser.status = 'pending';
+    // Update localStorage so _tryResumeSession re-routes correctly next time
+    try { localStorage.setItem(LS_UID_KEY, uid); } catch(e){}
+    _showAuthGate('pending');
+  }).catch(function(e){
+    console.error('[_doReapply] error:', e);
+    showToast('操作失敗，請稍後再試');
+  });
 }
 
 function _doLogout(){
