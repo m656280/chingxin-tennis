@@ -6871,7 +6871,7 @@ function _showCancelDlg(id, isVoid, callback, showReason){
     title = '強制作廢';
     desc  = '此操作無法還原，預約將標記為作廢。請填寫原因（必填）。';
   } else if(showReason){
-    title = '取消他人預約';
+    title = '取消預約（管理）';
     desc  = '取消後紀錄保留供查閱。請選擇取消原因（必填）。';
   } else {
     title = '取消預約';
@@ -6993,17 +6993,16 @@ function _confirmCancelDlg(){
 }
 
 /* ── Cancel Booking (soft — sets status to 'cancelled') ── */
+/* Owner / Admin / Coach 取消任何預約都必須填原因；一般 member 可選填 */
 function cancelBooking(id, callback){
-  /* Find booking in any cache for time-gate check */
   var b = _findBookingById(id);
   if(!b){ showToast('找不到此預約'); return; }
   if(!_isActiveBooking(b)){ showToast('此預約已取消或作廢'); return; }
   if(_bookingHasStarted(b)){ showToast('預約已開始，無法取消'); return; }
   if(_withinCancelCutoff(b)){ showToast('距開始不足 30 分鐘，無法取消'); return; }
-  /* Show reason field only when admin/owner is cancelling on behalf of someone else */
-  var myUid = currentUser?(currentUser.uid||currentUser.userId||currentUser.id||''):'';
-  var showReason = isAdminLike() && (b.createdBy||'') !== myUid;
-  _showCancelDlg(id, false, callback, showReason);
+  var role = _currentRole();
+  var requireReason = (isAdminLike() || role === 'coach');
+  _showCancelDlg(id, false, callback, requireReason);
 }
 function _executeCancel(id, reason, callback){
   if(!db){ showToast('無法連線，請稍後再試'); return; }
