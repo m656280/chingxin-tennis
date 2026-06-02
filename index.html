@@ -635,6 +635,11 @@ button {
 .addBookingBtn:hover { border-color:var(--color-text-primary); color:var(--color-text-primary); }
 
 /* ── Cancel Button ── */
+.bookingEditBtn { flex:1; padding:7px 12px; border:1px solid var(--color-border); border-radius:8px; background:transparent; color:var(--color-text-primary); font-size:12px; letter-spacing:0.04em; cursor:pointer; font-weight:500; }
+.bookingEditBtn:active { background:var(--color-surface-alt); }
+.dvDetailEditBtn { display:block; width:calc(100% - 40px); margin:14px 20px 0; padding:13px; text-align:center; border-radius:10px; background:var(--color-surface-alt); font-size:13px; letter-spacing:0.06em; color:var(--color-text-primary); border:1px solid var(--color-border); cursor:pointer; font-weight:500; }
+.dvDetailEditBtn:active { background:var(--color-border); }
+.bkCutoffNotice { font-size:11px; color:var(--color-text-muted); margin-top:6px; padding:6px 10px; background:rgba(0,0,0,0.04); border-radius:6px; line-height:1.5; }
 .cancelBtn {
   font-size:11px; padding:4px 12px; border-radius:99px;
   border:1px solid var(--color-border); color:var(--color-text-muted);
@@ -1600,7 +1605,7 @@ button {
   <div class="sheetHandle"></div>
   <div class="subSheetHeader">
     <button class="subSheetBack" onclick="closeBookingForm()">‹</button>
-    <span class="subSheetTitle">新增預約</span>
+    <span class="subSheetTitle" id="bookingFormTitle">新增預約</span>
     <span style="width:32px"></span>
   </div>
   <div class="formSection">
@@ -2512,6 +2517,7 @@ let financeRecords = [];      // local array; Firestore layer can be added later
 let _finSearchQuery = '';     // finance search filter state
 let _finYear = 2026;    // active year ledger (fixed range 2026–2036)
 let _finEditId = null; // null = add mode; string = edit mode
+let _bkEditId  = null; // null = add mode; string = edit booking id
 let _finConfirmCallback = null; // pending callback for finConfirmDlg
 let _finViewTab = 'overview'; // 'overview' | 'detail' | 'chart'
 let _finChartMode = 'income'; // 'income' | 'expense' | 'member'
@@ -2552,6 +2558,24 @@ function _bookingStartDt(b){
 function _minutesUntilStart(b){ return Math.floor((_bookingStartDt(b).getTime()-Date.now())/60000); }
 function _bookingHasStarted(b){ return _minutesUntilStart(b) <= 0; }
 function _withinCancelCutoff(b){ var m=_minutesUntilStart(b); return m>=0 && m<30; }
+// canEditBooking: returns {can: bool, reason: string|null}
+// Admins/owners bypass time-gate. Members need to be creator/owner/player.
+function canEditBooking(b){
+  if(!b) return {can:false, reason:null};
+  var s = b.status || 'active';
+  if(s==='cancelled'||s==='void'||s==='deleted') return {can:false, reason:null};
+  if(_bookingHasStarted(b)) return {can:false, reason:null};
+  // Admins always can, no cutoff restriction
+  if(isAdminLike()) return {can:true, reason:null};
+  // Self-edit: must be creator, ownerUid, or first player
+  var myUid = currentUser ? (currentUser.uid||currentUser.userId||currentUser.id||'') : '';
+  var isCreator = (b.createdBy===myUid || b.ownerUid===myUid);
+  var isPlayer  = Array.isArray(b.players) && b.players.indexOf(myUid)>=0;
+  if(!isCreator && !isPlayer) return {can:false, reason:null};
+  // Within 30-min cutoff: show notice but block edit
+  if(_withinCancelCutoff(b)) return {can:false, reason:'預約開始前 30 分鐘內無法自行修改，請聯絡管理員。'};
+  return {can:true, reason:null};
+}
 // Status label for display
 function _statusLabel(s){
   return {active:'確認',confirmed:'確認',cancelled:'已取消',void:'已取消'}[s]||s;
@@ -3079,11 +3103,21 @@ function renderBookings(){
     var statusLabel = _statusLabel(b.status);
     var chipCls = _statusChipCls(b.status);
     var _nm2 = _normaliseMode(b.mode);
-    // Time-gate cancel button
+    // Time-gate cancel / edit buttons
     var canSelfCancel = showCancel && _isActiveBooking(b) && !_bookingHasStarted(b) && !_withinCancelCutoff(b);
-    var cancelBtn = canSelfCancel
-      ? '<div class="bookingCardActions"><button class="cancelBtn" onclick="cancelBooking(\''+b.id+'\')">取消預約</button></div>'
-      : '';
+    var _editRes = showCancel ? canEditBooking(b) : {can:false,reason:null};
+    var canSelfEdit = _editRes.can;
+    var isWithinCut = showCancel && _isActiveBooking(b) && !_bookingHasStarted(b) && _withinCancelCutoff(b);
+    var actionHtml = '';
+    if(canSelfEdit || canSelfCancel){
+      actionHtml = '<div class="bookingCardActions">';
+      if(canSelfEdit)   actionHtml += '<button class="bookingEditBtn" onclick="event.stopPropagation();openBookingFormEdit(\''+b.id+'\')">編輯預約</button>';
+      if(canSelfCancel) actionHtml += '<button class="cancelBtn" onclick="cancelBooking(\''+b.id+'\')">取消預約</button>';
+      actionHtml += '</div>';
+    } else if(isWithinCut){
+      actionHtml = '<div class="bkCutoffNotice">預約開始前 30 分鐘內無法自行修改，請聯絡管理員。</div>';
+    }
+    var cancelBtn = actionHtml; // kept same name for the template below
     // Cancelled indicator
     var metaExtra = '';
     if((b.status==='cancelled'||b.status==='void') && b.cancelledByName) metaExtra = ' · 由 '+_esc(b.cancelledByName)+' 取消';
@@ -6036,9 +6070,11 @@ function _dvShowDetail(enc){
   var avatarInner = data.photoURL
     ? '<img src="'+data.photoURL+'" style="width:100%;height:100%;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'" alt="">'
     : (data.name||'?').charAt(0);
-  /* cancel / void / leave — use pre-computed flags from showBookingDetail */
-  var canCancel = !!(data.bookingId && data.canCancel);
-  var canLeave  = !!(data.bookingId && data.canLeave);
+  /* cancel / void / leave / edit — use pre-computed flags from showBookingDetail */
+  var canCancel    = !!(data.bookingId && data.canCancel);
+  var canLeave     = !!(data.bookingId && data.canLeave);
+  var canEdit      = !!(data.bookingId && data.canEdit);
+  var withinCutoff = !!(data.withinCutoff);
   /* Store booking id for participant management functions */
   _dvCurrentBookingId = data.bookingId || null;
 
@@ -6185,8 +6221,10 @@ function _dvShowDetail(enc){
     '<div class="dvDetailRows">'+infoRows+titleHtml+noteHtml+'</div>'+
     participantHtml+
     attHtml+
-    (canCancel?'<button class="dvDetailCancelBtn" onclick="cancelBooking(\''+data.bookingId+'\')">取消預約</button>':'')+
-    (canLeave ?'<button class="dvDetailCancelBtn" onclick="leaveBooking(\''+data.bookingId+'\')">退出預約</button>':'')+
+    (canEdit     ?'<button class="dvDetailEditBtn"   onclick="_dvCloseDetail();openBookingFormEdit(\''+data.bookingId+'\')">編輯預約</button>':'')+
+    (canCancel   ?'<button class="dvDetailCancelBtn" onclick="cancelBooking(\''+data.bookingId+'\')">取消預約</button>':'')+
+    (canLeave    ?'<button class="dvDetailCancelBtn" onclick="leaveBooking(\''+data.bookingId+'\')">退出預約</button>':'')+
+    (withinCutoff&&!canEdit&&!canCancel?'<div style="margin:14px 20px 0;font-size:11.5px;color:var(--color-text-muted);text-align:center;line-height:1.6">預約開始前 30 分鐘內無法自行修改，<br>請聯絡管理員。</div>':'')+
     '<button class="dvDetailClose" onclick="_dvCloseDetail()">關閉</button>';
   document.body.appendChild(p);
   requestAnimationFrame(function(){
@@ -6543,7 +6581,9 @@ function showBookingDetail(id){
     bookingId:id,
     bookingStatus: b.status||'active',
     isOwner: isBookingCreator, isInPlayers:isInPlayers,
-    canCancel: canCancel, canLeave: canLeave
+    canCancel: canCancel, canLeave: canLeave,
+    canEdit: canEditBooking(b).can,
+    withinCutoff: _isActiveBooking(b) && !_bookingHasStarted(b) && _withinCancelCutoff(b)
   }));
   _dvShowDetail(enc);
 }
@@ -7156,6 +7196,82 @@ function openBookingForm(){
 function closeBookingForm(){
   document.getElementById('bookingFormSheet').classList.remove('open');
   document.getElementById('sheetBackdrop').classList.remove('open');
+  // Reset edit state and form title/button
+  _bkEditId = null;
+  var titleEl = document.getElementById('bookingFormTitle');
+  if(titleEl) titleEl.textContent = '新增預約';
+  var submitBtn = document.getElementById('submitBookingBtn');
+  if(submitBtn) submitBtn.textContent = '確認預約';
+}
+
+/* ── Open booking form in EDIT mode ── */
+function openBookingFormEdit(id){
+  var b = _findBookingById(id);
+  if(!b){
+    var src = weekBookingsCache && weekBookingsCache.length ? weekBookingsCache : (courtBookingsFirestore||[]);
+    b = src.find(function(x){ return x.id===id; });
+  }
+  if(!b){ showToast('找不到預約資料'); return; }
+  var _er = canEditBooking(b);
+  if(!_er.can){ if(_er.reason) showToast(_er.reason); return; }
+
+  _bkEditId = id;           // mark edit mode before openBookingForm resets everything
+  openBookingForm();        // opens sheet and resets fields
+
+  // Override title & submit button
+  var titleEl2 = document.getElementById('bookingFormTitle');
+  if(titleEl2) titleEl2.textContent = '編輯預約';
+  var submitBtn2 = document.getElementById('submitBookingBtn');
+  if(submitBtn2) submitBtn2.textContent = '儲存變更';
+
+  // Pre-fill court
+  var courtSel = document.getElementById('formCourt');
+  if(courtSel){ courtSel.value = b.court || 'hard_a'; }
+
+  // Pre-fill date + time selectors
+  var dateSel = document.getElementById('formDate');
+  if(dateSel){
+    dateSel.value = b.date || '';
+    _populateFormTimeSels(b.date || dateSel.value);
+  }
+  var startSel = document.getElementById('formStart');
+  var endSel   = document.getElementById('formEnd');
+  if(startSel) startSel.value = b.startTime || '';
+  if(endSel)   endSel.value   = b.endTime   || '';
+
+  // Pre-fill mode & re-trigger mode change
+  var modeSel = document.getElementById('formMode');
+  if(modeSel){ modeSel.value = b.mode || 'general'; onFormModeChange(); }
+
+  // Pre-fill note (always save note on edit, regardless of mode)
+  var noteEl = document.getElementById('formNote');
+  if(noteEl) noteEl.value = b.note || '';
+
+  // Pre-fill general mode: buddies, guests, proxy
+  if(_normaliseMode(b.mode) === 'general'){
+    var myUid2   = currentUser ? (currentUser.userId||currentUser.uid||currentUser.id||'') : '';
+    var _players = Array.isArray(b.players) ? b.players : [];
+    var _guests  = Array.isArray(b.guests)  ? b.guests  : [];
+    var ownerUid2 = _players[0] || b.createdBy || myUid2;
+    var isProxy  = (ownerUid2 !== myUid2);
+
+    // Set proxy checkbox + dropdown first so _formBuddyOwnerUid() returns correct owner
+    var proxyChk2 = document.getElementById('formProxyCheck');
+    if(proxyChk2){ proxyChk2.checked = isProxy; }
+    var proxyDetail2 = document.getElementById('formProxyDetail');
+    if(proxyDetail2) proxyDetail2.style.display = isProxy ? '' : 'none';
+    if(isProxy){
+      // Populate proxy selector then select the owner
+      _formProxyToggle();  // re-populates selector
+      var proxySel2 = document.getElementById('formProxyOwnerSel');
+      if(proxySel2) proxySel2.value = ownerUid2;
+    }
+
+    // Buddies = all players except the owner
+    _formBuddyMembers = _players.slice(1).filter(function(u){ return u !== ownerUid2; });
+    _formBuddyGuests  = _guests.slice();
+    _formBuddyRender();
+  }
 }
 /* ── Populate booking form time selectors based on date's open hours ── */
 function _populateFormTimeSels(dateStr){
@@ -7395,7 +7511,86 @@ function _onFormCoachChange(){
   _refreshFormStudentList(sel&&sel.value?sel.value:null);
 }
 
+/* ── Submit edit: update existing booking ── */
+function _submitBookingEdit(){
+  if(!db || !_bkEditId){ showToast('無法連線，請稍後再試'); return; }
+  var court = document.getElementById('formCourt').value;
+  var date  = document.getElementById('formDate').value;
+  var start = document.getElementById('formStart').value;
+  var end   = document.getElementById('formEnd').value;
+  var note  = (((document.getElementById('formNote')||{}).value)||'').trim();
+
+  if(!date||!start||!end){ showToast('請填寫完整資料'); return; }
+  if((court==='clay_a'||court==='clay_b')&&!isAdminLike()){ showToast('紅土場地僅限管理員預約'); return; }
+  if(timeToMin(end)<=timeToMin(start)){ showToast('結束時間需晚於開始時間'); return; }
+
+  var btn = document.getElementById('submitBookingBtn');
+  if(btn){ btn.disabled=true; btn.textContent='儲存中…'; }
+
+  var editId = _bkEditId;
+  var isGeneral = _normaliseMode((document.getElementById('formMode')||{value:'general'}).value) === 'general';
+  var ownerUid3 = isGeneral ? _formBuddyOwnerUid() : null;
+  var upd = { court:court, date:date, startTime:start, endTime:end, updatedAt:TS() };
+  if(note !== undefined) upd.note = note;
+  if(isGeneral){
+    var _gPlayers2 = ownerUid3
+      ? [ownerUid3].concat(_formBuddyMembers.filter(function(u){ return u!==ownerUid3; }))
+      : _formBuddyMembers.slice();
+    upd.players          = _gPlayers2;
+    upd.guests           = _formBuddyGuests.slice();
+    upd.participantCount = _gPlayers2.length;
+    // Proxy: update primaryName if owner changed
+    if(ownerUid3 && usersCache[ownerUid3])
+      upd.primaryName = usersCache[ownerUid3].displayName || usersCache[ownerUid3].realName || '';
+  }
+
+  // Conflict check: same slot, exclude current booking
+  db.collection('bookings')
+    .where('court','==',court).where('date','==',date)
+    .where('startTime','==',start).where('endTime','==',end)
+    .get()
+    .then(function(snap){
+      var conflicting = snap.docs
+        .filter(function(d){ return d.id !== editId; })
+        .map(function(d){ return Object.assign({id:d.id}, d.data()); })
+        .filter(function(bk){ return _isActiveBooking(bk); });
+      // Exclusive mode conflict check
+      if(conflicting.length > 0){
+        var exBk = conflicting[0];
+        var exMode2 = _normaliseMode(exBk.mode);
+        if(exMode2==='teaching'||exMode2==='groupClass'||exMode2==='event_lock'){
+          if(btn){ btn.disabled=false; btn.textContent='儲存變更'; }
+          showToast('此時段已被教學/活動佔用'); return;
+        }
+        if(!isGeneral){
+          if(btn){ btn.disabled=false; btn.textContent='儲存變更'; }
+          showToast('此時段已有衝突預約'); return;
+        }
+      }
+      return db.collection('bookings').doc(editId).update(upd);
+    })
+    .then(function(){
+      if(!_bkEditId) return; // already cleared by above guard
+      showToast('預約已更新');
+      _bkEditId = null;
+      allBookingsCache = null;
+      courtBookingsFirestore = null;
+      closeBookingForm();
+      loadWeekBookings();
+      loadMyBookings();
+      loadMonthBookings();
+    })
+    .catch(function(e){
+      console.error('_submitBookingEdit error:', e);
+      showToast('儲存失敗：'+e.message);
+    })
+    .finally(function(){
+      if(btn){ btn.disabled=false; btn.textContent='儲存變更'; }
+    });
+}
+
 function submitBooking(){
+  if(_bkEditId){ _submitBookingEdit(); return; }  // edit mode
   if(!db){ showToast('無法連線，請稍後再試'); return; }
   var court    = document.getElementById('formCourt').value;
   var date     = document.getElementById('formDate').value;
