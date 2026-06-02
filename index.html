@@ -455,6 +455,15 @@ button {
   background:var(--color-clay); color:#fff; font-size:14px; font-weight:600; cursor:pointer; }
 .cancelDlgCancel  { flex:1; padding:11px; border-radius:10px; border:1px solid var(--color-border);
   background:var(--color-surface); color:var(--color-text-secondary); font-size:14px; cursor:pointer; }
+.cancelReasonChips { display:flex; flex-wrap:wrap; gap:7px; margin-bottom:12px; }
+.cancelReasonChip  { padding:6px 13px; border-radius:99px; border:1px solid var(--color-border);
+  background:var(--color-surface-alt); color:var(--color-text-secondary); font-size:12.5px;
+  cursor:pointer; transition:all 140ms ease; letter-spacing:0.01em; }
+.cancelReasonChip.active { border-color:var(--color-clay); background:rgba(184,92,74,0.09);
+  color:var(--color-clay); font-weight:600; }
+.cancelReasonRequired { font-size:11px; color:var(--color-clay); letter-spacing:0.04em;
+  margin-bottom:8px; display:none; }
+.cancelReasonRequired.show { display:block; }
 
 /* ── Schedule Items ── */
 .scheduleItem {
@@ -2471,11 +2480,13 @@ let monthBookingsCache = [];        // all confirmed bookings for current month 
 let allBookingsCache  = null;       // admin/owner: all bookings (null = not yet loaded)
 let myBookingsFirestore = null;     // null = not yet loaded; [] = loaded but empty
 // Cancel dialog state
-let _cancelDlgBookingId  = null;
-let _cancelDlgIsVoid     = false;
-let _cancelDlgIsDelete   = false;
-let _cancelDlgShowReason = false; /* true = show reason textarea (admin/owner cancelling other, or void) */
-let _cancelDlgCallback   = null;
+let _cancelDlgBookingId      = null;
+let _cancelDlgIsVoid         = false;
+let _cancelDlgIsDelete       = false;
+let _cancelDlgShowReason     = false;  /* true = show reason UI (admin/owner cancelling other, or void) */
+let _cancelDlgRequiredReason = false;  /* true = reason is mandatory before confirm */
+let _cancelDlgSelectedReason = '';     /* chip-selected preset, '' = none, 'other' = free-text */
+let _cancelDlgCallback       = null;
 var _dvCurrentBookingId  = null;  /* booking id of the currently open detail panel */
 /* ── General booking form: buddy state ── */
 var _formBuddyMembers = [];  /* uid strings of added member buddies */
@@ -3118,6 +3129,10 @@ function renderBookings(){
     var metaExtra = '';
     if((b.status==='cancelled'||b.status==='void') && b.cancelledByName) metaExtra = ' · 由 '+_esc(b.cancelledByName)+' 取消';
     if(b.cancelReason) metaExtra += '（'+_esc(b.cancelReason)+'）';
+    if(b.cancelledAt){
+      var _cat = b.cancelledAt.toDate ? b.cancelledAt.toDate() : new Date(b.cancelledAt);
+      if(!isNaN(_cat.getTime())) metaExtra += ' · '+_cat.toLocaleDateString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
+    }
 
     var bodyHtml;
     if(_nm2 === 'general'){
@@ -6798,30 +6813,75 @@ function loadMyBookings(){
 
 /* ── Cancel / Void dialog ── */
 function _showCancelDlg(id, isVoid, callback, showReason){
-  _cancelDlgBookingId  = id;
-  _cancelDlgIsVoid     = isVoid;
-  _cancelDlgIsDelete   = false;
-  /* void always shows reason; self-cancel hides it; admin/owner cancelling other shows it */
-  _cancelDlgShowReason = isVoid || !!showReason;
-  _cancelDlgCallback   = callback || null;
+  _cancelDlgBookingId      = id;
+  _cancelDlgIsVoid         = isVoid;
+  _cancelDlgIsDelete       = false;
+  _cancelDlgShowReason     = isVoid || !!showReason;
+  _cancelDlgRequiredReason = isVoid || !!showReason;  // admin cancelling other = required; void = required
+  _cancelDlgSelectedReason = '';
+  _cancelDlgCallback       = callback || null;
+
   var title, desc;
   if(isVoid){
     title = '強制作廢';
-    desc  = '此操作無法還原，預約將標記為作廢並通知相關人員。請填寫原因（必填）。';
+    desc  = '此操作無法還原，預約將標記為作廢。請填寫原因（必填）。';
   } else if(showReason){
-    title = '取消預約';
-    desc  = '取消後將通知預約者，紀錄保留供查閱。請填寫原因（選填）。';
+    title = '取消他人預約';
+    desc  = '取消後紀錄保留供查閱。請選擇取消原因（必填）。';
   } else {
     title = '取消預約';
-    desc  = '是否取消預約？\n取消後將釋出場地。';
+    desc  = '是否取消預約？取消後將釋出場地。';
   }
   document.getElementById('cancelDlgTitle').textContent = title;
   document.getElementById('cancelDlgDesc').textContent  = desc;
-  var ta = document.getElementById('cancelDlgReason');
-  ta.value = ''; ta.style.display = _cancelDlgShowReason ? '' : 'none';
+
+  // Chips: show for admin cancelling other's booking (not void)
+  var chipsWrap  = document.getElementById('cancelDlgChipsWrap');
+  var reasonWrap = document.getElementById('cancelDlgReasonWrap');
+  var ta         = document.getElementById('cancelDlgReason');
+  var hint       = document.getElementById('cancelReasonRequiredHint');
+
+  if(showReason && !isVoid){
+    // Show chips, hide free-text textarea initially
+    if(chipsWrap)  chipsWrap.style.display  = '';
+    if(reasonWrap) reasonWrap.style.display = 'none';
+    if(ta)         ta.value = '';
+    if(hint)       hint.classList.add('show');
+    // Clear any active chip
+    document.querySelectorAll('.cancelReasonChip').forEach(function(c){ c.classList.remove('active'); });
+  } else if(_cancelDlgShowReason){
+    // Void or old path: show textarea only
+    if(chipsWrap)  chipsWrap.style.display  = 'none';
+    if(reasonWrap) reasonWrap.style.display = '';
+    if(ta)         ta.value = '';
+    if(hint)       hint.classList.remove('show');
+  } else {
+    // Self-cancel: hide everything
+    if(chipsWrap)  chipsWrap.style.display  = 'none';
+    if(reasonWrap) reasonWrap.style.display = 'none';
+    if(ta)         ta.value = '';
+    if(hint)       hint.classList.remove('show');
+  }
+
   var btn = document.getElementById('cancelDlgConfirmBtn');
   if(btn){ btn.textContent='確認'; btn.style.background=''; }
   document.getElementById('cancelDlgBackdrop').classList.add('open');
+}
+/* ── Cancel Reason Chip Selection ── */
+function _selectCancelChip(el, val){
+  // Mark active chip
+  document.querySelectorAll('.cancelReasonChip').forEach(function(c){ c.classList.remove('active'); });
+  el.classList.add('active');
+  _cancelDlgSelectedReason = val;
+  // Show free-text textarea only for "其他"
+  var reasonWrap = document.getElementById('cancelDlgReasonWrap');
+  var ta         = document.getElementById('cancelDlgReason');
+  var isOther    = (val === 'other');
+  if(reasonWrap) reasonWrap.style.display = isOther ? '' : 'none';
+  if(ta && !isOther) ta.value = '';  // clear textarea when switching to preset
+  // Hide required hint once user picks something
+  var hint = document.getElementById('cancelReasonRequiredHint');
+  if(hint) hint.classList.remove('show');
 }
 /* ── Delete confirm dialog (owner only, cancelled/void bookings) ── */
 function _showDeleteConfirmDlg(id){
@@ -6843,24 +6903,43 @@ function _showDeleteConfirmDlg(id){
 }
 function _closeCancelDlg(){
   document.getElementById('cancelDlgBackdrop').classList.remove('open');
-  _cancelDlgBookingId = null; _cancelDlgIsVoid = false; _cancelDlgIsDelete = false; _cancelDlgShowReason = false; _cancelDlgCallback = null;
-  /* restore button style */
+  _cancelDlgBookingId = null; _cancelDlgIsVoid = false; _cancelDlgIsDelete = false;
+  _cancelDlgShowReason = false; _cancelDlgRequiredReason = false; _cancelDlgSelectedReason = '';
+  _cancelDlgCallback = null;
   var btn = document.getElementById('cancelDlgConfirmBtn');
   if(btn){ btn.textContent='確認'; btn.style.background=''; }
-  var ta = document.getElementById('cancelDlgReason');
-  if(ta) ta.style.display = '';
+  document.querySelectorAll('.cancelReasonChip').forEach(function(c){ c.classList.remove('active'); });
+  var hint = document.getElementById('cancelReasonRequiredHint');
+  if(hint) hint.classList.remove('show');
+  var chipsWrap  = document.getElementById('cancelDlgChipsWrap');
+  var reasonWrap = document.getElementById('cancelDlgReasonWrap');
+  var ta         = document.getElementById('cancelDlgReason');
+  if(chipsWrap)  chipsWrap.style.display  = 'none';
+  if(reasonWrap) reasonWrap.style.display = 'none';
+  if(ta) ta.value = '';
 }
 function _cancelDlgBgClick(e){
   if(e.target===document.getElementById('cancelDlgBackdrop')) _closeCancelDlg();
 }
 function _confirmCancelDlg(){
-  var reason   = (document.getElementById('cancelDlgReason').value||'').trim();
+  // Resolve final reason from chip selection or free-text textarea
+  var reason;
+  if(_cancelDlgSelectedReason && _cancelDlgSelectedReason !== 'other'){
+    reason = _cancelDlgSelectedReason;
+  } else {
+    reason = (document.getElementById('cancelDlgReason').value||'').trim();
+  }
   var id       = _cancelDlgBookingId;
   var isVoid   = _cancelDlgIsVoid;
   var isDelete = _cancelDlgIsDelete;
   var cb       = _cancelDlgCallback;
-  /* Void requires a reason */
-  if(isVoid && !reason){ showToast('強制作廢請填寫原因'); return; }
+  // Enforce required reason
+  if(_cancelDlgRequiredReason && !reason){
+    var hint = document.getElementById('cancelReasonRequiredHint');
+    if(hint) hint.classList.add('show');
+    showToast('請選擇取消原因');
+    return;
+  }
   _closeCancelDlg();
   if(!id) return;
   if(isDelete)    _executePermanentDelete(id, cb);
@@ -6890,6 +6969,7 @@ function _executeCancel(id, reason, callback){
   var updateObj = {
     status:          'cancelled',
     cancelledBy:     myUid,
+    cancelledByUid:  myUid,
     cancelledByName: myName,
     cancelledAt:     TS(),
     updatedAt:       TS()
@@ -7997,8 +8077,24 @@ initAuth();
 <div class="cancelDlgBackdrop" id="cancelDlgBackdrop" onclick="_cancelDlgBgClick(event)">
   <div class="cancelDlg">
     <div class="cancelDlgTitle" id="cancelDlgTitle">取消預約</div>
-    <div class="cancelDlgDesc"  id="cancelDlgDesc">請填寫取消原因（選填）</div>
-    <textarea class="cancelDlgTextarea" id="cancelDlgReason" rows="3" placeholder="取消原因…"></textarea>
+    <div class="cancelDlgDesc"  id="cancelDlgDesc">是否取消預約？</div>
+    <!-- Quick-reason chips (shown when admin cancels other's booking) -->
+    <div id="cancelDlgChipsWrap" style="display:none">
+      <div class="cancelReasonRequired" id="cancelReasonRequiredHint">請選擇取消原因（必填）</div>
+      <div class="cancelReasonChips" id="cancelReasonChipsList">
+        <button class="cancelReasonChip" onclick="_selectCancelChip(this,'場地維修')">場地維修</button>
+        <button class="cancelReasonChip" onclick="_selectCancelChip(this,'天候因素')">天候因素</button>
+        <button class="cancelReasonChip" onclick="_selectCancelChip(this,'教練請假')">教練請假</button>
+        <button class="cancelReasonChip" onclick="_selectCancelChip(this,'活動衝突')">活動衝突</button>
+        <button class="cancelReasonChip" onclick="_selectCancelChip(this,'重複預約')">重複預約</button>
+        <button class="cancelReasonChip" onclick="_selectCancelChip(this,'會員要求取消')">會員要求取消</button>
+        <button class="cancelReasonChip" onclick="_selectCancelChip(this,'other')">其他</button>
+      </div>
+    </div>
+    <!-- Textarea: shown for void OR when user picks "其他" -->
+    <div id="cancelDlgReasonWrap" style="display:none">
+      <textarea class="cancelDlgTextarea" id="cancelDlgReason" rows="3" placeholder="請輸入原因…"></textarea>
+    </div>
     <div class="cancelDlgBtns">
       <button class="cancelDlgCancel"  onclick="_closeCancelDlg()">返回</button>
       <button class="cancelDlgConfirm" id="cancelDlgConfirmBtn" onclick="_confirmCancelDlg()">確認</button>
