@@ -4683,9 +4683,10 @@ function _renderFinOverview(source, balance, annual, monthly, donate, expense, i
 
 /* ── Finance: Expiring Members ── */
 function _renderExpiringSoon(){
-  /* ── 完全以 _calcMemberFeeStatus() 為 source of truth ────────────────────
-     Gate, expiry date, type label 全從 financeRecords 取。
-     不讀 usersCache.expireDate / membershipExpiry / membershipType / expirePaid。
+  /* ── Source of truth priority ─────────────────────────────────────────────
+     Primary:  financeRecords 最新一筆有效會費（membershipExpiry / membershipType）
+     Fallback: usersCache.expireDate / membershipType（僅 financeRecords 無資料時）
+     Gate: _calcMemberFeeStatus()，確保與會員管理頁邏輯一致。
      ─────────────────────────────────────────────────────────────────────── */
   var todayD = new Date(); todayD.setHours(0,0,0,0);
   var SKIP_STATUS = {pending:1, blocked:1, resigned:1, deleted:1, removed:1, archived:1};
@@ -4694,32 +4695,37 @@ function _renderExpiringSoon(){
   Object.values(usersCache).forEach(function(m){
     if(SKIP_STATUS[m.status||'active']) return;
 
-    // Step 1: gate — _calcMemberFeeStatus reads financeRecords only
+    // Gate: _calcMemberFeeStatus reads financeRecords → ensures consistent logic with member tab
     var fs = _calcMemberFeeStatus(m);
     if(fs.status !== 'expiring' && fs.status !== 'overdue') return;
 
-    // Step 2: get expiry date from financeRecords (no usersCache fallback)
     var uid = m.userId || m.uid || '';
+
+    // Primary: get best financeRecord
     var activeRecs = financeRecords.filter(function(r){
       return (r.type==='annual'||r.type==='monthly') && r.memberId===uid && (r.status||'active')==='active';
     });
-    if(!activeRecs.length) return;
-    var bestRec = activeRecs.reduce(function(best, r){
+    var bestRec = activeRecs.length ? activeRecs.reduce(function(best, r){
       var expB = best.membershipExpiry || best.expireDate || '';
       var expR = r.membershipExpiry    || r.expireDate    || '';
       return expR > expB ? r : best;
-    }, activeRecs[0]);
+    }, activeRecs[0]) : null;
 
-    // expStr: strictly from financeRecords, no usersCache fields
-    var expStr = bestRec.membershipExpiry || bestRec.expireDate || '';
+    // expStr: financeRecords first, fallback to usersCache (for legacy/new members)
+    var expStr = (bestRec ? (bestRec.membershipExpiry || bestRec.expireDate) : '')
+               || m.membershipExpiry || m.expireDate || '';
     if(!expStr) return;
     var exp = new Date(expStr.replace(/\//g,'-')+'T00:00:00');
     if(isNaN(exp.getTime())) return;
     var diff = Math.floor((exp - todayD) / 86400000);
 
-    // typeLabel: strictly from financeRecords, no usersCache fields
-    var typeLabel = bestRec.membershipType === 'annual'  ? '年費'
-                  : bestRec.membershipType === 'monthly' ? '月費' : '';
+    // typeLabel: financeRecords first, fallback to usersCache
+    var typeLabel = bestRec
+      ? (bestRec.membershipType === 'annual'  ? '年費' : bestRec.membershipType === 'monthly' ? '月費' : '')
+      : (m.membershipType === 'annual' ? '年費' : m.membershipType === 'monthly' ? '月費' : '');
+
+    // expirePaid: financeRecords expirePaid not tracked per-record; use member flag as override
+    if(bestRec && m.expirePaid) return;  // admin manually marked as paid → skip
 
     list.push({ id:uid, name:m.realName||m.displayName||'', expireDate:expStr, diff:diff, typeLabel:typeLabel });
   });
