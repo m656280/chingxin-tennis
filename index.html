@@ -4683,54 +4683,67 @@ function _renderFinOverview(source, balance, annual, monthly, donate, expense, i
 
 /* ── Finance: Expiring Members ── */
 function _renderExpiringSoon(){
+  /* ── 完全以 _calcMemberFeeStatus() 為 source of truth ────────────────────
+     Gate, expiry date, type label 全從 financeRecords 取。
+     不讀 usersCache.expireDate / membershipExpiry / membershipType / expirePaid。
+     ─────────────────────────────────────────────────────────────────────── */
   var todayD = new Date(); todayD.setHours(0,0,0,0);
-  // Use live Firestore cache — no mock data
-  var members = Object.values(usersCache).map(function(m){
-    return {
-      id:         m.userId,
-      name:       m.realName || m.displayName || '',
-      status:     m.status || '',
-      expireDate: m.expireDate || null,
-      expirePaid: m.expirePaid || false,
-      type:       m.memberType || m.type || 'annual',
-    };
-  });
-  var list = members.filter(function(m){
-    var s = m.status || '';
-    if(s === 'pending' || s === 'blocked' || s === 'resigned' || s === 'deleted') return false;
-    if(!m.expireDate) return false;
-    if(m.expirePaid) return false;
-    var exp = new Date(m.expireDate.replace(/\//g,'-')+'T00:00:00');
+  var SKIP_STATUS = {pending:1, blocked:1, resigned:1, deleted:1, removed:1, archived:1};
+
+  var list = [];
+  Object.values(usersCache).forEach(function(m){
+    if(SKIP_STATUS[m.status||'active']) return;
+
+    // Step 1: gate — _calcMemberFeeStatus reads financeRecords only
+    var fs = _calcMemberFeeStatus(m);
+    if(fs.status !== 'expiring' && fs.status !== 'overdue') return;
+
+    // Step 2: get expiry date from financeRecords (no usersCache fallback)
+    var uid = m.userId || m.uid || '';
+    var activeRecs = financeRecords.filter(function(r){
+      return (r.type==='annual'||r.type==='monthly') && r.memberId===uid && (r.status||'active')==='active';
+    });
+    if(!activeRecs.length) return;
+    var bestRec = activeRecs.reduce(function(best, r){
+      var expB = best.membershipExpiry || best.expireDate || '';
+      var expR = r.membershipExpiry    || r.expireDate    || '';
+      return expR > expB ? r : best;
+    }, activeRecs[0]);
+
+    // expStr: strictly from financeRecords, no usersCache fields
+    var expStr = bestRec.membershipExpiry || bestRec.expireDate || '';
+    if(!expStr) return;
+    var exp = new Date(expStr.replace(/\//g,'-')+'T00:00:00');
+    if(isNaN(exp.getTime())) return;
     var diff = Math.floor((exp - todayD) / 86400000);
-    return diff <= 30; // within 30 days or already overdue
+
+    // typeLabel: strictly from financeRecords, no usersCache fields
+    var typeLabel = bestRec.membershipType === 'annual'  ? '年費'
+                  : bestRec.membershipType === 'monthly' ? '月費' : '';
+
+    list.push({ id:uid, name:m.realName||m.displayName||'', expireDate:expStr, diff:diff, typeLabel:typeLabel });
   });
+
   if(!list.length){
     return '<div class="finChartSummaryRow" style="margin-top:6px">'
       +'<span class="finChartSummaryLabel">即將到期</span>'
       +'<span class="finChartSummaryVal" style="font-size:12px;color:var(--color-text-muted)">目前無</span>'
       +'</div>';
   }
-  list.sort(function(a,b){
-    var expA = new Date(a.expireDate.replace(/\//g,'-')+'T00:00:00');
-    var expB = new Date(b.expireDate.replace(/\//g,'-')+'T00:00:00');
-    return expA - expB;
-  });
+  list.sort(function(a,b){ return a.diff - b.diff; });
   var html = '<div class="finExpireBlock">';
   html += '<div class="finExpireBlockTitle">即將到期 / 未繳</div>';
-  list.forEach(function(m){
-    var exp = new Date(m.expireDate.replace(/\//g,'-')+'T00:00:00');
-    var diff = Math.floor((exp - todayD) / 86400000);
+  list.forEach(function(item){
     var tagClass, tagText;
-    if(diff < 0){ tagClass='overdue'; tagText='未繳'; }
-    else if(diff === 0){ tagClass='today'; tagText='今日到期 ⏰'; }
-    else{ tagClass='soon'; tagText='即將到期 ⏰'; }
-    var typeLabel = m.type==='annual'?'年費':m.type==='monthly'?'月費':m.type;
-    var enc = encodeURIComponent(JSON.stringify({id:m.id,name:m.name,expireDate:m.expireDate,type:typeLabel}));
+    if(item.diff < 0)     { tagClass='overdue'; tagText='未繳'; }
+    else if(item.diff===0){ tagClass='today';   tagText='今日到期 ⏰'; }
+    else                  { tagClass='soon';    tagText='剩餘 '+item.diff+' 天 ⏰'; }
+    var enc = encodeURIComponent(JSON.stringify({id:item.id,name:item.name,expireDate:item.expireDate,type:item.typeLabel}));
     html += '<div class="finExpireMemberRow" onclick="_finOpenMemberSheet(\''+enc+'\')">';
-    html += '<div class="finExpireAvatar">'+(m.name||'?').charAt(0)+'</div>';
+    html += '<div class="finExpireAvatar">'+(item.name||'?').charAt(0)+'</div>';
     html += '<div style="flex:1;min-width:0">';
-    html += '<div class="finExpireName">'+m.name+'</div>';
-    html += '<div class="finExpireDate">'+typeLabel+' · '+m.expireDate+'</div>';
+    html += '<div class="finExpireName">'+_esc(item.name)+'</div>';
+    html += '<div class="finExpireDate">'+_esc(item.typeLabel)+' · '+_esc(item.expireDate)+'</div>';
     html += '</div>';
     html += '<span class="finExpireTag '+tagClass+'">'+tagText+'</span>';
     html += '</div>';
