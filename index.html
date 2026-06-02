@@ -4779,8 +4779,10 @@ function _renderFinDetail(source, isAdmin, fmt){
     } else if(_isOwnerRole && isVoid){
       delIcon = '<button class="finActBtn perm-del-btn" onclick="event.stopPropagation();permanentDeleteFinanceRecordById(\''+r.id+'\')">永久刪除</button>';
     }
+    var _canEditRow = isAdmin && !isVoid;
     html += '<div class="financeRecord'+(isVoid?' finRecordVoid':'')+'" style="align-items:flex-start">'
-      + '<div class="finRecordLeft financeRecordLeft" onclick="editFinanceRecord(\''+r.id+'\')">'
+      + '<div class="'+ (_canEditRow ? 'finRecordLeft ' : '') +'financeRecordLeft"'
+      + (_canEditRow ? ' onclick="editFinanceRecord(\''+r.id+'\')"' : ' style="cursor:default"') +'>'
         + '<div class="financeRecordName">'+(r.memberRealName||r.member||'—')+resignedTag+'</div>'
         + (r.note?'<div class="finRecordNote">'+r.note+'</div>':'')
         + '<div class="finRecordDateMeta">'+dateMeta+'</div>'
@@ -5053,8 +5055,10 @@ function openFinCategory(type){
         : rSt === 'refund'
         ? '<span class="finStatusBadge refund">已退費</span> '
         : '';
+      var _catCanEdit = isAdminLike() && rSt !== 'void' && rSt !== 'deleted' && rSt !== 'archived';
       html += '<div class="finCategoryRecord'+(rSt==='void'?' finRecordVoid':'')+'">'
-        + '<div class="financeRecordLeft">'
+        + '<div class="financeRecordLeft finRecordLeft" onclick="'+(_catCanEdit?'closeFinCategory();editFinanceRecord(\''+r.id+'\')':'')+'"'
+            + ' style="'+ (_catCanEdit ? '' : 'cursor:default') +'">'
           + '<div class="financeRecordName">'+catStatusBadge+(r.member||'—')+'</div>'
           + '<div class="financeRecordMeta">'+r.date+(r.note?' · '+r.note:'')+'</div>'
           + (r.createdByName ? '<div class="financeRecordMeta" style="opacity:0.65">登記：'+r.createdByName+'</div>' : '')
@@ -5585,9 +5589,16 @@ function submitEditFinanceRecord(type, member, date, amount, note, membershipYea
   var _msType2   = (type==='annual'||type==='monthly') ? type : '';
   var _mYear2    = (_msType2==='annual') ? (membershipYear||null) : null;
   var _msExpiry2 = _calcMembershipExpiry(_msType2, date, _mYear2);
-  // 若原紀錄為 void，儲存時重新啟用
+  if(!isAdminLike()){ showToast('僅管理員可編輯紀錄'); return; }
   var _origRec = financeRecords.find(function(r){ return r.id===_finEditId; });
-  var _wasVoid = _origRec && (_origRec.status || 'active') === 'void';
+  // 二次防護：void / deleted / archived 不得透過 edit 通道修改
+  var _origSt = _origRec ? (_origRec.status || 'active') : 'active';
+  if(_origSt === 'void' || _origSt === 'deleted' || _origSt === 'archived'){
+    showToast('此紀錄已作廢，無法編輯。'); return;
+  }
+  var _wasVoid = false; // no longer reactivate-on-edit
+  var _updaterName = currentUser ? (currentUser.realName||currentUser.displayName||'') : '';
+  var _updaterUid  = currentUser ? (currentUser.uid||currentUser.userId||'') : '';
   const upd = {
     type:              type,
     memberId:          member || '',
@@ -5601,6 +5612,8 @@ function submitEditFinanceRecord(type, member, date, amount, note, membershipYea
     membershipYear:    _mYear2,
     membershipExpiry:  _msExpiry2,
     updatedAt:         TS(),
+    updatedByUid:      _updaterUid,
+    updatedByName:     _updaterName,
   };
   if(_wasVoid) upd.status = 'active';   // 重新啟用
   db.collection('financialRecords').doc(_finEditId).update(upd)
@@ -5625,7 +5638,7 @@ function submitEditFinanceRecord(type, member, date, amount, note, membershipYea
         rec.memberRealName=_mRealName2; rec.memberNameSnapshot=_mRealName2||_mDisplayName2; rec.memberId=member||'';
         rec.date=date; rec.amount=amount; rec.note=note||'';
         rec.membershipType=_msType2; rec.membershipYear=_mYear2; rec.membershipExpiry=_msExpiry2;
-        rec.updatedAt=upd.updatedAt;
+        rec.updatedAt=upd.updatedAt; rec.updatedByName=_updaterName; rec.updatedByUid=_updaterUid;
         if(_wasVoid) rec.status = 'active';
       }
       closeFinanceForm();
@@ -5646,6 +5659,12 @@ function editFinanceRecord(id){
   if(!isAdminLike()){ showToast('僅管理員可編輯紀錄'); return; }
   const rec = financeRecords.find(function(r){ return r.id===id; });
   if(!rec){ showToast('找不到紀錄'); return; }
+  // void / deleted / archived 不可編輯，僅 owner 可永久刪除
+  var _recSt = rec.status || 'active';
+  if(_recSt === 'void' || _recSt === 'deleted' || _recSt === 'archived'){
+    showToast('此紀錄已作廢，無法編輯。僅 Owner 可永久刪除。');
+    return;
+  }
 
   _finEditId = id;
   document.getElementById('financeFormTitle').textContent = '編輯財務紀錄';
@@ -7511,6 +7530,78 @@ function _onFormCoachChange(){
   _refreshFormStudentList(sel&&sel.value?sel.value:null);
 }
 
+/* ── Booking: extract all participant UIDs from a booking doc ── */
+function _bookingParticipantUids(b){
+  var uids = [];
+  if(!b) return uids;
+  if(b.coachId) uids.push(b.coachId);
+  (Array.isArray(b.players)  ? b.players  : []).forEach(function(u){ if(u) uids.push(u); });
+  (Array.isArray(b.students) ? b.students : []).forEach(function(u){ if(u) uids.push(u); });
+  // Deduplicate
+  return uids.filter(function(u,i){ return uids.indexOf(u)===i; });
+}
+
+/* ── Booking: cross-court participant time-conflict check ──────────────────────
+   draft: { date, startTime, endTime, court, participantUids: uid[] }
+   excludeId: booking ID to skip (edit mode); null for new bookings.
+   Returns:
+     null              — no conflict found
+     {uid,name,...}    — real conflict found
+     {queryError:true} — Firestore query failed; caller MUST block (fail-closed)
+   ─────────────────────────────────────────────────────────────────────────── */
+var _CONFLICT_QUERY_ERROR = {queryError: true};
+function hasParticipantTimeConflict(draft, excludeId){
+  // No db connection → cannot verify → block (fail-closed)
+  if(!db) return Promise.resolve(_CONFLICT_QUERY_ERROR);
+  // No participants to check → no conflict possible
+  if(!draft.participantUids || !draft.participantUids.length) return Promise.resolve(null);
+  var pSet     = {};
+  draft.participantUids.forEach(function(u){ if(u) pSet[u] = true; });
+  var newStart = timeToMin(draft.startTime);
+  var newEnd   = timeToMin(draft.endTime);
+  return db.collection('bookings').where('date','==',draft.date).get()
+    .then(function(snap){
+      var COURT_LABELS_SHORT = {hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'};
+      for(var i=0; i<snap.docs.length; i++){
+        var d  = snap.docs[i];
+        if(d.id === excludeId) continue;
+        var b  = Object.assign({id:d.id}, d.data());
+        if(!_isActiveBooking(b))            continue;  // skip cancelled/void
+        if(b.court === draft.court)         continue;  // same court checked elsewhere
+        // Time overlap: newStart < existEnd && newEnd > existStart
+        var exStart = timeToMin(b.startTime);
+        var exEnd   = timeToMin(b.endTime);
+        if(!(newStart < exEnd && newEnd > exStart)) continue;
+        // Check participant intersection
+        var allBkUids = _bookingParticipantUids(b);
+        for(var j=0; j<allBkUids.length; j++){
+          if(pSet[allBkUids[j]]){
+            var conflictUid = allBkUids[j];
+            return {
+              uid:   conflictUid,
+              name:  _mName(usersCache[conflictUid]) || conflictUid,
+              court: COURT_LABELS_SHORT[b.court] || b.court,
+              start: b.startTime,
+              end:   b.endTime,
+            };
+          }
+        }
+      }
+      return null;
+    })
+    .catch(function(e){
+      console.error('[participantConflict] query error:', e);
+      return _CONFLICT_QUERY_ERROR;  // fail-closed: block on query error
+    });
+}
+
+/* Build human-readable conflict toast */
+function _bookingConflictMsg(c){
+  if(!c) return '此成員已在同時段參與其他場地，無法重複預約。';
+  if(c.queryError) return '目前無法確認同時段衝突，請稍後再試。';
+  return c.name+'已在 '+c.start+'–'+c.end+' 參與 '+c.court+'，無法重複預約。';
+}
+
 /* ── Submit edit: update existing booking ── */
 function _submitBookingEdit(){
   if(!db || !_bkEditId){ showToast('無法連線，請稍後再試'); return; }
@@ -7567,7 +7658,20 @@ function _submitBookingEdit(){
           showToast('此時段已有衝突預約'); return;
         }
       }
-      return db.collection('bookings').doc(editId).update(upd);
+      // Cross-court participant conflict check
+      var _editOrigBk  = _findBookingById(editId);
+      var _editUids    = (isGeneral && upd.players)
+        ? upd.players.slice()
+        : (_editOrigBk ? _bookingParticipantUids(_editOrigBk) : []);
+      var _editDraft   = {date:date, startTime:start, endTime:end, court:court, participantUids:_editUids};
+      return hasParticipantTimeConflict(_editDraft, editId).then(function(_editConflict){
+        if(_editConflict){
+          showToast(_bookingConflictMsg(_editConflict));
+          if(btn){ btn.disabled=false; btn.textContent='儲存變更'; }
+          return;
+        }
+        return db.collection('bookings').doc(editId).update(upd);
+      });
     })
     .then(function(){
       if(!_bkEditId) return; // already cleared by above guard
@@ -7702,12 +7806,19 @@ function submitBooking(){
           if(btn){ btn.disabled=false; btn.textContent='確認預約'; }
           return;
         }
-        // join existing booking
-        return db.collection('bookings').doc(ex.id).update({
-          players:          firebase.firestore.FieldValue.arrayUnion(playerUid),
-          participantCount: firebase.firestore.FieldValue.increment(1),
-          updatedAt:        TS()
-        }).then(function(){
+        // join existing booking — first check cross-court participant conflict for joiner
+        var _joinDraft = {date:date, startTime:start, endTime:end, court:court, participantUids:[playerUid]};
+        return hasParticipantTimeConflict(_joinDraft, ex.id).then(function(_joinConflict){
+          if(_joinConflict){
+            showToast(_bookingConflictMsg(_joinConflict));
+            if(btn){ btn.disabled=false; btn.textContent='確認預約'; }
+            return;
+          }
+          return db.collection('bookings').doc(ex.id).update({
+            players:          firebase.firestore.FieldValue.arrayUnion(playerUid),
+            participantCount: firebase.firestore.FieldValue.increment(1),
+            updatedAt:        TS()
+          }).then(function(){
           showToast('已加入預約 · '+courtShortLabel+' '+start);
           allBookingsCache = null;       /* invalidate admin cache */
           courtBookingsFirestore = null; /* invalidate day view cache */
@@ -7715,7 +7826,8 @@ function submitBooking(){
           loadWeekBookings();
           loadMyBookings();
           loadMonthBookings();
-        });
+          });  // end update().then()
+        });    // end hasParticipantTimeConflict().then()
       }
 
       // No conflict — create new booking
@@ -7758,19 +7870,29 @@ function submitBooking(){
       if(title) newDoc.title = title;
       if(!isGeneral && note) newDoc.note = note;  /* note only for non-general modes */
 
-      return db.collection('bookings').add(newDoc).then(function(){
-        showToast('預約成功 · '+courtShortLabel+' '+start);
-        teachingBookings = null;       /* invalidate coach stats cache */
-        allBookingsCache = null;       /* invalidate admin 預約管理 cache */
-        courtBookingsFirestore = null; /* invalidate day view cache */
-        /* GroupClass: auto-create announcement visible only on booking date */
-        if(mode==='groupClass' && coachId){
-          _createGroupClassAnnouncement(coachId, newDoc.coachName, date, start, end, court);
+      // Build full participant UID list for cross-court conflict check
+      var _newUids = _bookingParticipantUids(newDoc);  // uses players/students/coachId already on newDoc
+      var _newDraft = {date:date, startTime:start, endTime:end, court:court, participantUids:_newUids};
+      return hasParticipantTimeConflict(_newDraft, null).then(function(_newConflict){
+        if(_newConflict){
+          showToast(_bookingConflictMsg(_newConflict));
+          if(btn){ btn.disabled=false; btn.textContent='確認預約'; }
+          return;
         }
-        closeBookingForm();
-        loadWeekBookings();
-        loadMyBookings();
-        loadMonthBookings();
+        return db.collection('bookings').add(newDoc).then(function(){
+          showToast('預約成功 · '+courtShortLabel+' '+start);
+          teachingBookings = null;       /* invalidate coach stats cache */
+          allBookingsCache = null;       /* invalidate admin 預約管理 cache */
+          courtBookingsFirestore = null; /* invalidate day view cache */
+          /* GroupClass: auto-create announcement visible only on booking date */
+          if(mode==='groupClass' && coachId){
+            _createGroupClassAnnouncement(coachId, newDoc.coachName, date, start, end, court);
+          }
+          closeBookingForm();
+          loadWeekBookings();
+          loadMyBookings();
+          loadMonthBookings();
+        });
       });
     })
     .catch(function(e){
