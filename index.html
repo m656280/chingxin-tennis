@@ -4820,6 +4820,14 @@ function _donutSVG(segs, size, hole){
   if(!total) return '<svg width="'+size+'" height="'+size+'">'
     +'<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="var(--color-border-soft)"/>'
     +'<circle cx="'+cx+'" cy="'+cy+'" r="'+ir+'" fill="var(--color-bg)"/></svg>';
+  // Single-segment case: SVG arc is degenerate for a full 360° sweep → use two circles instead
+  var activeSegs = segs.filter(function(s){ return s.value>0; });
+  if(activeSegs.length === 1){
+    return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'" xmlns="http://www.w3.org/2000/svg">'
+      +'<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="'+activeSegs[0].color+'" opacity="0.88"/>'
+      +'<circle cx="'+cx+'" cy="'+cy+'" r="'+ir+'" fill="var(--color-bg)"/>'
+      +'</svg>';
+  }
   var paths=''; var sa=-Math.PI/2;
   segs.forEach(function(seg){
     if(!seg.value) return;
@@ -5042,49 +5050,136 @@ function permanentDeleteFinanceRecord(){
   permanentDeleteFinanceRecordById(_finEditId);
 }
 
+/* ── Finance: member name resolver (independent per-record; never mutates cache) ── */
+function _finRecName(r){
+  // Prefer a snapshot baked in at write time, then stored display/real fields,
+  // then fall back to live cache. Each lookup is read-only; void records on the
+  // same member never pollute this path.
+  var fromCache = '';
+  if(r.memberId && usersCache[r.memberId]){
+    var cu = usersCache[r.memberId];
+    fromCache = cu.realName || cu.displayName || cu.name || '';
+  }
+  if(!fromCache && r.uid && usersCache[r.uid]){
+    var cu2 = usersCache[r.uid];
+    fromCache = cu2.realName || cu2.displayName || cu2.name || '';
+  }
+  return r.memberNameSnapshot
+      || r.memberDisplayName
+      || r.memberRealName
+      || r.memberName
+      || r.primaryName
+      || r.name
+      || fromCache
+      || r.member
+      || '';
+}
+
 /* ── Finance: Export CSV ── */
 function exportFinanceCSV(){
   if(!isAdminLike()){ showToast('僅管理員可匯出'); return; }
-  const allRecs = financeRecords;
-  const source = allRecs.filter(function(r){
-    var st = r.status || 'active';
-    return (r.year || parseInt(r.date.slice(0,4),10)) === _finYear
-      && st !== 'void' && st !== 'cancelled' && st !== 'deleted' && st !== 'archived';
+
+  var EXCL = {void:1, cancelled:1, deleted:1, archived:1};
+  var yearRecs = financeRecords.filter(function(r){
+    return (r.year || parseInt(r.date.slice(0,4),10)) === _finYear;
   });
-  if(!source.length){ showToast(_finYear+' 年沒有有效資料可匯出'); return; }
+  if(!yearRecs.length){ showToast(_finYear+' 年沒有資料可匯出'); return; }
 
-  const sorted = source.slice().sort(function(a,b){ return a.date.localeCompare(b.date); });
-  const header = ['日期','會員','類型','金額','備註','登記人'];
-  const rows = sorted.map(function(r){
-    return [
-      r.date,
-      r.member  || '',
-      FIN_TYPE_LABEL[r.type] || r.type,
-      r.amount,
-      r.note    || '',
-      r.createdByName || '',
-    ].map(function(v){
-      // CSV escape: wrap in quotes if contains comma/newline/quote
-      const s = String(v).replace(/"/g, '""');
-      return /[,"\n]/.test(s) ? '"'+s+'"' : s;
-    }).join(',');
-  });
+  // ── Categorise ──────────────────────────────────────────────────────
+  var byDate = function(a,b){ return a.date.localeCompare(b.date); };
+  var incRecs = yearRecs.filter(function(r){
+    return !EXCL[r.status||'active'] && r.type !== 'expense';
+  }).sort(byDate);
+  var expRecs = yearRecs.filter(function(r){
+    return !EXCL[r.status||'active'] && r.type === 'expense';
+  }).sort(byDate);
+  var voidRecs = yearRecs.filter(function(r){
+    return (r.status||'active') === 'void';
+  }).sort(byDate);
 
-  // BOM for Excel UTF-8 recognition
-  const bom = '﻿';
-  const csv = bom + [header.join(',')].concat(rows).join('\r\n');
-  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-  const filename = 'chingxin-finance-'+_finYear+'.csv';
+  // ── Totals ──────────────────────────────────────────────────────────
+  function sumType(recs, type){
+    return recs.filter(function(r){ return r.type===type; })
+               .reduce(function(a,r){ return a+((r.status==='refund')?-r.amount:r.amount); },0);
+  }
+  var annualT  = sumType(incRecs,'annual');
+  var monthlyT = sumType(incRecs,'monthly');
+  var donateT  = sumType(incRecs,'donate');
+  var otherT   = incRecs.filter(function(r){ return r.type!=='annual'&&r.type!=='monthly'&&r.type!=='donate'; })
+                         .reduce(function(a,r){ return a+((r.status==='refund')?-r.amount:r.amount); },0);
+  var incTotal = annualT + monthlyT + donateT + otherT;
+  var expTotal = expRecs.reduce(function(a,r){ return a+r.amount; },0);
+  var balance  = incTotal - expTotal;
 
-  // iOS / LINE WebView: a.download unreliable — show export action sheet instead
+  // ── CSV helpers ─────────────────────────────────────────────────────
+  function esc(v){
+    var s = String(v===null||v===undefined?'':v).replace(/"/g,'""');
+    return /[,"\n\r]/.test(s)?'"'+s+'"':s;
+  }
+  function row(cells){ return cells.map(esc).join(','); }
+  function fmtAmt(n){ return 'NT$ '+n; }
+  function typeLabel(r){
+    if(r.status==='refund') return '退款/修正';
+    return FIN_TYPE_LABEL[r.type]||r.type;
+  }
+  function effAmt(r){ return (r.status==='refund')?-r.amount:r.amount; }
+
+  var L = [];  // lines array
+
+  // ── 一、年度財務總覽 ─────────────────────────────────────────────────
+  L.push('一、'+_finYear+' 年度財務總覽');
+  L.push(row(['項目','金額']));
+  L.push(row(['總收入',      fmtAmt(incTotal)]));
+  L.push(row(['　年費收入',  fmtAmt(annualT)]));
+  L.push(row(['　月費收入',  fmtAmt(monthlyT)]));
+  L.push(row(['　抖內收入',  fmtAmt(donateT)]));
+  L.push(row(['　其他收入',  fmtAmt(otherT)]));
+  L.push(row(['總支出',      fmtAmt(expTotal)]));
+  L.push(row(['結餘',        fmtAmt(balance)]));
+  L.push('');
+
+  // ── 二、收入明細 ─────────────────────────────────────────────────────
+  L.push('二、收入明細');
+  L.push(row(['日期','會員','類型','金額','備註','登記人']));
+  if(incRecs.length){
+    incRecs.forEach(function(r){
+      L.push(row([r.date, _finRecName(r), typeLabel(r), effAmt(r), r.note||'', r.createdByName||'']));
+    });
+  } else { L.push('（本年度無收入紀錄）'); }
+  L.push('');
+
+  // ── 三、支出明細 ─────────────────────────────────────────────────────
+  L.push('三、支出明細');
+  L.push(row(['日期','項目','類型','金額','備註','登記人']));
+  if(expRecs.length){
+    expRecs.forEach(function(r){
+      // 支出「項目」欄：優先 note（支出描述），其次會員名（若有對象）
+      var expItem = r.note || _finRecName(r) || '';
+      L.push(row([r.date, expItem, FIN_TYPE_LABEL[r.type]||r.type, r.amount, r.note||'', r.createdByName||'']));
+    });
+  } else { L.push('（本年度無支出紀錄）'); }
+  L.push('');
+
+  // ── 四、作廢紀錄（稽核參考） ──────────────────────────────────────────
+  L.push('四、作廢紀錄（稽核參考，不列入加總）');
+  L.push(row(['日期','會員/項目','類型','金額','備註','登記人','狀態']));
+  if(voidRecs.length){
+    voidRecs.forEach(function(r){
+      L.push(row([r.date, _finRecName(r), FIN_TYPE_LABEL[r.type]||r.type, r.amount, r.note||'', r.createdByName||'', '已作廢']));
+    });
+  } else { L.push('（本年度無作廢紀錄）'); }
+
+  // ── Build & Download ─────────────────────────────────────────────────
+  var csv      = '﻿' + L.join('\r\n');  // UTF-8 BOM for Numbers/Excel
+  var blob     = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  var filename = 'chingxin-finance-'+_finYear+'.csv';
+
   var _csvIsIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
   var _csvIsLine = /Line\//i.test(navigator.userAgent);
   if(_csvIsIOS || _csvIsLine){
     _showExportSheet(csv, blob, filename);
     return;
   }
-
-  // Desktop / Android Chrome: existing download behavior unchanged
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
   a.href = url; a.download = filename;
@@ -5329,6 +5424,7 @@ function submitFinanceRecord(){
       memberId:          member || '',
       memberDisplayName: _mDisplayName,
       memberRealName:    _mRealName,
+      memberNameSnapshot: _mRealName || _mDisplayName,  // baked-in name; survives cache flush
       year:              _finYear,
       date:              date,
       amount:            amount,
@@ -5389,6 +5485,7 @@ function submitEditFinanceRecord(type, member, date, amount, note, membershipYea
     memberId:          member || '',
     memberDisplayName: _mDisplayName2,
     memberRealName:    _mRealName2,
+    memberNameSnapshot: _mRealName2 || _mDisplayName2,  // baked-in name; survives cache flush
     date:              date,
     amount:            amount,
     note:              note || '',
@@ -5417,7 +5514,7 @@ function submitEditFinanceRecord(type, member, date, amount, note, membershipYea
       var rec = financeRecords.find(function(r){ return r.id===_finEditId; });
       if(rec){
         rec.type=type; rec.member=_mDisplayName2; rec.memberDisplayName=_mDisplayName2;
-        rec.memberRealName=_mRealName2; rec.memberId=member||'';
+        rec.memberRealName=_mRealName2; rec.memberNameSnapshot=_mRealName2||_mDisplayName2; rec.memberId=member||'';
         rec.date=date; rec.amount=amount; rec.note=note||'';
         rec.membershipType=_msType2; rec.membershipYear=_mYear2; rec.membershipExpiry=_msExpiry2;
         rec.updatedAt=upd.updatedAt;
@@ -6394,7 +6491,7 @@ function loadFinanceRecords(){
         var data = d.data();
         return Object.assign({}, data, {
           id:     d.id,
-          member: data.memberDisplayName || data.memberName || data.member || '',  // normalize for render functions
+          member: data.memberNameSnapshot || data.memberDisplayName || data.memberRealName || data.memberName || data.member || '',  // normalize for render functions
         });
       });
       _updateManageNavBadge();
