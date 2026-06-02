@@ -2963,7 +2963,7 @@ function renderGrid(){
       '<span class="timeLabel">'+(showLabel?slot:'')+'</span></div>';
   });
   const ds=formatDate(selectedDate);
-  const bookingsForDay=(courtBookingsFirestore||[]).filter(b=>b.date===ds);
+  const bookingsForDay=(courtBookingsFirestore||[]).filter(b=>b.date===ds && _isActiveBooking(b));
   bookingsForDay.forEach(b=>{
     const {startSlot,spanSlots}=getSlotPosition(b.startTime,b.endTime,open);
     const courtIdx=COURTS.indexOf(b.court);
@@ -7061,12 +7061,15 @@ function _executeCancel(id, reason, callback){
     .then(function(){
       showToast('預約已取消');
       _dvCloseDetail();
-      /* Patch caches */
+      /* Remove cancelled booking from all local caches and reload views */
       _patchBookingInAllCaches(id, updateObj);
+      courtBookingsFirestore = null;
+      allBookingsCache = null;
       loadMyBookings();
       loadWeekBookings();
       loadMonthBookings();
-      if(allBookingsCache) loadAllBookings();
+      loadCourtBookings(formatDate(selectedDate));
+      loadAllBookings();
       /* Send notifications if admin/owner cancelled on behalf of others */
       if(b && (isAdminLike()) && b.createdBy !== myUid){
         _sendBookingNotifications(b, 'cancelled', reason||'管理員取消', myUid, myName);
@@ -7102,10 +7105,13 @@ function _executeVoid(id, reason, callback){
       showToast('預約已作廢');
       _dvCloseDetail();
       _patchBookingInAllCaches(id, updateObj);
+      courtBookingsFirestore = null;
+      allBookingsCache = null;
       loadMyBookings();
       loadWeekBookings();
       loadMonthBookings();
-      if(allBookingsCache) loadAllBookings();
+      loadCourtBookings(formatDate(selectedDate));
+      loadAllBookings();
       if(b) _sendBookingNotifications(b, 'void', reason||'管理員作廢', myUid, myName);
       if(callback) callback();
     })
@@ -7133,6 +7139,8 @@ function _executePermanentDelete(id, callback){
       loadWeekBookings();
       loadMonthBookings();
       loadMyBookings();
+      loadCourtBookings(formatDate(selectedDate));
+      loadAllBookings();
     })
     .catch(function(e){ console.error('permanentDelete error:',e); showToast('刪除失敗：'+e.message); });
 }
