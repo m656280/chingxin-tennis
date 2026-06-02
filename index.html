@@ -5856,7 +5856,7 @@ function renderDayView(){
   var d=selectedDate;
   var dstr=d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日（'+DAYS_TC[d.getDay()]+'）';
   var allB=courtBookingsFirestore||[];
-  var dayB=allB.filter(function(b){return b.date===ds;});
+  var dayB=allB.filter(function(b){return b.date===ds && _isActiveBooking(b);});
   var now=new Date();
   var nowMin=now.getHours()*60+now.getMinutes();
   var isClay=(_courtSurfaceFilter==='clay');
@@ -6968,18 +6968,38 @@ function _selectCancelChip(el, val){
 }
 /* ── Delete confirm dialog (owner only, cancelled/void bookings) ── */
 function _showDeleteConfirmDlg(id){
+  console.log('[deleteBooking] open dialog — id:', id, '| role:', _currentRole());
   if(_currentRole()!=='owner'){ showToast('僅 Owner 可永久刪除'); return; }
   var b = _findBookingById(id);
-  if(!b){ showToast('找不到預約紀錄'); return; }
-  if(_isActiveBooking(b)){ showToast('進行中的預約不可永久刪除，請先取消或作廢'); return; }
-  _cancelDlgBookingId = id;
-  _cancelDlgIsVoid    = false;
-  _cancelDlgIsDelete  = true;
-  _cancelDlgCallback  = null;
+  if(!b){
+    console.warn('[deleteBooking] booking not found in any cache — id:', id);
+    showToast('找不到預約紀錄（請確認預約管理頁已載入）'); return;
+  }
+  if(_isActiveBooking(b) && !_bookingHasEnded(b)){
+    console.warn('[deleteBooking] booking still active and not ended — status:', b.status, '| ended:', _bookingHasEnded(b));
+    showToast('進行中的預約不可永久刪除，請先取消或作廢'); return;
+  }
+  console.log('[deleteBooking] confirmed not-active — status:', b.status, '| path: bookings/'+id);
+  // Reset all dialog state (prevents stale _cancelDlgRequiredReason from a previous cancel dialog)
+  _cancelDlgBookingId      = id;
+  _cancelDlgIsVoid         = false;
+  _cancelDlgIsDelete       = true;
+  _cancelDlgCallback       = null;
+  _cancelDlgRequiredReason = false;
+  _cancelDlgShowReason     = false;
+  _cancelDlgSelectedReason = '';
   document.getElementById('cancelDlgTitle').textContent = '⚠️ 永久刪除預約';
   document.getElementById('cancelDlgDesc').textContent  = '此操作無法還原，預約紀錄將從系統中完全移除。確認繼續嗎？';
-  var ta = document.getElementById('cancelDlgReason');
-  ta.value = ''; ta.style.display = 'none';
+  // Hide chips and reason wrap (not needed for delete)
+  var chipsWrap  = document.getElementById('cancelDlgChipsWrap');
+  var reasonWrap = document.getElementById('cancelDlgReasonWrap');
+  var ta         = document.getElementById('cancelDlgReason');
+  var hint       = document.getElementById('cancelReasonRequiredHint');
+  if(chipsWrap)  chipsWrap.style.display  = 'none';
+  if(reasonWrap) reasonWrap.style.display = 'none';
+  if(ta)         ta.value = '';
+  if(hint)       hint.classList.remove('show');
+  document.querySelectorAll('.cancelReasonChip').forEach(function(c){ c.classList.remove('active'); });
   var btn = document.getElementById('cancelDlgConfirmBtn');
   if(btn){ btn.textContent='確認刪除'; btn.style.background='#c0392b'; }
   document.getElementById('cancelDlgBackdrop').classList.add('open');
@@ -7123,7 +7143,7 @@ function _executePermanentDelete(id, callback){
   if(_currentRole()!=='owner'){ showToast('僅 Owner 可永久刪除'); return; }
   if(!db){ showToast('無法連線，請稍後再試'); return; }
   var b = _findBookingById(id);
-  if(b && _isActiveBooking(b)){ showToast('進行中的預約不可永久刪除'); return; }
+  if(b && _isActiveBooking(b) && !_bookingHasEnded(b)){ showToast('進行中的預約不可永久刪除'); return; }
   db.collection('bookings').doc(id).delete()
     .then(function(){
       /* Remove from all local caches */
