@@ -826,6 +826,14 @@ button {
 .coachStudentEdit:hover { border-color:var(--color-text-primary); color:var(--color-text-primary); }
 
 /* ── Admin Settings Row ── */
+.sysToolCard { border:1px solid var(--color-border); border-radius:10px; padding:14px 16px; margin-bottom:10px; }
+.sysToolTitle { font-size:13.5px; font-weight:600; color:var(--color-text-primary); margin-bottom:4px; }
+.sysToolDesc { font-size:12px; color:var(--color-text-secondary); margin-bottom:10px; line-height:1.5; }
+.sysToolActions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.sysToolScanBtn { padding:6px 14px; border-radius:8px; border:1px solid var(--color-border); background:transparent; color:var(--color-text-primary); font-size:12.5px; cursor:pointer; letter-spacing:0.02em; }
+.sysToolScanBtn:active { background:var(--color-surface-alt); }
+.sysToolDeleteBtn { padding:6px 14px; border-radius:8px; border:1px solid rgba(192,57,43,0.45); background:rgba(192,57,43,0.07); color:#c0392b; font-size:12.5px; cursor:pointer; font-weight:600; letter-spacing:0.02em; }
+.sysToolResult { font-size:12px; color:var(--color-text-muted); }
 .adminSettingsRow {
   display:flex; align-items:center; gap:12px;
   padding:12px 0; border-bottom:1px solid var(--color-border-soft);
@@ -2531,6 +2539,7 @@ let announcementsCache = [];  // manage: announcements from Firestore
 let _announceLastReadTs = parseInt(localStorage.getItem('qx_announceLastRead')||'0',10); // 未讀追蹤
 let notificationsCache = []; // user's personal notifications (booking cancelled etc.)
 let _notifUnsubscribe  = null; // Firestore onSnapshot unsubscribe fn for notifications
+let _sysToolScanCache  = {};  // toolId → [docId,...] from last scan; used by delete step
 let financeRecords = [];      // local array; Firestore layer can be added later
 let _finSearchQuery = '';     // finance search filter state
 let _finYear = 2026;    // active year ledger (fixed range 2026–2036)
@@ -3237,6 +3246,7 @@ function renderManage(){
     {key:'members',       label:adminLike?'會員管理':'會員名單', show:true},
     {key:'allBookings',   label:'預約管理',  show:adminLike},
     {key:'adminSettings', label:'管理員設定', show:adminLike},
+    {key:'sysTools',      label:'系統工具',  show:role==='owner'},
     {key:'announcements', label:'公告',      show:true},
     {key:'coach',         label:'教練管理',  show:isCoach||adminLike},
   ];
@@ -3244,6 +3254,10 @@ function renderManage(){
 
   // Guard: pending accessible only to admin/owner
   if(_manageTab==='pending' && !adminLike){
+    _manageTab=TABS.length?TABS[0].key:'announcements';
+  }
+  // Guard: sysTools accessible only to owner
+  if(_manageTab==='sysTools' && role!=='owner'){
     _manageTab=TABS.length?TABS[0].key:'announcements';
   }
   // Guard: unrecognised tab key → reset to first visible
@@ -3304,6 +3318,7 @@ function renderManage(){
   else if(_manageTab==='coach')        _renderCoachTab(el);
   else if(_manageTab==='allBookings')  _renderAllBookingsTab(el);
   else if(_manageTab==='adminSettings')_renderAdminSettingsTab(el);
+  else if(_manageTab==='sysTools')     _renderSysToolsTab(el);
   else                                  _renderAnnouncementsTab(el);
 }
 
@@ -4000,6 +4015,136 @@ function _renderAdminSettingsTab(el){
 
   html+='</div>';
   el.innerHTML+=html;
+}
+
+/* ── 系統工具 (Owner only) ── */
+function _renderSysToolsTab(el){
+  if(_currentRole() !== 'owner'){
+    el.innerHTML += '<div class="emptyState">僅 Owner 可使用系統工具</div>';
+    return;
+  }
+  var TOOLS = [
+    {
+      id:    'cancelledOld',
+      icon:  '🗑',
+      title: '清理已取消預約',
+      desc:  '刪除 status=cancelled 且日期早於今天的預約。',
+    },
+    {
+      id:    'completedOld',
+      icon:  '✅',
+      title: '清理已完成預約',
+      desc:  '刪除 status=completed 且日期超過 90 天的預約。',
+    },
+    {
+      id:    'testData',
+      icon:  '🧪',
+      title: '清理測試資料',
+      desc:  '刪除 title / note 含「測試」「test」「demo」的預約。',
+    },
+  ];
+  var html = '<div style="padding:0 2px">'
+    +'<div style="font-size:11px;font-weight:600;letter-spacing:0.08em;color:var(--color-text-muted);text-transform:uppercase;margin:16px 0 12px;padding:0 4px">🧹 清理工具</div>';
+  TOOLS.forEach(function(t){
+    html += '<div class="sysToolCard">'
+      +'<div class="sysToolTitle">'+t.icon+'　'+t.title+'</div>'
+      +'<div class="sysToolDesc">'+t.desc+'</div>'
+      +'<div class="sysToolActions">'
+        +'<button class="sysToolScanBtn" onclick="_sysToolScan(\''+t.id+'\')">預覽筆數</button>'
+        +'<span class="sysToolResult" id="sysToolResult_'+t.id+'"></span>'
+      +'</div>'
+    +'</div>';
+  });
+  html += '</div>';
+  el.innerHTML += html;
+}
+
+/* Scan Firestore and cache doc IDs; show result + delete button */
+function _sysToolScan(toolId){
+  if(!db || _currentRole()!=='owner'){ showToast('僅 Owner 可使用'); return; }
+  var resultEl = document.getElementById('sysToolResult_'+toolId);
+  if(resultEl) resultEl.textContent = '掃描中…';
+  _sysToolGetDocs(toolId)
+    .then(function(docs){
+      var count = docs.length;
+      if(resultEl){
+        if(!count){
+          resultEl.textContent = '無符合紀錄';
+        } else {
+          resultEl.innerHTML = '<span style="font-weight:600;color:var(--color-text-primary)">'
+            +count+' 筆</span>　'
+            +'<button class="sysToolDeleteBtn" onclick="_sysToolConfirmDelete(\''+toolId+'\','+count+')">確認刪除</button>';
+        }
+      }
+    })
+    .catch(function(e){
+      if(resultEl) resultEl.textContent = '查詢失敗：'+(e.message||e);
+    });
+}
+
+/* Query Firestore, apply JS filter, cache IDs */
+function _sysToolGetDocs(toolId){
+  var todayStr  = formatDate(today);
+  var cutoff90  = formatDate(new Date(Date.now()-90*24*60*60*1000));
+  function cache(snap, filterFn){
+    var docs = snap.docs
+      .map(function(d){ return Object.assign({id:d.id},d.data()); })
+      .filter(filterFn);
+    _sysToolScanCache[toolId] = docs.map(function(d){ return d.id; });
+    return docs;
+  }
+  if(toolId==='cancelledOld'){
+    return db.collection('bookings').where('status','==','cancelled').get()
+      .then(function(snap){ return cache(snap, function(b){ return (b.date||'') < todayStr; }); });
+  }
+  if(toolId==='completedOld'){
+    return db.collection('bookings').where('status','==','completed').get()
+      .then(function(snap){ return cache(snap, function(b){ return (b.date||'') < cutoff90; }); });
+  }
+  if(toolId==='testData'){
+    return db.collection('bookings').get()
+      .then(function(snap){ return cache(snap, function(b){
+        var t = (b.title||'').toLowerCase();
+        var n = (b.note||'').toLowerCase();
+        return t.includes('測試')||t.includes('test')||t.includes('demo')
+            || n.includes('測試')||n.includes('test')||n.includes('demo');
+      }); });
+  }
+  return Promise.resolve([]);
+}
+
+/* Show fin-confirm dialog before deleting */
+function _sysToolConfirmDelete(toolId, count){
+  _showFinConfirm(
+    '即將刪除 '+count+' 筆資料',
+    '此操作無法還原，資料將從 Firestore 永久刪除。確認繼續？',
+    '確認刪除',
+    true,
+    function(){ _sysToolExecuteDelete(toolId); }
+  );
+}
+
+/* Batched Firestore delete (max 500 per batch) */
+function _sysToolExecuteDelete(toolId){
+  if(!db||_currentRole()!=='owner'){ showToast('僅 Owner 可執行'); return; }
+  var ids = _sysToolScanCache[toolId];
+  if(!ids||!ids.length){ showToast('無資料可刪除，請先預覽'); return; }
+  var batches = [], cur = db.batch(), cnt = 0;
+  ids.forEach(function(id){
+    cur.delete(db.collection('bookings').doc(id));
+    cnt++;
+    if(cnt===500){ batches.push(cur); cur=db.batch(); cnt=0; }
+  });
+  if(cnt>0) batches.push(cur);
+  Promise.all(batches.map(function(b){ return b.commit(); }))
+    .then(function(){
+      showToast('已刪除 '+ids.length+' 筆');
+      delete _sysToolScanCache[toolId];
+      allBookingsCache = null;
+      var resultEl = document.getElementById('sysToolResult_'+toolId);
+      if(resultEl) resultEl.textContent = '已刪除 '+ids.length+' 筆';
+    })
+    .catch(function(e){ showToast('刪除失敗：'+(e.message||e)); });
 }
 
 /* ── 未讀公告 Badge 管理 ── */
