@@ -1586,16 +1586,8 @@ button {
     </div>
     <div class="aboutDivider"></div>
     <div class="aboutBlock">
-      <div class="aboutBlockTitle">教練</div>
-      <div class="aboutBlockText">
-        Coach Lin — 主教練 · NTRP 5.0<br>
-        Coach 王 — 協助教練 · NTRP 4.5
-      </div>
-    </div>
-    <div class="aboutDivider"></div>
-    <div class="aboutBlock">
       <div class="aboutBlockTitle">版本</div>
-      <div class="aboutBlockText">Prototype · Mock Data · v0.3</div>
+      <div class="aboutBlockText">v1.0</div>
     </div>
   </div>
 </div>
@@ -2589,7 +2581,7 @@ function shortDateStr(dateStr){
   return (d.getMonth()+1)+'/'+d.getDate()+' ('+DAYS_TC[d.getDay()]+')';
 }
 
-/* ── Mock Data ── */
+/* ── Date constants ── */
 const TODAY_STR = offsetDays(0);
 const TOMORROW = offsetDays(1);
 const D2 = offsetDays(2);
@@ -7234,61 +7226,89 @@ function openBookingFormEdit(id){
   var _er = canEditBooking(b);
   if(!_er.can){ if(_er.reason) showToast(_er.reason); return; }
 
-  _bkEditId = id;           // mark edit mode before openBookingForm resets everything
-  openBookingForm();        // opens sheet and resets fields
+  _bkEditId = id;
+  openBookingForm();  // opens sheet, resets all fields to defaults
 
-  // Override title & submit button
-  var titleEl2 = document.getElementById('bookingFormTitle');
-  if(titleEl2) titleEl2.textContent = '編輯預約';
-  var submitBtn2 = document.getElementById('submitBookingBtn');
-  if(submitBtn2) submitBtn2.textContent = '儲存變更';
+  // Override title & button
+  var _titleEl = document.getElementById('bookingFormTitle');
+  if(_titleEl) _titleEl.textContent = '編輯預約';
+  var _submitBtn = document.getElementById('submitBookingBtn');
+  if(_submitBtn) _submitBtn.textContent = '儲存變更';
 
-  // Pre-fill court
-  var courtSel = document.getElementById('formCourt');
-  if(courtSel){ courtSel.value = b.court || 'hard_a'; }
+  var _normMode = _normaliseMode(b.mode);
 
-  // Pre-fill date + time selectors
-  var dateSel = document.getElementById('formDate');
-  if(dateSel){
-    dateSel.value = b.date || '';
-    _populateFormTimeSels(b.date || dateSel.value);
-  }
-  var startSel = document.getElementById('formStart');
-  var endSel   = document.getElementById('formEnd');
-  if(startSel) startSel.value = b.startTime || '';
-  if(endSel)   endSel.value   = b.endTime   || '';
+  // ── Court ──────────────────────────────────────────────────────────────
+  var _courtSel = document.getElementById('formCourt');
+  if(_courtSel) _courtSel.value = b.court || 'hard_a';
 
-  // Pre-fill mode & re-trigger mode change
-  var modeSel = document.getElementById('formMode');
-  if(modeSel){ modeSel.value = b.mode || 'general'; onFormModeChange(); }
+  // ── Date + time (must repopulate selectors for booking's date) ─────────
+  var _dateSel = document.getElementById('formDate');
+  if(_dateSel){ _dateSel.value = b.date || ''; _populateFormTimeSels(b.date || ''); }
+  var _startSel = document.getElementById('formStart');
+  var _endSel   = document.getElementById('formEnd');
+  if(_startSel) _startSel.value = b.startTime || '';
+  if(_endSel)   _endSel.value   = b.endTime   || '';
 
-  // Pre-fill note (always save note on edit, regardless of mode)
-  var noteEl = document.getElementById('formNote');
-  if(noteEl) noteEl.value = b.note || '';
+  // ── Mode: set first, then trigger onFormModeChange to show correct rows ─
+  var _modeSel = document.getElementById('formMode');
+  if(_modeSel) _modeSel.value = b.mode || 'general';
+  onFormModeChange();
 
-  // Pre-fill general mode: buddies, guests, proxy
-  if(_normaliseMode(b.mode) === 'general'){
-    var myUid2   = currentUser ? (currentUser.userId||currentUser.uid||currentUser.id||'') : '';
-    var _players = Array.isArray(b.players) ? b.players : [];
-    var _guests  = Array.isArray(b.guests)  ? b.guests  : [];
-    var ownerUid2 = _players[0] || b.createdBy || myUid2;
-    var isProxy  = (ownerUid2 !== myUid2);
+  // ── Note (always editable) ─────────────────────────────────────────────
+  var _noteEl = document.getElementById('formNote');
+  if(_noteEl) _noteEl.value = b.note || '';
 
-    // Set proxy checkbox + dropdown first so _formBuddyOwnerUid() returns correct owner
-    var proxyChk2 = document.getElementById('formProxyCheck');
-    if(proxyChk2){ proxyChk2.checked = isProxy; }
-    var proxyDetail2 = document.getElementById('formProxyDetail');
-    if(proxyDetail2) proxyDetail2.style.display = isProxy ? '' : 'none';
-    if(isProxy){
-      // Populate proxy selector then select the owner
-      _formProxyToggle();  // re-populates selector
-      var proxySel2 = document.getElementById('formProxyOwnerSel');
-      if(proxySel2) proxySel2.value = ownerUid2;
+  // ── Mode-specific preload ──────────────────────────────────────────────
+  if(_normMode === 'teaching'){
+    // Coach
+    var _coachSel = document.getElementById('formCoach');
+    if(_coachSel && b.coachId){
+      _coachSel.value = b.coachId;
+      // Rebuild student checklist for this coach, then tick original students
+      _refreshFormStudentList(b.coachId);
+      var _origStudents = Array.isArray(b.students) ? b.students : [];
+      document.querySelectorAll('.formStudentCheck').forEach(function(cb){
+        cb.checked = _origStudents.indexOf(cb.value) >= 0;
+      });
     }
 
-    // Buddies = all players except the owner
-    _formBuddyMembers = _players.slice(1).filter(function(u){ return u !== ownerUid2; });
-    _formBuddyGuests  = _guests.slice();
+  } else if(_normMode === 'groupClass'){
+    // Teaching member (groupClass stores coach-like member as coachId)
+    var _gcSel = document.getElementById('formGroupCoach');
+    if(_gcSel && b.coachId) _gcSel.value = b.coachId;
+    // Course title
+    var _gcTitle = document.getElementById('formTitle');
+    if(_gcTitle) _gcTitle.value = b.title || '';
+    // Students (groupClass)
+    var _gcStudents = Array.isArray(b.students) ? b.students : [];
+    document.querySelectorAll('.formStudentCheck').forEach(function(cb){
+      cb.checked = _gcStudents.indexOf(cb.value) >= 0;
+    });
+
+  } else if(_normMode === 'event_lock'){
+    // Nature stored as title
+    var _evtNature = document.getElementById('formEventNature');
+    if(_evtNature && b.title) _evtNature.value = b.title;
+
+  } else {
+    // general / pickleball — buddy picker + proxy
+    var _myUid = currentUser ? (currentUser.userId||currentUser.uid||currentUser.id||'') : '';
+    var _pls   = Array.isArray(b.players) ? b.players : [];
+    var _gsts  = Array.isArray(b.guests)  ? b.guests  : [];
+    var _ownerUid = _pls[0] || b.createdBy || _myUid;
+    var _isProxy  = (_ownerUid !== _myUid);
+
+    var _proxyChk = document.getElementById('formProxyCheck');
+    if(_proxyChk) _proxyChk.checked = _isProxy;
+    var _proxyDetail = document.getElementById('formProxyDetail');
+    if(_proxyDetail) _proxyDetail.style.display = _isProxy ? '' : 'none';
+    if(_isProxy){
+      _formProxyToggle();  // re-populates proxy owner selector
+      var _proxySel = document.getElementById('formProxyOwnerSel');
+      if(_proxySel) _proxySel.value = _ownerUid;
+    }
+    _formBuddyMembers = _pls.slice(1).filter(function(u){ return u !== _ownerUid; });
+    _formBuddyGuests  = _gsts.slice();
     _formBuddyRender();
   }
 }
@@ -7602,14 +7622,16 @@ function _bookingConflictMsg(c){
   return c.name+'已在 '+c.start+'–'+c.end+' 參與 '+c.court+'，無法重複預約。';
 }
 
-/* ── Submit edit: update existing booking ── */
+/* ── Submit edit: update existing booking (merge approach) ── */
 function _submitBookingEdit(){
   if(!db || !_bkEditId){ showToast('無法連線，請稍後再試'); return; }
-  var court = document.getElementById('formCourt').value;
-  var date  = document.getElementById('formDate').value;
-  var start = document.getElementById('formStart').value;
-  var end   = document.getElementById('formEnd').value;
-  var note  = (((document.getElementById('formNote')||{}).value)||'').trim();
+  var court    = document.getElementById('formCourt').value;
+  var date     = document.getElementById('formDate').value;
+  var start    = document.getElementById('formStart').value;
+  var end      = document.getElementById('formEnd').value;
+  var formMode = ((document.getElementById('formMode')||{}).value) || 'general';
+  var normMode = _normaliseMode(formMode);
+  var note     = (((document.getElementById('formNote')||{}).value)||'').trim();
 
   if(!date||!start||!end){ showToast('請填寫完整資料'); return; }
   if((court==='clay_a'||court==='clay_b')&&!isAdminLike()){ showToast('紅土場地僅限管理員預約'); return; }
@@ -7618,24 +7640,66 @@ function _submitBookingEdit(){
   var btn = document.getElementById('submitBookingBtn');
   if(btn){ btn.disabled=true; btn.textContent='儲存中…'; }
 
-  var editId = _bkEditId;
-  var isGeneral = _normaliseMode((document.getElementById('formMode')||{value:'general'}).value) === 'general';
-  var ownerUid3 = isGeneral ? _formBuddyOwnerUid() : null;
-  var upd = { court:court, date:date, startTime:start, endTime:end, updatedAt:TS() };
-  if(note !== undefined) upd.note = note;
+  var editId  = _bkEditId;
+  var origBk  = _findBookingById(editId);  // fallback source for untouched fields
+  var myUid4  = currentUser ? (currentUser.userId||currentUser.uid||currentUser.id||'') : '';
+  var isGeneral = (normMode === 'general');
+
+  // Base update — fields common to all modes
+  var upd = {
+    court:         court,
+    date:          date,
+    startTime:     start,
+    endTime:       end,
+    mode:          formMode,
+    note:          note,
+    updatedAt:     TS(),
+    updatedBy:     myUid4,
+    updatedByName: currentUser ? (currentUser.realName||currentUser.displayName||'') : '',
+  };
+
+  // ── Mode-specific fields ───────────────────────────────────────────────
   if(isGeneral){
-    var _gPlayers2 = ownerUid3
-      ? [ownerUid3].concat(_formBuddyMembers.filter(function(u){ return u!==ownerUid3; }))
+    var _ownerUid4 = _formBuddyOwnerUid();
+    var _gPls4 = _ownerUid4
+      ? [_ownerUid4].concat(_formBuddyMembers.filter(function(u){ return u!==_ownerUid4; }))
       : _formBuddyMembers.slice();
-    upd.players          = _gPlayers2;
+    upd.players          = _gPls4;
     upd.guests           = _formBuddyGuests.slice();
-    upd.participantCount = _gPlayers2.length;
-    // Proxy: update primaryName if owner changed
-    if(ownerUid3 && usersCache[ownerUid3])
-      upd.primaryName = usersCache[ownerUid3].displayName || usersCache[ownerUid3].realName || '';
+    upd.participantCount = _gPls4.length;
+    if(_ownerUid4 && usersCache[_ownerUid4])
+      upd.primaryName = usersCache[_ownerUid4].displayName || usersCache[_ownerUid4].realName || '';
+
+  } else if(normMode === 'teaching'){
+    var _coachId4 = ((document.getElementById('formCoach')||{}).value||'')
+                   || (origBk ? origBk.coachId||'' : '');
+    var _studs4   = [];
+    document.querySelectorAll('.formStudentCheck:checked').forEach(function(cb){ _studs4.push(cb.value); });
+    // If checkboxes rendered empty (e.g., coach not changed), fall back to original students
+    if(!_studs4.length && origBk && Array.isArray(origBk.students)) _studs4 = origBk.students.slice();
+    upd.coachId   = _coachId4;
+    upd.coachName = (usersCache[_coachId4] ? _mName(usersCache[_coachId4]) : '') || (origBk && origBk.coachName) || '';
+    upd.students  = _studs4;
+
+  } else if(normMode === 'groupClass'){
+    var _gcId4 = ((document.getElementById('formGroupCoach')||{}).value||'')
+                || (origBk ? origBk.coachId||'' : '');
+    var _gcStuds4 = [];
+    document.querySelectorAll('.formStudentCheck:checked').forEach(function(cb){ _gcStuds4.push(cb.value); });
+    if(!_gcStuds4.length && origBk && Array.isArray(origBk.students)) _gcStuds4 = origBk.students.slice();
+    var _gcTitle4 = ((document.getElementById('formTitle')||{}).value||'').trim()
+                   || (origBk && origBk.title) || '';
+    upd.coachId   = _gcId4;
+    upd.coachName = (usersCache[_gcId4] ? _mName(usersCache[_gcId4]) : '') || (origBk && origBk.coachName) || '';
+    upd.students  = _gcStuds4;
+    upd.title     = _gcTitle4;
+
+  } else if(normMode === 'event_lock'){
+    upd.title = ((document.getElementById('formEventNature')||{}).value||'')
+               || (origBk && origBk.title) || '其他';
   }
 
-  // Conflict check: same slot, exclude current booking
+  // ── Slot conflict check (same court, exclude self) ─────────────────────
   db.collection('bookings')
     .where('court','==',court).where('date','==',date)
     .where('startTime','==',start).where('endTime','==',end)
@@ -7645,11 +7709,10 @@ function _submitBookingEdit(){
         .filter(function(d){ return d.id !== editId; })
         .map(function(d){ return Object.assign({id:d.id}, d.data()); })
         .filter(function(bk){ return _isActiveBooking(bk); });
-      // Exclusive mode conflict check
       if(conflicting.length > 0){
-        var exBk = conflicting[0];
-        var exMode2 = _normaliseMode(exBk.mode);
-        if(exMode2==='teaching'||exMode2==='groupClass'||exMode2==='event_lock'){
+        var exBk4 = conflicting[0];
+        var exMode4 = _normaliseMode(exBk4.mode);
+        if(exMode4==='teaching'||exMode4==='groupClass'||exMode4==='event_lock'){
           if(btn){ btn.disabled=false; btn.textContent='儲存變更'; }
           showToast('此時段已被教學/活動佔用'); return;
         }
@@ -7658,15 +7721,12 @@ function _submitBookingEdit(){
           showToast('此時段已有衝突預約'); return;
         }
       }
-      // Cross-court participant conflict check
-      var _editOrigBk  = _findBookingById(editId);
-      var _editUids    = (isGeneral && upd.players)
-        ? upd.players.slice()
-        : (_editOrigBk ? _bookingParticipantUids(_editOrigBk) : []);
-      var _editDraft   = {date:date, startTime:start, endTime:end, court:court, participantUids:_editUids};
-      return hasParticipantTimeConflict(_editDraft, editId).then(function(_editConflict){
-        if(_editConflict){
-          showToast(_bookingConflictMsg(_editConflict));
+      // ── Cross-court participant conflict check ──────────────────────────
+      var _editUids4 = _bookingParticipantUids(Object.assign({}, origBk||{}, upd));
+      var _editDraft4 = {date:date, startTime:start, endTime:end, court:court, participantUids:_editUids4};
+      return hasParticipantTimeConflict(_editDraft4, editId).then(function(_editConflict4){
+        if(_editConflict4){
+          showToast(_bookingConflictMsg(_editConflict4));
           if(btn){ btn.disabled=false; btn.textContent='儲存變更'; }
           return;
         }
@@ -7674,7 +7734,8 @@ function _submitBookingEdit(){
       });
     })
     .then(function(){
-      if(!_bkEditId) return; // already cleared by above guard
+      if(!_bkEditId) return;
+      _patchBookingInAllCaches(editId, upd);  // optimistic local update
       showToast('預約已更新');
       _bkEditId = null;
       allBookingsCache = null;
