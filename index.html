@@ -3507,6 +3507,9 @@ function _mPic(m){
 
 /* ── 會員管理 tab ── */
 /* ── 會費狀態計算（從 financeRecords + membershipExpiry 即時算，不需人工維護）── */
+/* 回傳 {typeLabel, status, statusLabel, diff, expStr}
+   diff:   到期日距今天數（負=已逾期，0=今日，正=未來），null 表示無法計算
+   expStr: 到期日字串（YYYY/MM/DD 或 YYYY-MM-DD），供顯示用 */
 function _calcMemberFeeStatus(m){
   var uid = m.userId || m.uid || '';
   // financialRecords 為唯一依據：只有 status=active 才算有效繳費（void/refund 不算）
@@ -3514,7 +3517,7 @@ function _calcMemberFeeStatus(m){
     return (r.type==='annual'||r.type==='monthly') && r.memberId===uid && (r.status||'active')==='active';
   });
   if(!activeRecs.length){
-    return {typeLabel:'', status:'none', statusLabel:'尚未建立繳費紀錄'};
+    return {typeLabel:'', status:'none', statusLabel:'尚未建立繳費紀錄', diff:null, expStr:''};
   }
   // 取到期日最晚的那筆 active 紀錄
   var bestRec = activeRecs.reduce(function(best, r){
@@ -3528,18 +3531,18 @@ function _calcMemberFeeStatus(m){
                : m.membershipType==='monthly'       ? '月費會員' : '';
   // 到期日：優先用 financeRecord 自身欄位，舊紀錄無此欄位才 fallback 至 member doc 顯示快取
   var expStr = bestRec.membershipExpiry || bestRec.expireDate || m.membershipExpiry || m.expireDate || '';
-  if(!expStr){ return {typeLabel:typeLabel, status:'paid', statusLabel:'已繳清'}; }
+  if(!expStr){ return {typeLabel:typeLabel, status:'paid', statusLabel:'已繳清', diff:null, expStr:''}; }
   var todayFS = new Date(); todayFS.setHours(0,0,0,0);
   var exp = new Date(expStr.replace(/\//g,'-')+'T00:00:00');
-  if(isNaN(exp.getTime())){ return {typeLabel:typeLabel, status:'paid', statusLabel:'已繳清'}; }
+  if(isNaN(exp.getTime())){ return {typeLabel:typeLabel, status:'paid', statusLabel:'已繳清', diff:null, expStr:expStr}; }
   var diff = Math.floor((exp-todayFS)/86400000);
   if(diff < 0)
-    return {typeLabel:typeLabel, status:'overdue',  statusLabel:'已到期 '+Math.abs(diff)+' 天'};
+    return {typeLabel:typeLabel, status:'overdue',  statusLabel:'已到期 '+Math.abs(diff)+' 天', diff:diff, expStr:expStr};
   if(diff === 0)
-    return {typeLabel:typeLabel, status:'expiring', statusLabel:'即將到期｜今日到期'};
+    return {typeLabel:typeLabel, status:'expiring', statusLabel:'即將到期｜今日到期', diff:0, expStr:expStr};
   if(diff <= 30)
-    return {typeLabel:typeLabel, status:'expiring', statusLabel:'即將到期｜剩餘 '+diff+' 天'};
-  return {typeLabel:typeLabel, status:'paid', statusLabel:'已繳清｜有效至 '+expStr};
+    return {typeLabel:typeLabel, status:'expiring', statusLabel:'即將到期｜剩餘 '+diff+' 天', diff:diff, expStr:expStr};
+  return {typeLabel:typeLabel, status:'paid', statusLabel:'已繳清｜有效至 '+expStr, diff:diff, expStr:expStr};
 }
 function _memberFeeStatusHtml(m){
   var fs = _calcMemberFeeStatus(m);
@@ -4682,52 +4685,21 @@ function _renderFinOverview(source, balance, annual, monthly, donate, expense, i
 }
 
 /* ── Finance: Expiring Members ── */
+/* 唯一 source of truth：_calcMemberFeeStatus(m)
+   不在此重複計算 diff / bestRec / expStr；expirePaid 不影響顯示。 */
 function _renderExpiringSoon(){
-  /* ── Source of truth priority ─────────────────────────────────────────────
-     Primary:  financeRecords 最新一筆有效會費（membershipExpiry / membershipType）
-     Fallback: usersCache.expireDate / membershipType（僅 financeRecords 無資料時）
-     Gate: _calcMemberFeeStatus()，確保與會員管理頁邏輯一致。
-     ─────────────────────────────────────────────────────────────────────── */
-  var todayD = new Date(); todayD.setHours(0,0,0,0);
   var SKIP_STATUS = {pending:1, blocked:1, resigned:1, deleted:1, removed:1, archived:1};
-
   var list = [];
+
   Object.values(usersCache).forEach(function(m){
     if(SKIP_STATUS[m.status||'active']) return;
-
-    // Gate: _calcMemberFeeStatus reads financeRecords → ensures consistent logic with member tab
     var fs = _calcMemberFeeStatus(m);
     if(fs.status !== 'expiring' && fs.status !== 'overdue') return;
-
+    if(!fs.expStr) return;  // 無到期日（不應發生，但防禦性擋住）
     var uid = m.userId || m.uid || '';
-
-    // Primary: get best financeRecord
-    var activeRecs = financeRecords.filter(function(r){
-      return (r.type==='annual'||r.type==='monthly') && r.memberId===uid && (r.status||'active')==='active';
-    });
-    var bestRec = activeRecs.length ? activeRecs.reduce(function(best, r){
-      var expB = best.membershipExpiry || best.expireDate || '';
-      var expR = r.membershipExpiry    || r.expireDate    || '';
-      return expR > expB ? r : best;
-    }, activeRecs[0]) : null;
-
-    // expStr: financeRecords first, fallback to usersCache (for legacy/new members)
-    var expStr = (bestRec ? (bestRec.membershipExpiry || bestRec.expireDate) : '')
-               || m.membershipExpiry || m.expireDate || '';
-    if(!expStr) return;
-    var exp = new Date(expStr.replace(/\//g,'-')+'T00:00:00');
-    if(isNaN(exp.getTime())) return;
-    var diff = Math.floor((exp - todayD) / 86400000);
-
-    // typeLabel: financeRecords first, fallback to usersCache
-    var typeLabel = bestRec
-      ? (bestRec.membershipType === 'annual'  ? '年費' : bestRec.membershipType === 'monthly' ? '月費' : '')
-      : (m.membershipType === 'annual' ? '年費' : m.membershipType === 'monthly' ? '月費' : '');
-
-    // expirePaid: financeRecords expirePaid not tracked per-record; use member flag as override
-    if(bestRec && m.expirePaid) return;  // admin manually marked as paid → skip
-
-    list.push({ id:uid, name:m.realName||m.displayName||'', expireDate:expStr, diff:diff, typeLabel:typeLabel });
+    // typeLabel 顯示用：去掉「會員」後綴，財務頁慣例用「年費」/「月費」短標
+    var typeLabel = fs.typeLabel.replace('會員','').trim() || '';
+    list.push({ id:uid, name:m.realName||m.displayName||'', expireDate:fs.expStr, diff:fs.diff, typeLabel:typeLabel });
   });
 
   if(!list.length){
@@ -4741,9 +4713,9 @@ function _renderExpiringSoon(){
   html += '<div class="finExpireBlockTitle">即將到期 / 未繳</div>';
   list.forEach(function(item){
     var tagClass, tagText;
-    if(item.diff < 0)     { tagClass='overdue'; tagText='未繳'; }
-    else if(item.diff===0){ tagClass='today';   tagText='今日到期 ⏰'; }
-    else                  { tagClass='soon';    tagText='剩餘 '+item.diff+' 天 ⏰'; }
+    if(item.diff < 0)       { tagClass='overdue'; tagText='已逾期 '+Math.abs(item.diff)+' 天'; }
+    else if(item.diff === 0){ tagClass='today';   tagText='今日到期 ⏰'; }
+    else                    { tagClass='soon';    tagText='剩餘 '+item.diff+' 天 ⏰'; }
     var enc = encodeURIComponent(JSON.stringify({id:item.id,name:item.name,expireDate:item.expireDate,type:item.typeLabel}));
     html += '<div class="finExpireMemberRow" onclick="_finOpenMemberSheet(\''+enc+'\')">';
     html += '<div class="finExpireAvatar">'+(item.name||'?').charAt(0)+'</div>';
