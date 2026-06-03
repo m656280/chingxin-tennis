@@ -1804,6 +1804,17 @@ button {
   </div>
 </div>
 
+<!-- ── Finance Detail Sheet (read-only) ── -->
+<div class="subSheet" id="finDetailSheet">
+  <div class="sheetHandle"></div>
+  <div class="subSheetHeader">
+    <button class="subSheetBack" onclick="closeFinanceDetail()">‹</button>
+    <span class="subSheetTitle">財務紀錄</span>
+    <span style="width:32px"></span>
+  </div>
+  <div class="formSection" id="finDetailContent"></div>
+</div>
+
 <!-- ── Finance Category Sheet ── -->
 <div class="subSheet" id="finCategorySheet">
   <div class="sheetHandle"></div>
@@ -4699,7 +4710,7 @@ function _renderExpiringSoon(){
     var uid = m.userId || m.uid || '';
     // typeLabel 顯示用：去掉「會員」後綴，財務頁慣例用「年費」/「月費」短標
     var typeLabel = fs.typeLabel.replace('會員','').trim() || '';
-    list.push({ id:uid, name:m.realName||m.displayName||'', expireDate:fs.expStr, diff:fs.diff, typeLabel:typeLabel });
+    list.push({ id:uid, name:m.realName||m.displayName||'', expireDate:fs.expStr, diff:fs.diff, typeLabel:typeLabel, pic:_mPic(m) });
   });
 
   if(!list.length){
@@ -4718,7 +4729,10 @@ function _renderExpiringSoon(){
     else                    { tagClass='soon';    tagText='剩餘 '+item.diff+' 天 ⏰'; }
     var enc = encodeURIComponent(JSON.stringify({id:item.id,name:item.name,expireDate:item.expireDate,type:item.typeLabel}));
     html += '<div class="finExpireMemberRow" onclick="_finOpenMemberSheet(\''+enc+'\')">';
-    html += '<div class="finExpireAvatar">'+(item.name||'?').charAt(0)+'</div>';
+    var _fea = item.pic
+      ? '<img src="'+item.pic+'" style="width:36px;height:36px;border-radius:50%;object-fit:cover" onerror="this.style.display=\'none\'" alt="">'
+      : (item.name||'?').charAt(0);
+    html += '<div class="finExpireAvatar">'+_fea+'</div>';
     html += '<div style="flex:1;min-width:0">';
     html += '<div class="finExpireName">'+_esc(item.name)+'</div>';
     html += '<div class="finExpireDate">'+_esc(item.typeLabel)+' · '+_esc(item.expireDate)+'</div>';
@@ -4840,8 +4854,8 @@ function _renderFinDetail(source, isAdmin, fmt){
     }
     var _canEditRow = isAdmin && !isVoid;
     html += '<div class="financeRecord'+(isVoid?' finRecordVoid':'')+'" style="align-items:flex-start">'
-      + '<div class="'+ (_canEditRow ? 'finRecordLeft ' : '') +'financeRecordLeft"'
-      + (_canEditRow ? ' onclick="editFinanceRecord(\''+r.id+'\')"' : ' style="cursor:default"') +'>'
+      + '<div class="finRecordLeft financeRecordLeft"'
+      + ' onclick="openFinanceDetail(\''+r.id+'\')">'
         + '<div class="financeRecordName">'+(r.memberRealName||r.member||'—')+resignedTag+'</div>'
         + (r.note?'<div class="finRecordNote">'+r.note+'</div>':'')
         + '<div class="finRecordDateMeta">'+dateMeta+'</div>'
@@ -5116,8 +5130,7 @@ function openFinCategory(type){
         : '';
       var _catCanEdit = isAdminLike() && rSt !== 'void' && rSt !== 'deleted' && rSt !== 'archived';
       html += '<div class="finCategoryRecord'+(rSt==='void'?' finRecordVoid':'')+'">'
-        + '<div class="financeRecordLeft finRecordLeft" onclick="'+(_catCanEdit?'closeFinCategory();editFinanceRecord(\''+r.id+'\')':'')+'"'
-            + ' style="'+ (_catCanEdit ? '' : 'cursor:default') +'">'
+        + '<div class="financeRecordLeft finRecordLeft" onclick="closeFinCategory();openFinanceDetail(\''+r.id+'\')">'
           + '<div class="financeRecordName">'+catStatusBadge+(r.member||'—')+'</div>'
           + '<div class="financeRecordMeta">'+r.date+(r.note?' · '+r.note:'')+'</div>'
           + (r.createdByName ? '<div class="financeRecordMeta" style="opacity:0.65">登記：'+r.createdByName+'</div>' : '')
@@ -5711,6 +5724,50 @@ function submitEditFinanceRecord(type, member, date, amount, note, membershipYea
       console.error('submitEditFinanceRecord error:', e);
       showToast('更新失敗，請稍後再試');
     });
+}
+
+/* ── Finance: Detail (read-only, opens before edit) ── */
+function openFinanceDetail(id){
+  var rec = financeRecords.find(function(r){ return r.id===id; });
+  if(!rec){ showToast('找不到紀錄'); return; }
+
+  var TYPE_LABEL = {annual:'年費', monthly:'月費', donate:'抖內', expense:'支出'};
+  var STATUS_LABEL = {active:'有效', void:'已作廢', refund:'已退費', deleted:'已刪除', archived:'已封存'};
+  var recSt = rec.status || 'active';
+  var canEdit = isAdminLike() && recSt !== 'void' && recSt !== 'deleted' && recSt !== 'archived';
+
+  function detailRow(label, val){
+    return '<div style="display:flex;flex-direction:column;margin-bottom:16px">'
+      +'<span style="font-size:10px;letter-spacing:0.10em;color:var(--color-text-muted);margin-bottom:4px">'+label+'</span>'
+      +'<span style="font-size:14px;color:var(--color-text-primary)'+(val?'':';opacity:0.4')+'">'
+      +_esc(val||'—')+'</span>'
+      +'</div>';
+  }
+
+  var html = detailRow('類型', TYPE_LABEL[rec.type]||rec.type||'');
+  html += detailRow('會員', rec.memberRealName||rec.memberDisplayName||rec.member||'');
+  html += detailRow('日期', rec.date||'');
+  html += detailRow('金額', rec.amount != null ? 'NT$ '+Number(rec.amount).toLocaleString() : '');
+  if(rec.note) html += detailRow('備註', rec.note);
+  if(rec.membershipYear) html += detailRow('會籍年度', String(rec.membershipYear));
+  if(rec.membershipExpiry) html += detailRow('到期日', rec.membershipExpiry);
+  html += detailRow('狀態', STATUS_LABEL[recSt]||recSt);
+  html += detailRow('登記人', rec.createdByName||'');
+  if(rec.updatedByName) html += detailRow('更新人', rec.updatedByName);
+
+  if(canEdit){
+    /* 關閉詳情但保留 backdrop，讓 editFinanceRecord 接手 */
+    html += '<button class="primaryBtn" style="margin-top:8px"'
+      +' onclick="document.getElementById(\'finDetailSheet\').classList.remove(\'open\');editFinanceRecord(\''+id+'\')">編輯</button>';
+  }
+
+  document.getElementById('finDetailContent').innerHTML = html;
+  document.getElementById('sheetBackdrop').classList.add('open');
+  document.getElementById('finDetailSheet').classList.add('open');
+}
+function closeFinanceDetail(){
+  document.getElementById('finDetailSheet').classList.remove('open');
+  document.getElementById('sheetBackdrop').classList.remove('open');
 }
 
 /* ── Finance: Edit ── */
