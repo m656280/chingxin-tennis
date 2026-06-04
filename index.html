@@ -3608,9 +3608,13 @@ function _renderMembersTab(el){
       html+='<div style="padding:4px 12px 10px">';
       deleted.forEach(function(m){
         var dUid=m.userId||m.uid||'';
-        html+='<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0">'+
-          '<span style="font-size:13px;color:var(--color-text-muted)">'+_esc(m.realName||m.displayName||'未知')+'</span>'+
-          '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="restoreMember(\''+dUid+'\')">恢復</button>'+
+        var canPermDel = isOwner && dUid !== _myId && m.role !== 'owner';
+        html+='<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;gap:6px">'+
+          '<span style="font-size:13px;color:var(--color-text-muted);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_esc(m.realName||m.displayName||'未知')+'</span>'+
+          '<div style="display:flex;gap:6px;flex-shrink:0">'+
+            '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="restoreMember(\''+dUid+'\')">恢復</button>'+
+            (canPermDel?'<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid rgba(231,76,60,0.45);background:transparent;color:#c0392b;cursor:pointer" onclick="permanentDeleteMember(\''+dUid+'\')">永久刪除</button>':'')+
+          '</div>'+
         '</div>';
       });
       html+='</div></details>';
@@ -4332,6 +4336,30 @@ function restoreMember(userId){
       renderManage();
     })
     .catch(function(e){console.error('restoreMember error:',e);showToast('操作失敗，請稍後再試');});
+}
+
+/* ── Permanent Delete Member (Owner only, status=deleted only) ── */
+function permanentDeleteMember(userId){
+  if(!db){ showToast('無法連線，請稍後再試'); return; }
+  if(_currentRole() !== 'owner'){ showToast('僅 Owner 可永久刪除會員'); return; }
+  var target = usersCache[userId];
+  if(!target){ showToast('找不到此會員'); return; }
+  if((target.status||'') !== 'deleted'){ showToast('僅可永久刪除已離會的會員'); return; }
+  var myUid = currentUser ? (currentUser.uid||currentUser.userId||currentUser.id||'') : '';
+  if(userId === myUid){ showToast('不可刪除自己'); return; }
+  if(target.role === 'owner'){ showToast('不可刪除其他 Owner'); return; }
+  var name = _mName(target) || userId;
+  if(!confirm('此操作無法復原，確定永久刪除「'+name+'」？\n\n預約、出席、付款等歷史紀錄仍會保留。')){ return; }
+  db.collection('members').doc(userId).delete()
+    .then(function(){
+      delete usersCache[userId];
+      showToast('「'+name+'」已永久刪除');
+      renderManage();
+    })
+    .catch(function(e){
+      console.error('permanentDeleteMember error:', e);
+      showToast('刪除失敗，請稍後再試');
+    });
 }
 
 /* ── Member Role Switch ── */
