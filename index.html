@@ -3591,10 +3591,16 @@ function _renderMembersTab(el){
       html += '<div style="background:rgba(231,76,60,0.06);border:1px solid rgba(231,76,60,0.22);border-radius:10px;padding:10px 12px;margin-bottom:14px">';
       html += '<div style="font-size:11px;font-weight:600;letter-spacing:0.07em;color:#c0392b;margin-bottom:8px">未繳費會員（'+unpaidMembers.length+'）</div>';
       unpaidMembers.forEach(function(m){
-        var fs = _calcMemberFeeStatus(m);
+        var fs   = _calcMemberFeeStatus(m);
+        var mUid = m.userId || m.uid || '';
         html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;gap:8px">';
         html += '<span style="font-size:13px;color:var(--color-text-primary);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_esc(m.realName||m.displayName||'未知')+'</span>';
-        html += '<span class="feeStatusBadge '+fs.status+'">'+fs.statusLabel+'</span>';
+        if(fs.status === 'none'){
+          html += '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid rgba(184,92,74,0.55);background:transparent;color:#8C4637;cursor:pointer;white-space:nowrap" '
+                + 'onclick="openFinanceFormForMember(\''+mUid+'\')">建立繳費紀錄</button>';
+        } else {
+          html += '<span class="feeStatusBadge '+fs.status+'">'+fs.statusLabel+'</span>';
+        }
         html += '</div>';
       });
       html += '</div>';
@@ -5586,6 +5592,19 @@ function _finPopulateYearSelect(selectedYear){
     html += '<option value="'+y+'"'+sel_+'>'+y+' 年度</option>';
   }
   sel.innerHTML = html;
+}
+
+/* ── 從會員管理頁直接開啟新增財務記錄（預選此會員）── */
+function openFinanceFormForMember(uid){
+  if(!isAdminLike()){ showToast('僅管理員可新增紀錄'); return; }
+  var m = usersCache[uid];
+  if(!m){ showToast('找不到此會員'); return; }
+  if(!m.realName){
+    showToast('請先填寫「'+_esc(m.displayName||uid)+'」的正式姓名，再建立繳費紀錄');
+    return;
+  }
+  openFinanceForm();             // 開啟空白新增表單
+  _finPopulateMemberSelect(uid); // 覆蓋預選此會員（openFinanceForm 已設空白，此行覆蓋）
 }
 
 function openFinanceForm(){
