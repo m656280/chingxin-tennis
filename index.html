@@ -3547,9 +3547,9 @@ function _calcMemberFeeStatus(m){
   var exp = new Date(expStr.replace(/\//g,'-')+'T00:00:00');
   if(isNaN(exp.getTime())){ return {typeLabel:typeLabel, status:'paid', statusLabel:'已繳清', diff:null, expStr:expStr}; }
   var diff = Math.floor((exp-todayFS)/86400000);
-  // 月費：7 天內提醒；年費：30 天內提醒
+  // 月費：12 天內提醒；年費：30 天內提醒
   var isMonthly = (bestRec.membershipType==='monthly' || m.membershipType==='monthly');
-  var threshold = isMonthly ? 7 : 30;
+  var threshold = isMonthly ? 12 : 30;
   if(diff < 0)
     return {typeLabel:typeLabel, status:'overdue',  statusLabel:'已到期 '+Math.abs(diff)+' 天', diff:diff, expStr:expStr};
   if(diff === 0)
@@ -4068,6 +4068,35 @@ function _updateManageNavBadge(){
   }
 }
 
+/* ── Shared: 即將到期 / 已逾期會員清單 ──────────────────────────────────────
+   公告頁與財務頁共用此函式，確保兩邊行為永遠一致。
+   threshold 由 _calcMemberFeeStatus 控制：annual = 30 天，monthly = 12 天。
+   memberArr: 已經過角色過濾的 member 陣列；省略則用全部 usersCache。
+   expirePaid = true 一律排除。
+   回傳 [{id, name, diff, expireDate, typeLabel, status, pic}] ── */
+function getExpiringMembers(memberArr){
+  var SKIP_STATUS = {pending:1, blocked:1, resigned:1, deleted:1, removed:1, archived:1};
+  var arr = memberArr || Object.values(usersCache);
+  var list = [];
+  arr.forEach(function(m){
+    if(SKIP_STATUS[m.status||'active']) return;
+    if(m.expirePaid) return;
+    var fs = _calcMemberFeeStatus(m);
+    if(fs.status !== 'expiring' && fs.status !== 'overdue') return;
+    if(!fs.expStr) return;
+    list.push({
+      id:         m.userId || m.uid || '',
+      name:       m.realName || m.displayName || '',
+      diff:       fs.diff,
+      expireDate: fs.expStr,
+      typeLabel:  fs.typeLabel,
+      status:     fs.status,
+      pic:        _mPic(m)
+    });
+  });
+  return list;
+}
+
 /* ── 系統公告產生（角色感知，從 usersCache + financeRecords 即時計算）── */
 function _generateSystemAnnouncements(){
   var adminLike = isAdminLike();
@@ -4086,16 +4115,11 @@ function _generateSystemAnnouncements(){
     return true;
   });
 
-  // 從 financeRecords 建立 active 紀錄的 uid → 最晚到期日 map（唯一依據，不用 member doc）
-  var _hasFee  = {};   // uid → true（有任一 active annual/monthly 紀錄）
-  var _bestExp = {};   // uid → 最晚到期日字串
+  // 從 financeRecords 建立 uid → 有 active 紀錄 map（供「尚未建立繳費紀錄」用）
+  var _hasFee = {};
   financeRecords.forEach(function(r){
     if((r.type==='annual'||r.type==='monthly') && r.memberId && (r.status||'active')==='active'){
       _hasFee[r.memberId] = true;
-      var exp = r.membershipExpiry || r.expireDate || '';
-      if(exp && (!_bestExp[r.memberId] || exp > _bestExp[r.memberId])){
-        _bestExp[r.memberId] = exp;
-      }
     }
   });
 
@@ -4110,25 +4134,18 @@ function _generateSystemAnnouncements(){
     items.push({type:'system', dot:'gray', title: name + ' 尚未建立繳費紀錄', _sort: 1000});
   });
 
-  // 2. 已到期（🔴）/ 3. 即將到期 ≤30天（🟡）— 以 active record 的到期日為準
-  members.forEach(function(m){
-    var uid = m.userId || m.uid || '';
-    var expStr = _bestExp[uid] || '';   // 只從 active financeRecord 取到期日
-    if(!expStr || m.expirePaid) return;
-    var exp = new Date(expStr.replace(/\//g, '-') + 'T00:00:00');
-    if(isNaN(exp.getTime())) return;
-    var diff = Math.floor((exp - today) / 86400000);
-    if(diff > 30) return;
-    var name = _esc(m.realName || m.displayName || '某會員');
-    if(diff < 0){
+  // 2. 已到期（🔴）/ 3. 即將到期（🟡）— 共用 getExpiringMembers（annual=30d, monthly=12d）
+  getExpiringMembers(members).forEach(function(item){
+    var name = _esc(item.name || '某會員');
+    if(item.diff < 0){
       items.push({type:'system', dot:'red',
-        title: name + ' 已逾期 ' + Math.abs(diff) + ' 天', _sort: 2000 + diff});
-    } else if(diff === 0){
+        title: name + ' 已逾期 ' + Math.abs(item.diff) + ' 天', _sort: 2000 + item.diff});
+    } else if(item.diff === 0){
       items.push({type:'system', dot:'red',
         title: name + ' 會籍今日到期', _sort: 1999});
     } else {
       items.push({type:'system', dot:'yellow',
-        title: name + ' 會籍將於 ' + diff + ' 天後到期', _sort: 3000 + diff});
+        title: name + ' 會籍將於 ' + item.diff + ' 天後到期', _sort: 3000 + item.diff});
     }
   });
 
@@ -4730,19 +4747,9 @@ function _renderFinOverview(source, balance, annual, monthly, donate, expense, i
 /* 唯一 source of truth：_calcMemberFeeStatus(m)
    不在此重複計算 diff / bestRec / expStr；expirePaid 不影響顯示。 */
 function _renderExpiringSoon(){
-  var SKIP_STATUS = {pending:1, blocked:1, resigned:1, deleted:1, removed:1, archived:1};
-  var list = [];
-
-  Object.values(usersCache).forEach(function(m){
-    if(SKIP_STATUS[m.status||'active']) return;
-    if(m.expirePaid) return;  // admin 已標記收費：從提醒清單移除，直到下次到期週期
-    var fs = _calcMemberFeeStatus(m);
-    if(fs.status !== 'expiring' && fs.status !== 'overdue') return;
-    if(!fs.expStr) return;  // 無到期日（不應發生，但防禦性擋住）
-    var uid = m.userId || m.uid || '';
-    // typeLabel 顯示用：去掉「會員」後綴，財務頁慣例用「年費」/「月費」短標
-    var typeLabel = fs.typeLabel.replace('會員','').trim() || '';
-    list.push({ id:uid, name:m.realName||m.displayName||'', expireDate:fs.expStr, diff:fs.diff, typeLabel:typeLabel, pic:_mPic(m) });
+  // 共用 getExpiringMembers()；typeLabel 去掉「會員」後綴供財務頁顯示
+  var list = getExpiringMembers().map(function(item){
+    return Object.assign({}, item, {typeLabel: item.typeLabel.replace('會員','').trim() || ''});
   });
 
   if(!list.length){
