@@ -7221,6 +7221,10 @@ function _executePermanentDelete(id, callback){
       }
       showToast('預約紀錄已永久刪除');
       if(callback) callback();
+      /* 清理此 booking 對應的所有 notifications（取消/作廢通知） */
+      db.collection('notifications').where('bookingId', '==', id).get()
+        .then(function(snap){ snap.docs.forEach(function(d){ d.ref.delete(); }); })
+        .catch(function(e){ console.warn('[cleanup] notification delete error:', e); });
       allBookingsCache = null;
       courtBookingsFirestore = null;
       renderManage();
@@ -7268,7 +7272,7 @@ function _sendBookingNotifications(b, action, reason, actorUid, actorName){
       cancelReason:     reason       || '',
       message:          msg,  /* kept for backward compat */
       createdAt:        TS(),
-      expiresAt:        new Date(Date.now() + 30*24*60*60*1000),
+      expiresAt:        new Date(Date.now() + 5*24*60*60*1000),  // 5 days
       read:             false,
     }).catch(function(e){ console.warn('notification write error:',e); });
   });
