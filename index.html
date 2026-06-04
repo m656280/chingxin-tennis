@@ -1883,7 +1883,7 @@ try {
   console.error('[Firebase] Init failed:', e);
 }
 const TS = () => db ? firebase.firestore.FieldValue.serverTimestamp() : new Date();
-const ROLE_LABELS = {owner:'擁有者',admin:'管理員',annual_member:'年費會員',monthly_member:'月費會員',coach:'教練',pending:'待審核'};
+const ROLE_LABELS = {owner:'開發者',admin:'管理員',annual_member:'年費會員',monthly_member:'月費會員',coach:'教練',pending:'待審核'};
 
 // LIFF handles its own auth — no manual UA detection needed
 
@@ -1947,7 +1947,7 @@ function _renderProfileSheet(){
   if(!body) return;
 
   var _defaultAvatar = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='52' height='52' viewBox='0 0 52 52'%3E%3Crect width='52' height='52' fill='%23d4c9b5'/%3E%3Ccircle cx='26' cy='20' r='9' fill='%238a7f6e'/%3E%3Cellipse cx='26' cy='44' rx='14' ry='10' fill='%238a7f6e'/%3E%3C/svg%3E";
-  var _roleLabels = {owner:'擁有者',admin:'管理員',annual_member:'年費會員',monthly_member:'月費會員',coach:'教練',member:'會員',pending:'待審核'};
+  var _roleLabels = {owner:'開發者',admin:'管理員',annual_member:'年費會員',monthly_member:'月費會員',coach:'教練',member:'會員',pending:'待審核'};
 
   // ── Not logged in ──────────────────────────────────────────────────
   var isLoggedIn = !!(currentUser || DEV_ROLE);
@@ -3674,10 +3674,11 @@ function _renderMembersTab(el){
           ' style="flex:1;min-width:80px;padding:6px 8px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-primary);font-size:12px"'+
           ' onchange="_memberRoleFilter=this.value;_renderMemberListInTab()">'+
           '<option value="">全部角色</option>'+
-          '<option value="owner"'+(_memberRoleFilter==='owner'?' selected':'')+'>擁有者</option>'+
+          '<option value="owner"'+(_memberRoleFilter==='owner'?' selected':'')+'>開發者</option>'+
           '<option value="admin"'+(_memberRoleFilter==='admin'?' selected':'')+'>管理員</option>'+
           '<option value="coach"'+(_memberRoleFilter==='coach'?' selected':'')+'>教練</option>'+
-          '<option value="member"'+(_memberRoleFilter==='member'?' selected':'')+'>會員</option>'+
+          '<option value="annual_member"'+(_memberRoleFilter==='annual_member'?' selected':'')+'>年費會員</option>'+
+          '<option value="monthly_member"'+(_memberRoleFilter==='monthly_member'?' selected':'')+'>月費會員</option>'+
         '</select>'+
       '</div>'+
       '<select id="memberDirFee"'+
@@ -3706,8 +3707,8 @@ function _renderMemberListInTab(){
   var isOwner   = (_currentRole() === 'owner');
   var _myId     = currentUser?(currentUser.uid||currentUser.userId||''):'';
 
-  var ROLE_LABEL={owner:'擁有者',admin:'管理員',coach:'教練',annual_member:'年費會員',monthly_member:'月費會員',member:'會員'};
-  var ROLE_SEARCH={owner:'擁有者',admin:'管理員',coach:'教練',member:'會員',annual_member:'年費會員',monthly_member:'月費會員'};
+  var ROLE_LABEL={owner:'開發者',admin:'管理員',coach:'教練',annual_member:'年費會員',monthly_member:'月費會員',member:'會員'};
+  var ROLE_SEARCH={owner:'開發者',admin:'管理員',coach:'教練',member:'會員',annual_member:'年費會員',monthly_member:'月費會員'};
 
   // Include all non-banned/pending/deleted users — owner/admin included regardless of status
   var list=Object.values(usersCache).filter(function(m){
@@ -3725,8 +3726,12 @@ function _renderMemberListInTab(){
     if(_memberNtrpFilter&&String(m.ntrp||'')!==_memberNtrpFilter) return false;
     if(_memberPosFilter&&(m.preferredPosition||'')!==_memberPosFilter) return false;
     if(_memberRoleFilter){
-      if(_memberRoleFilter==='member'){
-        if(m.role!=='member'&&m.role!=='annual_member'&&m.role!=='monthly_member') return false;
+      if(_memberRoleFilter==='annual_member'){
+        // 年費會員：role=member 且 membershipType=annual
+        if(m.role!=='member'||m.membershipType!=='annual') return false;
+      } else if(_memberRoleFilter==='monthly_member'){
+        // 月費會員：role=member 且 membershipType=monthly
+        if(m.role!=='member'||m.membershipType!=='monthly') return false;
       } else {
         if(m.role!==_memberRoleFilter) return false;
       }
@@ -3753,7 +3758,9 @@ function _renderMemberListInTab(){
     var avatarHtml=avatarSrc
       ?'<img src="'+avatarSrc+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display=\'none\'" alt="">'
       :'<svg width="40" height="40" viewBox="0 0 40 40" style="flex-shrink:0"><rect width="40" height="40" rx="20" fill="#d4c9b5"/><text x="20" y="26" text-anchor="middle" fill="#8a7f6e" font-size="16" font-family="serif">'+initials+'</text></svg>';
-    var roleLabel=ROLE_LABEL[m.role]||m.role||'會員';
+    var roleLabel = (m.role==='member' && m.membershipType==='annual')  ? '年費會員'
+                 : (m.role==='member' && m.membershipType==='monthly') ? '月費會員'
+                 : ROLE_LABEL[m.role]||m.role||'會員';
     var badgeCls='memberBadge'+(m.role==='coach'?' coach':'');
     var meta=[];
     if(m.ntrp) meta.push(_esc(_ntrpDisplay(m.ntrp)));
@@ -4005,7 +4012,7 @@ function _renderAdminSettingsTab(el){
   var html='<div style="padding:0 2px">';
 
   // ── OWNER
-  html+='<div style="font-size:11px;font-weight:600;letter-spacing:0.08em;color:var(--color-text-muted);text-transform:uppercase;margin:16px 0 8px;padding:0 4px">擁有者</div>';
+  html+='<div style="font-size:11px;font-weight:600;letter-spacing:0.08em;color:var(--color-text-muted);text-transform:uppercase;margin:16px 0 8px;padding:0 4px">開發者</div>';
   if(!ownerList.length){
     html+='<div style="font-size:13px;color:var(--color-text-muted);padding:8px 4px">—</div>';
   } else {
@@ -4013,7 +4020,7 @@ function _renderAdminSettingsTab(el){
       html+='<div class="adminSettingsRow">'+
         _av(m)+
         '<div style="flex:1;font-size:14px;color:var(--color-text-primary);font-weight:500;margin-left:10px">'+_esc(_mName(m))+'</div>'+
-        '<span class="adminRoleBadge owner">擁有者</span>'+
+        '<span class="adminRoleBadge owner">開發者</span>'+
       '</div>';
     });
   }
@@ -4664,11 +4671,32 @@ function _currentRole(){
 }
 
 
+/* ── Finance access level for current user ──────────────────────────────
+   canWrite:   true  = owner / admin（新增、編輯、刪除）
+               false = 只讀（年費/月費會員）
+   typeFilter: null         = 可看全部紀錄
+               'monthly'    = 只看月費紀錄（月費會員）
+   ──────────────────────────────────────────────────────────────────── */
+function _financeAccessLevel(){
+  if(isAdminLike()) return {canWrite:true, typeFilter:null};
+  var myUid = currentUser ? (currentUser.uid||currentUser.userId||currentUser.id||'') : '';
+  var me    = myUid ? (usersCache[myUid]||{}) : {};
+  if(me.membershipType === 'annual')  return {canWrite:false, typeFilter:null};
+  if(me.membershipType === 'monthly') return {canWrite:false, typeFilter:'monthly'};
+  return {canWrite:false, typeFilter:'monthly'};  // 無 membershipType → 最小權限（同月費）
+}
+
 function renderFinance(){
   const el = document.getElementById('financeContent');
   if(!el) return;
-  const allRecords = financeRecords;
-  const isAdmin = isAdminLike();
+
+  // ── 角色權限（資料層 + UI 層同步套用）──
+  var _access   = _financeAccessLevel();
+  var isAdmin   = _access.canWrite;
+  // typeFilter 在 source 之前過濾，確保非管理員看不到無權限的資料
+  const allRecords = _access.typeFilter
+    ? financeRecords.filter(function(r){ return r.type === _access.typeFilter; })
+    : financeRecords;
 
   // Admin button visibility
   const exportBtn = document.getElementById('finExportBtn');
@@ -5863,7 +5891,7 @@ function editFinanceRecord(id){
 /* ── Render: Member List ── */
 function renderMembers(filter){
   const f=(filter||'').toLowerCase();
-  const ROLE_BADGE={owner:'擁有者',admin:'管理員',annual_member:'年費',monthly_member:'月費',coach:'教練',annual:'年費',monthly:'月費'};
+  const ROLE_BADGE={owner:'開發者',admin:'管理員',annual_member:'年費',monthly_member:'月費',coach:'教練',annual:'年費',monthly:'月費'};
   const el=document.getElementById('memberList');
   if(!el) return;
   // Always use Firestore usersCache — no mock fallback
