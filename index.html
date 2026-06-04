@@ -4011,22 +4011,8 @@ function _renderAdminSettingsTab(el){
 
   var html='<div style="padding:0 2px">';
 
-  // ── OWNER
-  html+='<div style="font-size:11px;font-weight:600;letter-spacing:0.08em;color:var(--color-text-muted);text-transform:uppercase;margin:16px 0 8px;padding:0 4px">開發者</div>';
-  if(!ownerList.length){
-    html+='<div style="font-size:13px;color:var(--color-text-muted);padding:8px 4px">—</div>';
-  } else {
-    ownerList.forEach(function(m){
-      html+='<div class="adminSettingsRow">'+
-        _av(m)+
-        '<div style="flex:1;font-size:14px;color:var(--color-text-primary);font-weight:500;margin-left:10px">'+_esc(_mName(m))+'</div>'+
-        '<span class="adminRoleBadge owner">開發者</span>'+
-      '</div>';
-    });
-  }
-
-  // ── ADMIN
-  html+='<div style="display:flex;align-items:baseline;gap:8px;margin:20px 0 8px;padding:0 4px">'+
+  // ── ADMIN（顯示在上方）
+  html+='<div style="display:flex;align-items:baseline;gap:8px;margin:0 0 8px;padding:0 4px">'+
     '<span style="font-size:11px;font-weight:600;letter-spacing:0.08em;color:var(--color-text-muted);text-transform:uppercase">管理員</span>'+
     '<span style="font-size:11px;color:var(--color-text-muted)">'+adminCount+' / '+MAX_ADMIN+'　剩餘 '+adminRemain+' 名</span>'+
   '</div>';
@@ -4039,6 +4025,20 @@ function _renderAdminSettingsTab(el){
         '<div style="flex:1;font-size:14px;color:var(--color-text-primary);font-weight:500;margin-left:10px">'+_esc(_mName(m))+'</div>'+
         '<span class="adminRoleBadge admin">管理員</span>'+
         (isOwner?'<button class="adminToggleBtn" onclick="setAdminRole(\''+m.userId+'\',false)">撤銷</button>':'')+
+      '</div>';
+    });
+  }
+
+  // ── OWNER（顯示在下方）
+  html+='<div style="font-size:11px;font-weight:600;letter-spacing:0.08em;color:var(--color-text-muted);text-transform:uppercase;margin:20px 0 8px;padding:0 4px">開發者</div>';
+  if(!ownerList.length){
+    html+='<div style="font-size:13px;color:var(--color-text-muted);padding:8px 4px">—</div>';
+  } else {
+    ownerList.forEach(function(m){
+      html+='<div class="adminSettingsRow">'+
+        _av(m)+
+        '<div style="flex:1;font-size:14px;color:var(--color-text-primary);font-weight:500;margin-left:10px">'+_esc(_mName(m))+'</div>'+
+        '<span class="adminRoleBadge owner">開發者</span>'+
       '</div>';
     });
   }
@@ -4307,7 +4307,7 @@ function removeMember(userId){
   if(!db){showToast('無法連線，請稍後再試');return;}
   var target=usersCache[userId];
   if(!target){showToast('找不到此會員');return;}
-  if(target.role==='owner'){showToast('擁有者無法離會');return;}
+  if(target.role==='owner'){showToast('開發者無法離會');return;}
   var operator=_currentRole();
   if(operator==='admin'&&(target.role==='owner'||target.role==='admin')){showToast('管理員無法操作此身份');return;}
   if(!confirm('確定讓「'+(_mName(target)||userId)+'」離會？\n（資料保留，可隨時恢復）'))return;
@@ -4325,7 +4325,7 @@ function blockMember(userId){
   if(!db){showToast('無法連線，請稍後再試');return;}
   var target=usersCache[userId];
   if(!target){showToast('找不到此會員');return;}
-  if(target.role==='owner'){showToast('擁有者無法被封鎖');return;}
+  if(target.role==='owner'){showToast('開發者無法被封鎖');return;}
   var operator=_currentRole();
   if(operator==='admin'&&(target.role==='owner'||target.role==='admin')){showToast('管理員無法操作此身份');return;}
   if(!confirm('確定封鎖「'+(_mName(target)||userId)+'」？\n（封鎖後將無法登入）'))return;
@@ -4401,11 +4401,11 @@ function setMemberRole(userId, newRole){
   if(!target){showToast('找不到此會員');return;}
   var targetRole=target.role||'member';
   // owner cannot be downgraded by anyone
-  if(targetRole==='owner'){showToast('擁有者身份無法變更');return;}
+  if(targetRole==='owner'){showToast('開發者身份無法變更');return;}
   // admin cannot operate on owner (defensive; YOU 永久 already blocks self)
-  if(operator==='admin'&&targetRole==='owner'){showToast('管理員無法操作擁有者');return;}
+  if(operator==='admin'&&targetRole==='owner'){showToast('管理員無法操作開發者');return;}
   // only owner can promote to admin
-  if(newRole==='admin'&&operator!=='owner'){showToast('僅擁有者可設定管理員');return;}
+  if(newRole==='admin'&&operator!=='owner'){showToast('僅開發者可設定管理員');return;}
   // admin cap check
   if(newRole==='admin'){
     var cur=Object.values(usersCache).filter(function(m){return m.role==='admin';}).length;
@@ -4630,10 +4630,10 @@ function saveCoachStudentRecord(coachId, studentId){
 /* ── Admin Settings: Set / revoke admin role ── */
 function setAdminRole(userId, makeAdmin){
   var myRole=_currentRole();
-  if(myRole!=='owner'){showToast('僅擁有者可變更管理員');return;}
+  if(myRole!=='owner'){showToast('僅開發者可變更管理員');return;}
   var target=usersCache[userId];
   if(!target){showToast('找不到此會員');return;}
-  if(target.role==='owner'){showToast('不可變更擁有者權限');return;}
+  if(target.role==='owner'){showToast('不可變更開發者權限');return;}
   // Admin cap check
   if(makeAdmin){
     var curAdminCount=Object.values(usersCache).filter(function(m){return m.role==='admin';}).length;
