@@ -3547,11 +3547,14 @@ function _calcMemberFeeStatus(m){
   var exp = new Date(expStr.replace(/\//g,'-')+'T00:00:00');
   if(isNaN(exp.getTime())){ return {typeLabel:typeLabel, status:'paid', statusLabel:'已繳清', diff:null, expStr:expStr}; }
   var diff = Math.floor((exp-todayFS)/86400000);
+  // 月費：7 天內提醒；年費：30 天內提醒
+  var isMonthly = (bestRec.membershipType==='monthly' || m.membershipType==='monthly');
+  var threshold = isMonthly ? 7 : 30;
   if(diff < 0)
     return {typeLabel:typeLabel, status:'overdue',  statusLabel:'已到期 '+Math.abs(diff)+' 天', diff:diff, expStr:expStr};
   if(diff === 0)
     return {typeLabel:typeLabel, status:'expiring', statusLabel:'即將到期｜今日到期', diff:0, expStr:expStr};
-  if(diff <= 30)
+  if(diff <= threshold)
     return {typeLabel:typeLabel, status:'expiring', statusLabel:'即將到期｜剩餘 '+diff+' 天', diff:diff, expStr:expStr};
   return {typeLabel:typeLabel, status:'paid', statusLabel:'已繳清｜有效至 '+expStr, diff:diff, expStr:expStr};
 }
@@ -4704,6 +4707,7 @@ function _renderExpiringSoon(){
 
   Object.values(usersCache).forEach(function(m){
     if(SKIP_STATUS[m.status||'active']) return;
+    if(m.expirePaid) return;  // admin 已標記收費：從提醒清單移除，直到下次到期週期
     var fs = _calcMemberFeeStatus(m);
     if(fs.status !== 'expiring' && fs.status !== 'overdue') return;
     if(!fs.expStr) return;  // 無到期日（不應發生，但防禦性擋住）
