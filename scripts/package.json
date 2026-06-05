@@ -1,0 +1,9 @@
+{
+  "name": "qingxin-scripts",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "firebase": "^10.12.0"
+  }
+}

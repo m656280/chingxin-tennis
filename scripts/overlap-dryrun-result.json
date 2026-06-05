@@ -1,0 +1,27 @@
+{
+  "generatedAt": "2026-06-05T17:15:59.179011Z",
+  "totalBookingsFetched": 4,
+  "autoMove": [
+    {
+      "bookingId": "76Fk2K7kowzp1BcIltZh",
+      "originalCourt": "Hard A",
+      "suggestedCourt": "Hard B",
+      "date": "2026-06-06",
+      "startTime": "09:00",
+      "endTime": "10:30",
+      "mode": "general",
+      "primaryName": "柏誌",
+      "createdBy": "U923bc5e1c80a401fe93dd991d29aed86",
+      "createdByName": "柏誌",
+      "players": [
+        "U923bc5e1c80a401fe93dd991d29aed86"
+      ],
+      "createdAt": "2026-06-05T02:12:35.161Z",
+      "collidesWithId": "aBb49XHNL3mRtfnP0ODB",
+      "staysName": "Lu lu🔱🔱🔱",
+      "staysMode": "teaching",
+      "moveReason": "teaching_priority"
+    }
+  ],
+  "manualReview": []
+}

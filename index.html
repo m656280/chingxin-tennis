@@ -192,6 +192,13 @@ button {
 .dvAttBadge.att-absent  { background:rgba(184,74,74,0.10);   color:#a83232; font-weight:600; }
 .dvAttBadge.att-excused { background:rgba(184,140,74,0.12);  color:#8a6020; font-weight:600; }
 .dvAttBadge.att-none    { background:var(--color-border-soft); color:var(--color-text-muted); }
+/* ── System audit log in booking detail ── */
+.dvHistorySection { margin:12px 20px 4px; padding-top:12px; border-top:1px solid var(--color-border-soft); }
+.dvHistoryEntry { background:rgba(138,96,32,0.06); border:1px solid rgba(138,96,32,0.20); border-radius:8px; padding:10px 12px; margin-bottom:6px; }
+.dvHistoryType  { font-size:10.5px; font-weight:700; color:#8a6020; letter-spacing:0.04em; margin-bottom:4px; }
+.dvHistoryDetail{ font-size:13.5px; color:var(--color-text-primary); font-weight:600; }
+.dvHistoryReason{ font-size:11.5px; color:var(--color-text-secondary); margin-top:2px; }
+.dvHistoryTime  { font-size:11px;   color:var(--color-text-muted);     margin-top:2px; }
 /* ── Participant management (general booking detail) ── */
 .dvGuestTag { font-size:9px; font-weight:700; letter-spacing:0.07em; color:var(--color-text-muted); background:var(--color-surface-alt); border-radius:4px; padding:2px 5px; flex-shrink:0; text-transform:uppercase; }
 .dvParticipantRemoveBtn { margin-left:auto; font-size:15px; line-height:1; color:var(--color-text-muted); padding:3px 7px; border-radius:6px; flex-shrink:0; }
@@ -395,6 +402,7 @@ button {
   margin-bottom:3px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;
 }
 .bookingCardMeta { font-size:12px; color:var(--color-text-secondary); }
+.bookingCardMovedHint { font-size:11px; color:#8a6020; margin-top:2px; display:flex; align-items:center; gap:3px; }
 .bookingCardOwner { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
 .bookingCardOwnerAvatar { width:26px; height:26px; border-radius:50%; overflow:hidden; flex-shrink:0; background:var(--color-border); display:flex; align-items:center; justify-content:center; font-size:10px; color:var(--color-text-muted); font-weight:600; }
 .bookingCardOwnerAvatar img { width:100%; height:100%; object-fit:cover; }
@@ -444,6 +452,28 @@ button {
   color:var(--color-text-secondary); cursor:pointer; -webkit-tap-highlight-color:transparent; }
 .abActionBtn.danger { color:var(--color-clay); border-color:var(--color-clay); }
 .abActionBtn.delete-btn { color:#c0392b; border-color:#c0392b; }
+.abActionBtn.repair    { color:#2a5a9a; border-color:#2a5a9a; }
+/* ── Repair tool ── */
+.repairCard { background:var(--color-surface); border:1px solid var(--color-border-soft); border-radius:8px; padding:12px 14px; margin-bottom:8px; }
+.repairCardConflict { font-size:12px; font-weight:600; color:var(--color-text-primary); margin-bottom:4px; }
+.repairCardMeta  { font-size:11.5px; color:var(--color-text-secondary); margin-bottom:2px; }
+.repairCardArrow { font-size:12px; font-weight:600; color:#2a5a9a; margin:6px 0 4px; }
+.repairCardReason{ font-size:11px; color:var(--color-text-muted); margin-bottom:8px; }
+.repairCardManual{ font-size:11.5px; color:var(--color-clay); padding:6px 0 2px; }
+.repairDoneSection{ margin-top:14px; border-top:1px solid var(--color-border-soft); padding-top:12px; }
+.repairDoneTitle { font-size:11px; letter-spacing:0.06em; color:#3a7a3a; font-weight:700; text-transform:uppercase; margin-bottom:8px; }
+.repairDoneCard  { background:rgba(58,122,58,0.05); border:1px solid rgba(58,122,58,0.18); border-radius:8px; padding:10px 12px; margin-bottom:6px; font-size:12px; color:var(--color-text-secondary); line-height:1.7; }
+.repairDoneArrow { font-size:13px; font-weight:600; color:#3a7a3a; }
+/* confirm dialog */
+.repairConfirmBackdrop { position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:3000; display:flex; align-items:center; justify-content:center; padding:24px; }
+.repairConfirmDlg { background:var(--color-surface); border-radius:14px; width:100%; max-width:340px; padding:24px 20px 20px; box-shadow:0 8px 32px rgba(0,0,0,0.22); }
+.repairConfirmTitle { font-size:15px; font-weight:700; color:var(--color-text-primary); margin-bottom:14px; }
+.repairConfirmBody  { font-size:13px; color:var(--color-text-secondary); line-height:1.8; margin-bottom:12px; }
+.repairConfirmWarn  { font-size:11.5px; color:#8a6020; background:rgba(138,96,32,0.08); border-radius:6px; padding:8px 10px; margin-bottom:16px; }
+.repairConfirmBtns  { display:flex; gap:10px; }
+.repairConfirmBtns button { flex:1; padding:10px 0; border-radius:99px; font-size:13px; font-weight:600; cursor:pointer; border:none; }
+.repairConfirmCancel { background:var(--color-surface-alt); color:var(--color-text-secondary); border:1px solid var(--color-border) !important; }
+.repairConfirmOk     { background:#2a5a9a; color:#fff; }
 
 /* ── Cancel / Void dialog ── */
 .cancelDlgBackdrop { position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:2100;
@@ -3137,6 +3167,14 @@ function renderBookings(){
       if(!isNaN(_cat.getTime())) metaExtra += ' · '+_cat.toLocaleDateString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
     }
 
+    // ── moved-court hint（僅在 movedFromCourt 存在時顯示）─────────────────
+    var _movedHintHtml = '';
+    if(b.movedFromCourt){
+      var _COURT_LABELS_BK = {hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'};
+      var _fromLabel = _COURT_LABELS_BK[b.movedFromCourt] || b.movedFromCourt;
+      _movedHintHtml = '<div class="bookingCardMovedHint">⚠ 已由系統調整場地（原：'+_esc(_fromLabel)+'）</div>';
+    }
+
     var bodyHtml;
     if(_nm2 === 'general'){
       /* ── General booking: owner avatar + name + buddy list ── */
@@ -3169,6 +3207,7 @@ function renderBookings(){
         : '';
       bodyHtml = ownerRow
         +'<div class="bookingCardTime">'+b.startTime+' – '+b.endTime+' &nbsp;'+_esc(courtLabel)+'</div>'
+        +_movedHintHtml
         +buddiesRow
         +guestWarnRow
         +(metaExtra?'<div class="bookingCardMeta">'+metaExtra+'</div>':'')
@@ -3179,6 +3218,7 @@ function renderBookings(){
       bodyHtml = '<div class="bookingCardTime">'
           +b.startTime+' – '+b.endTime+' &nbsp;'+_esc(courtLabel)
           +'&nbsp;<span class="statusChip '+chipCls+'">'+statusLabel+'</span></div>'
+        +_movedHintHtml
         +'<div class="bookingCardMeta">'+(MODE_LABELS[_nm2]||b.mode||'—')+(partners?' · '+partners:'')+metaExtra+'</div>'
         +cancelBtn;
     }
@@ -3384,14 +3424,342 @@ function _renderAllBookingsTab(el){
     '</div>';
   }
 
+  /* ── 修復工具 accordion（reset state whenever the tab re-renders） ── */
+  _repairState = {status:'idle', autoMove:[], manualReview:[], error:null};
+
+  var repairSection =
+    '<div class="abSection" style="margin-top:4px">'
+    +'<div class="abSectionHdr" onclick="(function(){var b=document.getElementById(\'repairBody\');var c=document.getElementById(\'repairChev\');b.classList.toggle(\'open\');c.classList.toggle(\'open\');})()">'
+    +'<span class="abSectionTitle">🔧 修復工具</span>'
+    +'<span class="abSectionChevron" id="repairChev">▾</span>'
+    +'</div>'
+    +'<div class="abSectionBody" id="repairBody">'
+    +'<div id="repairToolInner">'+_repairToolHtml()+'</div>'
+    +'</div>'
+    +'</div>';
+
   var html = '<div style="padding:12px 0 4px">'
     +'<button class="abActionBtn" style="margin-left:0;font-size:11px" onclick="allBookingsCache=null;renderManage()">↺ 重新載入</button>'
     +'</div>'
     + accordionSection('today',  '今日預約', todayBks,  true)
     + accordionSection('future', '未來預約', futureBks, true)
-    + accordionSection('cancelled','已取消（近 30 天）', cancelBks, false);
+    + accordionSection('cancelled','已取消（近 30 天）', cancelBks, false)
+    + repairSection;
 
   el.innerHTML += html;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   修復工具 — 重疊預約掃描 & 自動修復
+   ▸ _scanOverlapBookings()     掃描 Firestore，更新 _repairState，刷新 UI
+   ▸ _repairToolHtml()          回傳修復工具 inner HTML（純 view）
+   ▸ _executeOverlapRepair(idx) 對 autoMove[idx] 執行 Firestore 寫入
+   ═══════════════════════════════════════════════════════════════════════════ */
+var _repairState = { status:'idle', autoMove:[], manualReview:[], done:[], error:null };
+// status: 'idle' | 'scanning' | 'done' | 'error'
+// done[]: completed repairs kept across re-scans
+
+var _REPAIR_COURT_PAIR  = {hard_a:'hard_b',hard_b:'hard_a',clay_a:'clay_b',clay_b:'clay_a'};
+var _REPAIR_COURT_LABEL = {hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'};
+
+function _repairRefreshUI(){
+  var el = document.getElementById('repairToolInner');
+  if(el) el.innerHTML = _repairToolHtml();
+}
+
+function _scanOverlapBookings(){
+  if(!db){ showToast('無法連線'); return; }
+  _repairState = {status:'scanning', autoMove:[], manualReview:[], done:_repairState.done||[], error:null};  /* preserve done log */
+  _repairRefreshUI();
+
+  db.collection('bookings').get()
+    .then(function(snap){
+      var all = snap.docs
+        .map(function(d){ return Object.assign({id:d.id}, d.data()); })
+        .filter(function(b){ return _isActiveBooking(b); });
+
+      /* index by court|date */
+      var idx = {};
+      all.forEach(function(b){
+        if(!b.court||!b.date) return;
+        var k = b.court+'|'+b.date;
+        (idx[k]=idx[k]||[]).push(b);
+      });
+
+      var seen = {};
+      var autoMove=[], manualReview=[];
+
+      Object.keys(idx).forEach(function(key){
+        var bks = idx[key];
+        if(bks.length < 2) return;
+        for(var i=0;i<bks.length;i++){
+          for(var j=i+1;j<bks.length;j++){
+            var a=bks[i], b=bks[j];
+            var pk=[a.id,b.id].sort().join('|');
+            if(seen[pk]) return;
+            /* time overlap: aStart < bEnd && aEnd > bStart */
+            if(!(timeToMin(a.startTime)<timeToMin(b.endTime) &&
+                 timeToMin(a.endTime)>timeToMin(b.startTime))) return;
+            seen[pk]=true;
+
+            /* decide mover: teaching stays */
+            var aT=(_normaliseMode(a.mode)==='teaching');
+            var bT=(_normaliseMode(b.mode)==='teaching');
+            var stay,move;
+            if(aT&&!bT){ stay=a; move=b; }
+            else if(bT&&!aT){ stay=b; move=a; }
+            else {
+              var ta=a.createdAt&&a.createdAt.toDate?a.createdAt.toDate().getTime():0;
+              var tb=b.createdAt&&b.createdAt.toDate?b.createdAt.toDate().getTime():0;
+              if(ta<=tb){stay=a;move=b;}else{stay=b;move=a;}
+            }
+
+            var altCourt = _REPAIR_COURT_PAIR[move.court];
+            var moveReason = (aT||bT) ? '教學預約優先保留原場地' : '依建立時間，較早預約保留原場地';
+
+            var entry = {
+              bookingId:      move.id,
+              fromKey:        move.court,
+              originalCourt:  _REPAIR_COURT_LABEL[move.court]||move.court,
+              date:           move.date,
+              startTime:      move.startTime,
+              endTime:        move.endTime,
+              mode:           move.mode||'—',
+              primaryName:    move.primaryName||'—',
+              createdByName:  move.createdByName||'—',
+              players:        Array.isArray(move.players)?move.players:(move.createdBy?[move.createdBy]:[]),
+              staysId:        stay.id,
+              staysName:      stay.primaryName||'—',
+              staysMode:      _normaliseMode(stay.mode),
+              moveReason:     moveReason,
+            };
+
+            if(!altCourt){ manualReview.push(Object.assign({},entry,{reason:'無配對場地'})); return; }
+
+            entry.toKey = altCourt;
+            entry.suggestedCourt = _REPAIR_COURT_LABEL[altCourt]||altCourt;
+
+            /* check alt court free */
+            var altFree = !all.some(function(x){
+              if(x.id===move.id) return false;
+              if(x.court!==altCourt||x.date!==move.date) return false;
+              return timeToMin(move.startTime)<timeToMin(x.endTime) &&
+                     timeToMin(move.endTime)>timeToMin(x.startTime);
+            });
+
+            if(altFree){ autoMove.push(entry); }
+            else{ manualReview.push(Object.assign({},entry,{suggestedCourt:_REPAIR_COURT_LABEL[altCourt],reason:'配對場地同時段已有預約'})); }
+          }
+        }
+      });
+
+      _repairState = {status:'done', autoMove:autoMove, manualReview:manualReview, error:null};
+      _repairRefreshUI();
+    })
+    .catch(function(e){
+      _repairState = {status:'error', autoMove:[], manualReview:[], error:e.message};
+      _repairRefreshUI();
+    });
+}
+
+function _repairToolHtml(){
+  var s = _repairState;
+  var html = '<div style="padding:12px 14px 4px">';
+
+  if(s.status==='idle'){
+    html += '<div style="font-size:12.5px;color:var(--color-text-secondary);margin-bottom:10px">掃描所有有效預約，找出同場地同時段重疊衝突。</div>';
+    html += '<button class="abActionBtn repair" onclick="_scanOverlapBookings()">掃描重疊預約</button>';
+    html += _repairDoneSection(s);
+    return html+'</div>';
+  }
+  if(s.status==='scanning'){
+    html += '<div style="font-size:12.5px;color:var(--color-text-muted);padding:8px 0">掃描中…</div>';
+    return html+'</div>';
+  }
+  if(s.status==='error'){
+    html += '<div style="font-size:12px;color:var(--color-clay);margin-bottom:10px">掃描失敗：'+_esc(s.error||'')+'</div>';
+    html += '<button class="abActionBtn" onclick="_scanOverlapBookings()">重試</button>';
+    html += _repairDoneSection(s);
+    return html+'</div>';
+  }
+
+  /* ── status === 'done' ── */
+  var total = s.autoMove.length + s.manualReview.length;
+  if(total===0){
+    html += '<div style="font-size:12.5px;color:#3a7a3a;font-weight:600;padding:4px 0 8px">✓ 未發現重疊預約</div>';
+    html += '<button class="abActionBtn" style="margin-top:4px" onclick="_repairState.status=\'idle\';_repairRefreshUI()">重新掃描</button>';
+    html += _repairDoneSection(s);
+    return html+'</div>';
+  }
+
+  html += '<div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:10px">'
+    +'發現 '+total+' 組衝突（可自動修復：'+s.autoMove.length+'，需人工：'+s.manualReview.length+'）</div>';
+
+  /* autoMove cards */
+  if(s.autoMove.length>0){
+    html += '<div style="font-size:11px;letter-spacing:0.06em;color:var(--color-text-muted);font-weight:600;margin-bottom:6px;text-transform:uppercase">可自動修復</div>';
+    s.autoMove.forEach(function(r,idx){
+      var modeLabel = MODE_LABELS[_normaliseMode(r.mode)]||r.mode||'一般';
+      html += '<div class="repairCard">'
+        +'<div class="repairCardConflict">'+_esc(r.originalCourt)+'　'+_esc(r.date)+'　'+_esc(r.startTime)+'–'+_esc(r.endTime)+'</div>'
+        +'<div class="repairCardMeta">預約人：'+_esc(r.primaryName)+'　模式：'+_esc(modeLabel)+'</div>'
+        +'<div class="repairCardMeta">衝突對象：'+_esc(r.staysName)+'（'+_esc(MODE_LABELS[r.staysMode]||r.staysMode)+'，保留原場地）</div>'
+        +'<div class="repairCardArrow">'+_esc(r.originalCourt)+' → '+_esc(r.suggestedCourt)+'</div>'
+        +'<div class="repairCardReason">原因：'+_esc(r.moveReason)+'</div>'
+        +'<button class="abActionBtn repair" onclick="_showRepairConfirmDlg('+idx+')">執行修復</button>'
+        +'</div>';
+    });
+  }
+
+  /* manualReview cards */
+  if(s.manualReview.length>0){
+    html += '<div style="font-size:11px;letter-spacing:0.06em;color:var(--color-text-muted);font-weight:600;margin:8px 0 6px;text-transform:uppercase">需人工處理</div>';
+    s.manualReview.forEach(function(r){
+      var modeLabel = MODE_LABELS[_normaliseMode(r.mode)]||r.mode||'一般';
+      html += '<div class="repairCard">'
+        +'<div class="repairCardConflict">'+_esc(r.originalCourt)+'　'+_esc(r.date)+'　'+_esc(r.startTime)+'–'+_esc(r.endTime)+'</div>'
+        +'<div class="repairCardMeta">預約人：'+_esc(r.primaryName)+'　模式：'+_esc(modeLabel)+'</div>'
+        +'<div class="repairCardManual">⚠ 無法自動修復：'+_esc(r.reason||'')+'</div>'
+        +'</div>';
+    });
+  }
+
+  html += '<button class="abActionBtn" style="margin-top:4px" onclick="_repairState.status=\'idle\';_repairRefreshUI()">重新掃描</button>';
+  html += _repairDoneSection(s);
+  return html+'</div>';
+}
+
+/* 已修復紀錄 sub-section（純 view，no-op if done is empty） */
+function _repairDoneSection(s){
+  var done = s.done||[];
+  if(!done.length) return '';
+  var rows = done.map(function(d){
+    return '<div class="repairDoneCard">'
+      +'<div class="repairDoneArrow">'+_esc(d.originalCourt)+' → '+_esc(d.suggestedCourt)+'</div>'
+      +'<div>日期：'+_esc(d.date)+'　時間：'+_esc(d.startTime)+'–'+_esc(d.endTime)+'</div>'
+      +'<div>預約人：'+_esc(d.primaryName)+'</div>'
+      +'<div>修復者：system　時間：'+_esc(d.fixedAt)+'</div>'
+      +'</div>';
+  }).join('');
+  return '<div class="repairDoneSection">'
+    +'<div class="repairDoneTitle">✓ 已修復紀錄（'+done.length+' 筆）</div>'
+    +rows
+    +'</div>';
+}
+
+/* 確認視窗 */
+function _showRepairConfirmDlg(idx){
+  var r = _repairState.autoMove[idx];
+  if(!r) return;
+  var bd = document.createElement('div');
+  bd.className = 'repairConfirmBackdrop';
+  bd.id = 'repairConfirmBackdrop';
+  bd.innerHTML =
+    '<div class="repairConfirmDlg">'
+    +'<div class="repairConfirmTitle">確認修復</div>'
+    +'<div class="repairConfirmBody">'
+    +'<b>即將執行：</b><br>'
+    +_esc(r.originalCourt)+' → '+_esc(r.suggestedCourt)+'<br><br>'
+    +'預約人：'+_esc(r.primaryName)+'<br>'
+    +'日期：'+_esc(r.date)+'<br>'
+    +'時間：'+_esc(r.startTime)+'–'+_esc(r.endTime)
+    +'</div>'
+    +'<div class="repairConfirmWarn">此操作將修改預約資料並建立系統紀錄。</div>'
+    +'<div class="repairConfirmBtns">'
+    +'<button class="repairConfirmCancel" onclick="_closeRepairConfirmDlg()">取消</button>'
+    +'<button class="repairConfirmOk"     onclick="_closeRepairConfirmDlg();_executeOverlapRepair('+idx+')">確認修復</button>'
+    +'</div>'
+    +'</div>';
+  document.body.appendChild(bd);
+}
+
+function _closeRepairConfirmDlg(){
+  var el = document.getElementById('repairConfirmBackdrop');
+  if(el && el.parentNode) el.parentNode.removeChild(el);
+}
+
+function _executeOverlapRepair(idx){
+  if(!db){ showToast('無法連線'); return; }
+  var r = _repairState.autoMove[idx];
+  if(!r){ showToast('找不到修復項目'); return; }
+
+  var now = firebase.firestore.Timestamp.now();
+  var expiresAt = new Date(Date.now() + 30*24*60*60*1000);
+
+  /* disable button immediately to prevent double-click */
+  var btns = document.querySelectorAll('#repairToolInner .abActionBtn.repair');
+  btns.forEach(function(b){ b.disabled=true; b.textContent='修復中…'; });
+
+  db.collection('bookings').doc(r.bookingId).update({
+    court:          r.toKey,
+    movedFromCourt: r.fromKey,
+    movedReason:    'overlap_conflict_auto_fix',
+    movedAt:        TS(),
+    movedBy:        'system',
+    history: firebase.firestore.FieldValue.arrayUnion({
+      type:           'court_auto_moved',
+      fromCourt:      r.fromKey,
+      toCourt:        r.toKey,
+      fromCourtLabel: r.originalCourt,
+      toCourtLabel:   r.suggestedCourt,
+      reason:         'overlap_conflict_auto_fix',
+      createdAt:      now,
+      createdBy:      'system',
+    }),
+  })
+  .then(function(){
+    /* write notifications for all players */
+    var notifyUids = r.players&&r.players.length ? r.players : [];
+    var notifPromises = notifyUids.map(function(uid){
+      return db.collection('notifications').add({
+        uid:            uid,
+        type:           'court_auto_moved',
+        action:         'court_auto_moved',
+        bookingId:      r.bookingId,
+        date:           r.date,
+        startTime:      r.startTime,
+        endTime:        r.endTime,
+        fromCourt:      r.fromKey,
+        fromCourtLabel: r.originalCourt,
+        court:          r.toKey,
+        courtLabel:     r.suggestedCourt,
+        message:        '您的預約場地已由系統自動調整：'+r.originalCourt+' → '+r.suggestedCourt+'（原因：同場地時段重疊，教學預約優先保留）',
+        createdAt:      TS(),
+        expiresAt:      expiresAt,
+        read:           false,
+      });
+    });
+    return Promise.all(notifPromises);
+  })
+  .then(function(){
+    /* log to done[] for audit display */
+    var fixedAt = new Date().toLocaleString('zh-TW',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+    _repairState.done.push({
+      originalCourt:  r.originalCourt,
+      suggestedCourt: r.suggestedCourt,
+      date:           r.date,
+      startTime:      r.startTime,
+      endTime:        r.endTime,
+      primaryName:    r.primaryName,
+      bookingId:      r.bookingId,
+      fixedAt:        fixedAt,
+    });
+    /* remove fixed item from autoMove */
+    _repairState.autoMove.splice(idx, 1);
+    /* if all resolved, set status back to done (empty) */
+    if(_repairState.autoMove.length===0 && _repairState.manualReview.length===0){
+      _repairState.status = 'done';
+    }
+    allBookingsCache = null;
+    courtBookingsFirestore = null;
+    showToast('✓ 已修復：'+r.originalCourt+' → '+r.suggestedCourt);
+    _repairRefreshUI();
+    loadWeekBookings();
+  })
+  .catch(function(e){
+    showToast('修復失敗：'+e.message);
+    _repairRefreshUI();
+  });
 }
 
 function _toggleAbSection(id){
@@ -6394,6 +6762,31 @@ function _dvShowDetail(enc){
       attHtml += '<div style="padding:10px 20px 0"><div style="font-size:10px;letter-spacing:0.08em;color:var(--color-text-muted);text-transform:uppercase;margin-bottom:4px">備註</div><div style="font-size:13px;color:var(--color-text-secondary)">'+_esc(data.note)+'</div></div>';
   }
 
+  // ── System audit log (court_auto_moved) ──────────────────────────────────
+  var historyHtml = '';
+  if(Array.isArray(data.history) && data.history.length > 0){
+    var _histEntries = '';
+    data.history.forEach(function(h){
+      if(h.type === 'court_auto_moved'){
+        var _from = _esc(h.fromCourtLabel || '—');
+        var _to   = _esc(h.toCourtLabel   || '—');
+        var _tsStr = '';
+        if(h.createdAtMs){
+          var _hd = new Date(h.createdAtMs);
+          _tsStr = _hd.toLocaleString('zh-TW',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+        }
+        _histEntries +=
+          '<div class="dvHistoryEntry">'+
+            '<div class="dvHistoryType">⚠️ 系統調整紀錄</div>'+
+            '<div class="dvHistoryDetail">'+_from+' → '+_to+'</div>'+
+            '<div class="dvHistoryReason">原因：時段衝突修正</div>'+
+            (_tsStr ? '<div class="dvHistoryTime">時間：'+_tsStr+'</div>' : '')+
+          '</div>';
+      }
+    });
+    if(_histEntries) historyHtml = '<div class="dvHistorySection">'+_histEntries+'</div>';
+  }
+
   p.innerHTML=
     '<div class="dvDetailHandle"></div>'+
     '<div class="dvDetailTop">'+
@@ -6406,6 +6799,7 @@ function _dvShowDetail(enc){
     '<div class="dvDetailRows">'+infoRows+titleHtml+noteHtml+'</div>'+
     participantHtml+
     attHtml+
+    historyHtml+
     (canEdit     ?'<button class="dvDetailEditBtn"   onclick="_dvCloseDetail();openBookingFormEdit(\''+data.bookingId+'\')">編輯預約</button>':'')+
     (canCancel   ?'<button class="dvDetailCancelBtn" onclick="cancelBooking(\''+data.bookingId+'\')">取消預約</button>':'')+
     (canLeave    ?'<button class="dvDetailCancelBtn" onclick="leaveBooking(\''+data.bookingId+'\')">退出預約</button>':'')+
@@ -6774,7 +7168,22 @@ function showBookingDetail(id){
     canCancel: canCancel, canLeave: canLeave,
     canEdit: canEditBooking(b).can,
     withinCutoff: _isActiveBooking(b) && !_bookingHasStarted(b) && _withinCancelCutoff(b),
-    canDelete: isClubOwner   /* permanent delete — owner only */
+    canDelete: isClubOwner,   /* permanent delete — owner only */
+    history: Array.isArray(b.history) ? b.history.map(function(h){
+      var tsMs = 0;
+      if(h.createdAt){
+        tsMs = h.createdAt.toDate  ? h.createdAt.toDate().getTime()
+             : (h.createdAt.seconds ? h.createdAt.seconds * 1000 : 0);
+      }
+      return {
+        type:           h.type           || '',
+        fromCourtLabel: h.fromCourtLabel || h.fromCourt || '',
+        toCourtLabel:   h.toCourtLabel   || h.toCourt   || '',
+        reason:         h.reason         || '',
+        createdBy:      h.createdBy      || '',
+        createdAtMs:    tsMs
+      };
+    }) : []
   }));
   _dvShowDetail(enc);
 }
@@ -7333,6 +7742,24 @@ function _markNotifsAsRead(){
 }
 
 function _renderNotifCard(n){
+  // ── court_auto_moved ──────────────────────────────────────────────────────
+  if(n.type === 'court_auto_moved'){
+    var _amTime = (n.startTime||'') + (n.endTime ? '–'+n.endTime : '');
+    var _amFrom = n.fromCourtLabel || n.fromCourt || '';
+    var _amTo   = n.courtLabel     || n.court     || '';
+    var _amCreatedStr = '';
+    if(n.createdAt && n.createdAt.toDate){
+      var _amd = n.createdAt.toDate();
+      _amCreatedStr = _amd.toLocaleString('zh-TW',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+    }
+    return '<div class="notifCard'+(n.read?'':' unread')+'" onclick="_onNotifTap(\''+n.id+'\')">'
+      +'<div class="notifCardTitle">【場地自動調整】</div>'
+      +'<div class="notifCardTime">'+_esc(n.date||'')+'　'+_esc(_amTime)+'</div>'
+      +'<div class="notifCardMeta">'+_esc(_amFrom)+' → '+_esc(_amTo)+'　原因：時段衝突修正</div>'
+      +(_amCreatedStr?'<div class="notifCardMeta" style="opacity:0.7;margin-top:2px">'+_amCreatedStr+'</div>':'')
+      +'</div>';
+  }
+  // ── booking_cancelled / booking_void ──────────────────────────────────────
   var actionLabel = n.action === 'void' ? '強制作廢' : '已取消';
   var timeStr = (n.startTime||'') + (n.endTime ? '–'+n.endTime : '');
   var metaParts = [];
@@ -7989,6 +8416,43 @@ function _bookingConflictMsg(c){
   return c.name+'已在 '+c.start+'–'+c.end+' 參與 '+c.court+'，無法重複預約。';
 }
 
+/* ── Booking: same-court time-overlap check ─────────────────────────────────
+   Queries all active bookings for the given court+date and checks whether any
+   of them overlaps with [newStart, newEnd) using range arithmetic:
+       existingStart < newEnd  &&  existingEnd > newStart
+   Returns a Promise that resolves to:
+     null              — no overlap found (safe to proceed)
+     booking doc obj   — first overlapping active booking
+                         (.startTime/.endTime let callers distinguish exact vs partial)
+     {queryError:true} — Firestore query failed; caller MUST block (fail-closed)
+   excludeId: ID of booking to skip (pass the booking being edited; null for new).
+   ─────────────────────────────────────────────────────────────────────────── */
+function hasBookingConflict(court, date, newStart, newEnd, excludeId){
+  if(!db){ return Promise.resolve({queryError:true}); }
+  var newStartMin = timeToMin(newStart);
+  var newEndMin   = timeToMin(newEnd);
+  return db.collection('bookings')
+    .where('court','==',court)
+    .where('date','==',date)
+    .get()
+    .then(function(snap){
+      for(var i=0; i<snap.docs.length; i++){
+        var d = snap.docs[i];
+        if(excludeId && d.id === excludeId) continue;
+        var b = Object.assign({id:d.id}, d.data());
+        if(!_isActiveBooking(b)) continue;
+        var exStart = timeToMin(b.startTime);
+        var exEnd   = timeToMin(b.endTime);
+        if(newStartMin < exEnd && newEndMin > exStart) return b;
+      }
+      return null;
+    })
+    .catch(function(e){
+      console.error('[hasBookingConflict] query error:', e);
+      return {queryError:true};
+    });
+}
+
 /* ── Submit edit: update existing booking (merge approach) ── */
 function _submitBookingEdit(){
   if(!db || !_bkEditId){ showToast('無法連線，請稍後再試'); return; }
@@ -8066,27 +8530,21 @@ function _submitBookingEdit(){
                || (origBk && origBk.title) || '其他';
   }
 
-  // ── Slot conflict check (same court, exclude self) ─────────────────────
-  db.collection('bookings')
-    .where('court','==',court).where('date','==',date)
-    .where('startTime','==',start).where('endTime','==',end)
-    .get()
-    .then(function(snap){
-      var conflicting = snap.docs
-        .filter(function(d){ return d.id !== editId; })
-        .map(function(d){ return Object.assign({id:d.id}, d.data()); })
-        .filter(function(bk){ return _isActiveBooking(bk); });
-      if(conflicting.length > 0){
-        var exBk4 = conflicting[0];
-        var exMode4 = _normaliseMode(exBk4.mode);
+  // ── Slot conflict check (same court, exclude self) — range-overlap ────────
+  hasBookingConflict(court, date, start, end, editId)
+    .then(function(conflict){
+      if(conflict && conflict.queryError){
+        if(btn){ btn.disabled=false; btn.textContent='儲存變更'; }
+        showToast('目前無法確認場地衝突，請稍後再試'); return;
+      }
+      if(conflict){
+        var exMode4 = _normaliseMode(conflict.mode);
         if(exMode4==='teaching'||exMode4==='groupClass'||exMode4==='event_lock'){
           if(btn){ btn.disabled=false; btn.textContent='儲存變更'; }
           showToast('此時段已被教學/活動佔用'); return;
         }
-        if(!isGeneral){
-          if(btn){ btn.disabled=false; btn.textContent='儲存變更'; }
-          showToast('此時段已有衝突預約'); return;
-        }
+        if(btn){ btn.disabled=false; btn.textContent='儲存變更'; }
+        showToast('此場地該時段已有預約，請選擇其他時段'); return;
       }
       // ── Cross-court participant conflict check ──────────────────────────
       var _editUids4 = _bookingParticipantUids(Object.assign({}, origBk||{}, upd));
@@ -8191,20 +8649,25 @@ function submitBooking(){
   var courtShortLabel = (COURT_LABELS[court]||{}).surface+' '+(COURT_LABELS[court]||{}).letter;
   var isExclusive = (mode==='teaching'||mode==='groupClass'||mode==='event_lock');
 
-  // Step 1: check for existing active bookings in the same slot
-  db.collection('bookings')
-    .where('court','==',court)
-    .where('date','==',date)
-    .where('startTime','==',start)
-    .where('endTime','==',end)
-    .get()
-    .then(function(snap){
-      var existing = snap.docs
-        .map(function(d){ return Object.assign({id:d.id},d.data()); })
-        .filter(function(b){ return _isActiveBooking(b); });
+  // Step 1: check for time-overlapping active bookings on the same court/date
+  hasBookingConflict(court, date, start, end, null)
+    .then(function(conflict){
+      if(conflict && conflict.queryError){
+        showToast('目前無法確認場地衝突，請稍後再試');
+        if(btn){ btn.disabled=false; btn.textContent='確認預約'; }
+        return;
+      }
 
-      if(existing.length > 0){
-        var ex = existing[0];
+      if(conflict){
+        var sameSlot = conflict.startTime === start && conflict.endTime === end;
+        if(!sameSlot){
+          // overlapping but different time bounds → block immediately
+          showToast('此場地該時段已有預約，請選擇其他時段');
+          if(btn){ btn.disabled=false; btn.textContent='確認預約'; }
+          return;
+        }
+        // exact same slot → proceed with original join / block logic
+        var ex = conflict;
         var exMode = _normaliseMode(ex.mode);
 
         // exclusive modes cannot share a slot with anything

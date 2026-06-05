@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Phase 2 — 移場自動執行</title>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:600px;margin:40px auto;padding:20px;background:#f8f8f8;color:#222}
+  h2{font-size:18px;margin-bottom:16px}
+  #log{background:#fff;border:1px solid #ddd;border-radius:8px;padding:16px;font-size:13px;line-height:1.8;min-height:120px;white-space:pre-wrap}
+  .ok{color:#3a7a3a;font-weight:600}
+  .err{color:#a83232;font-weight:600}
+  .info{color:#555}
+  .warn{color:#8a6020;font-weight:600}
+  #doneMsg{display:none;margin-top:20px;padding:16px;background:#eaf4ea;border:1px solid #99c099;border-radius:8px;font-size:14px;color:#2a5a2a;font-weight:500}
+</style>
+</head>
+<body>
+<h2>⚙️ Phase 2 — 場地重疊自動修正</h2>
+<div id="log">初始化中…</div>
+<div id="doneMsg">✅ 完成！請關閉此頁，並部署 index.html：<br><code>firebase deploy --only hosting --project chingxin-tennis</code></div>
+
+<script type="module">
+import { initializeApp }          from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, doc, updateDoc,
+         collection, addDoc,
+         arrayUnion, serverTimestamp,
+         Timestamp }               from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const FB_CONFIG = {
+  apiKey:            "AIzaSyC9EE8rQN-hiJUYBthcvumf-DKerfMwRYg",
+  projectId:         "chingxin-tennis",
+  storageBucket:     "chingxin-tennis.firebasestorage.app",
+  messagingSenderId: "631543657695",
+  appId:             "1:631543657695:web:348bdcc19bace490c6256a",
+};
+
+// ── 要執行的移場清單（由 dry-run 確認）──────────────────────────────────────
+const AUTO_MOVE = [
+  {
+    bookingId:      "76Fk2K7kowzp1BcIltZh",
+    originalCourt:  "Hard A",
+    fromKey:        "hard_a",
+    suggestedCourt: "Hard B",
+    toKey:          "hard_b",
+    date:           "2026-06-06",
+    startTime:      "09:00",
+    endTime:        "10:30",
+    mode:           "general",
+    primaryName:    "柏誌",
+    players:        ["U923bc5e1c80a401fe93dd991d29aed86"],
+    createdBy:      "U923bc5e1c80a401fe93dd991d29aed86",
+  }
+];
+
+const logEl  = document.getElementById("log");
+const doneEl = document.getElementById("doneMsg");
+let logText  = "";
+
+function log(msg, cls="info"){
+  logText += (cls === "ok" ? "✓ " : cls === "err" ? "✗ " : cls === "warn" ? "⚠ " : "  ") + msg + "\n";
+  logEl.innerHTML = logText.split("\n").map(line =>
+    line.startsWith("✓") ? `<span class="ok">${line}</span>` :
+    line.startsWith("✗") ? `<span class="err">${line}</span>` :
+    line.startsWith("⚠") ? `<span class="warn">${line}</span>` :
+    `<span class="info">${line}</span>`
+  ).join("\n");
+}
+
+async function run(){
+  log("Firebase 初始化…");
+  const app = initializeApp(FB_CONFIG);
+  const db  = getFirestore(app);
+  log("連線成功", "ok");
+  log("");
+
+  let successCount = 0, errorCount = 0;
+
+  for(const r of AUTO_MOVE){
+    log(`Booking: ${r.bookingId}`);
+    log(`  ${r.date}  ${r.startTime}–${r.endTime}  ${r.originalCourt} → ${r.suggestedCourt}`);
+
+    try{
+      const now = Timestamp.now();
+      const expiresAt = new Date(Date.now() + 30*24*60*60*1000);
+
+      // ── 1. 更新 booking ────────────────────────────────────────────────
+      await updateDoc(doc(db, "bookings", r.bookingId), {
+        court:          r.toKey,
+        movedFromCourt: r.fromKey,
+        movedReason:    "overlap_conflict_auto_fix",
+        movedAt:        serverTimestamp(),
+        movedBy:        "system",
+        history: arrayUnion({
+          type:           "court_auto_moved",
+          fromCourt:      r.fromKey,
+          toCourt:        r.toKey,
+          fromCourtLabel: r.originalCourt,
+          toCourtLabel:   r.suggestedCourt,
+          reason:         "overlap_conflict_auto_fix",
+          createdAt:      now,
+          createdBy:      "system",
+        }),
+      });
+      log(`  booking 已更新（court + history）`, "ok");
+
+      // ── 2. 寫通知給每位 player ─────────────────────────────────────────
+      const notifyUids = r.players?.length ? r.players : (r.createdBy ? [r.createdBy] : []);
+      for(const uid of notifyUids){
+        await addDoc(collection(db, "notifications"), {
+          uid,
+          type:           "court_auto_moved",
+          action:         "court_auto_moved",
+          bookingId:      r.bookingId,
+          date:           r.date,
+          startTime:      r.startTime,
+          endTime:        r.endTime,
+          fromCourt:      r.fromKey,
+          fromCourtLabel: r.originalCourt,
+          court:          r.toKey,
+          courtLabel:     r.suggestedCourt,
+          message:        `您的預約場地已由系統自動調整：${r.originalCourt} → ${r.suggestedCourt}（原因：同場地時段重疊，教學預約優先保留）`,
+          createdAt:      serverTimestamp(),
+          expiresAt,
+          read:           false,
+        });
+        log(`  通知已建立 → ${uid}`, "ok");
+      }
+
+      successCount++;
+    } catch(e){
+      log(`  失敗：${e.message}`, "err");
+      errorCount++;
+    }
+    log("");
+  }
+
+  log(`=== 完成：${successCount} 筆成功，${errorCount} 筆失敗 ===`,
+      errorCount === 0 ? "ok" : "warn");
+
+  if(successCount > 0 && errorCount === 0){
+    doneEl.style.display = "block";
+  }
+}
+
+run().catch(e => log("FATAL: " + e.message, "err"));
+</script>
+</body>
+</html>
