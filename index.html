@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#faf9f5">
 <title>清心網球協會</title>
-<link rel="icon" href="/apple-touch-icon.png">
+<link rel="icon" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.json">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -17,12 +17,14 @@
 <meta property="og:title"       content="高雄市清心網球協會">
 <meta property="og:description" content="CHING XIN — 私人會員制網球場地預約系統">
 <meta property="og:url"         content="https://chingxin-tennis.web.app">
-<meta property="og:image"       content="https://chingxin-tennis.web.app/og-use.png">
+<meta property="og:image"       content="https://chingxin-tennis.web.app/public/og-preview.png">
+<meta property="og:image:width"  content="1200">
+<meta property="og:image:height" content="630">
 <meta property="og:image:type"   content="image/png">
 <meta name="twitter:card"       content="summary_large_image">
 <meta name="twitter:title"      content="高雄市清心網球協會">
 <meta name="twitter:description" content="CHING XIN — 私人會員制網球場地預約系統">
-<meta name="twitter:image"      content="https://chingxin-tennis.web.app/og-use.png">
+<meta name="twitter:image"      content="https://chingxin-tennis.web.app/public/og-preview.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=Noto+Sans+TC:wght@400;500&family=Noto+Serif+TC:wght@400;500&display=swap" rel="stylesheet">
@@ -1312,7 +1314,14 @@ button {
   <!-- LINE Login — two sub-states toggled by _showAuthGate('login') -->
   <div id="authLoginScreen" class="authCenter" style="display:none">
     <div style="margin-bottom:40px;text-align:center">
-      <img src="/apple-touch-icon.png" width="64" height="64" alt="清心 logo" style="display:block;margin:0 auto 16px;border-radius:14px">
+      <svg width="48" height="48" viewBox="0 0 100 100" style="display:block;margin:0 auto 16px;color:#222" aria-label="清心 logo">
+        <line x1="28" y1="28" x2="72" y2="72" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" fill="none"/>
+        <line x1="72" y1="28" x2="28" y2="72" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" fill="none"/>
+        <path d="M 50 7 Q 62 22 50 37 Q 38 22 50 7 Z" fill="currentColor"/>
+        <path d="M 50 63 Q 62 78 50 93 Q 38 78 50 63 Z" fill="currentColor"/>
+        <path d="M 7 50 Q 22 38 37 50 Q 22 62 7 50 Z" fill="currentColor"/>
+        <path d="M 63 50 Q 78 38 93 50 Q 78 62 63 50 Z" fill="currentColor"/>
+      </svg>
       <div class="authBrandCn">高雄市清心網球協會</div>
       <div class="authBrandSub">Kaohsiung Ching Xin Tennis Association</div>
     </div>
@@ -1371,7 +1380,14 @@ button {
   <header class="header court-header-hidden">
     <div class="brand">
       <div class="brandRow">
-        <img src="/apple-touch-icon.png" width="40" height="40" alt="CHING XIN logo" style="border-radius:10px;flex-shrink:0">
+        <svg width="40" height="40" viewBox="0 0 100 100" aria-label="CHING XIN logo mark">
+          <line x1="28" y1="28" x2="72" y2="72" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" fill="none"/>
+          <line x1="72" y1="28" x2="28" y2="72" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" fill="none"/>
+          <path d="M 50 7 Q 62 22 50 37 Q 38 22 50 7 Z" fill="currentColor"/>
+          <path d="M 50 63 Q 62 78 50 93 Q 38 78 50 63 Z" fill="currentColor"/>
+          <path d="M 7 50 Q 22 38 37 50 Q 22 62 7 50 Z" fill="currentColor"/>
+          <path d="M 63 50 Q 78 38 93 50 Q 78 62 63 50 Z" fill="currentColor"/>
+        </svg>
         <span class="brandName">CHING XIN</span>
       </div>
       <span class="brandSub">高雄市清心網球協會</span>
@@ -1382,7 +1398,14 @@ button {
   <div class="screen active" id="screen-court">
     <div class="courtPageHeader">
       <div class="courtBrandInline">
-        <img src="/apple-touch-icon.png" width="36" height="36" alt="" aria-hidden="true" style="border-radius:8px;flex-shrink:0">
+        <svg width="36" height="36" viewBox="0 0 100 100" aria-hidden="true">
+          <line x1="28" y1="28" x2="72" y2="72" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" fill="none"/>
+          <line x1="72" y1="28" x2="28" y2="72" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" fill="none"/>
+          <path d="M 50 7 Q 62 22 50 37 Q 38 22 50 7 Z" fill="currentColor"/>
+          <path d="M 50 63 Q 62 78 50 93 Q 38 78 50 63 Z" fill="currentColor"/>
+          <path d="M 7 50 Q 22 38 37 50 Q 22 62 7 50 Z" fill="currentColor"/>
+          <path d="M 63 50 Q 78 38 93 50 Q 78 62 63 50 Z" fill="currentColor"/>
+        </svg>
         <div class="courtBrandText">
           <span class="courtBrandName">CHING XIN</span>
           <span class="courtBrandSub">高雄市清心網球協會</span>
@@ -1561,7 +1584,14 @@ button {
   </div>
   <div class="aboutContent">
     <div class="aboutLogo">
-      <img src="/apple-touch-icon.png" width="56" height="56" alt="" style="border-radius:14px;opacity:0.85">
+      <svg width="48" height="48" viewBox="0 0 100 100" style="opacity:0.6">
+        <line x1="28" y1="28" x2="72" y2="72" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" fill="none"/>
+        <line x1="72" y1="28" x2="28" y2="72" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" fill="none"/>
+        <path d="M 50 7 Q 62 22 50 37 Q 38 22 50 7 Z" fill="currentColor"/>
+        <path d="M 50 63 Q 62 78 50 93 Q 38 78 50 63 Z" fill="currentColor"/>
+        <path d="M 7 50 Q 22 38 37 50 Q 22 62 7 50 Z" fill="currentColor"/>
+        <path d="M 63 50 Q 78 38 93 50 Q 78 62 63 50 Z" fill="currentColor"/>
+      </svg>
     </div>
     <div class="aboutBlock">
       <div class="aboutBlockTitle">關於我們</div>
@@ -1924,7 +1954,14 @@ function _renderProfileSheet(){
   if(!isLoggedIn){
     body.innerHTML =
       '<div style="padding:48px 28px 36px;text-align:center">' +
-        '<img src="/apple-touch-icon.png" width="64" height="64" alt="清心 logo" style="display:block;margin:0 auto 16px;border-radius:14px">' +
+        '<svg width="48" height="48" viewBox="0 0 100 100" style="display:block;margin:0 auto 16px;color:#222">' +
+          '<line x1="28" y1="28" x2="72" y2="72" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" fill="none"/>' +
+          '<line x1="72" y1="28" x2="28" y2="72" stroke="currentColor" stroke-width="9.5" stroke-linecap="round" fill="none"/>' +
+          '<path d="M 50 7 Q 62 22 50 37 Q 38 22 50 7 Z" fill="currentColor"/>' +
+          '<path d="M 50 63 Q 62 78 50 93 Q 38 78 50 63 Z" fill="currentColor"/>' +
+          '<path d="M 7 50 Q 22 38 37 50 Q 22 62 7 50 Z" fill="currentColor"/>' +
+          '<path d="M 63 50 Q 78 38 93 50 Q 78 62 63 50 Z" fill="currentColor"/>' +
+        '</svg>' +
         '<div style="font-size:22px;font-weight:600;letter-spacing:0.01em;color:#222">高雄市清心網球協會</div>' +
         '<div style="font-size:10px;letter-spacing:0.12em;' +
              'color:var(--color-text-muted);margin-top:8px;margin-bottom:40px">Kaohsiung Ching Xin Tennis Association</div>' +

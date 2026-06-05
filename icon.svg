@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!--
+    CHING XIN Tennis Society — Brand Mark (no background)
+    Transparent version for favicon / general use
+  -->
+
+  <!-- X cross arms -->
+  <line x1="30" y1="30" x2="70" y2="70"
+        stroke="currentColor" stroke-width="12" stroke-linecap="round"/>
+  <line x1="70" y1="30" x2="30" y2="70"
+        stroke="currentColor" stroke-width="12" stroke-linecap="round"/>
+
+  <!-- Top petal -->
+  <path fill="currentColor" fill-rule="evenodd"
+        d="M 50 4
+           C 36 4, 35 13, 35 22
+           C 35 33, 41 41, 50 41
+           C 59 41, 65 33, 65 22
+           C 65 13, 64 4, 50 4 Z
+           M 50 10
+           C 56 10, 57 16, 57 22
+           C 57 29, 53 35, 50 36
+           C 47 35, 43 29, 43 22
+           C 43 16, 44 10, 50 10 Z"/>
+
+  <!-- Bottom petal -->
+  <path fill="currentColor" fill-rule="evenodd"
+        d="M 50 96
+           C 36 96, 35 87, 35 78
+           C 35 67, 41 59, 50 59
+           C 59 59, 65 67, 65 78
+           C 65 87, 64 96, 50 96 Z
+           M 50 90
+           C 56 90, 57 84, 57 78
+           C 57 71, 53 65, 50 64
+           C 47 65, 43 71, 43 78
+           C 43 84, 44 90, 50 90 Z"/>
+
+  <!-- Left petal -->
+  <path fill="currentColor" fill-rule="evenodd"
+        d="M 4 50
+           C 4 36, 13 35, 22 35
+           C 33 35, 41 41, 41 50
+           C 41 59, 33 65, 22 65
+           C 13 65, 4 64, 4 50 Z
+           M 10 50
+           C 10 44, 16 43, 22 43
+           C 28 43, 33 46, 36 50
+           C 33 54, 28 57, 22 57
+           C 16 57, 10 56, 10 50 Z"/>
+
+  <!-- Right petal -->
+  <path fill="currentColor" fill-rule="evenodd"
+        d="M 96 50
+           C 96 36, 87 35, 78 35
+           C 67 35, 59 41, 59 50
+           C 59 59, 67 65, 78 65
+           C 87 65, 96 64, 96 50 Z
+           M 90 50
+           C 90 44, 84 43, 78 43
+           C 72 43, 67 46, 64 50
+           C 67 54, 72 57, 78 57
+           C 84 57, 90 56, 90 50 Z"/>
+</svg>
