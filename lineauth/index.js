@@ -186,22 +186,26 @@ exports.lineCallback = onRequest(
         // First login — create as pending; admin must approve before access
         await memberRef.set({
           lineUserId,
-          displayName: lineDisplayName,
-          pictureUrl:  linePictureUrl  || '',
-          status:      'pending',
-          role:        'member',
-          createdAt:   now,
-          approvedAt:  null,
-          approvedBy:  null,
-          lastLoginAt: now,
+          lineDisplayName,                  // LINE 顯示名稱（保留原始，不受 realName 影響）
+          displayName:    lineDisplayName,
+          pictureUrl:     linePictureUrl  || '',
+          status:         'pending',
+          role:           'member',
+          createdAt:      now,
+          approvedAt:     null,
+          approvedBy:     null,
+          lastLoginAt:    now,
+          hasLoggedIn:    true,             // 已完成 LINE Login 綁定
         });
         console.info('[lineCallback] New member created:', lineUserId, lineDisplayName);
       } else {
         // Returning member — refresh display info only; never touch status/role
         await memberRef.update({
-          displayName: lineDisplayName,
-          pictureUrl:  linePictureUrl  || '',
-          lastLoginAt: now,
+          lineDisplayName,                  // sync latest LINE display name
+          displayName:    lineDisplayName,
+          pictureUrl:     linePictureUrl  || '',
+          lastLoginAt:    now,
+          hasLoggedIn:    true,             // 確保舊資料也標記
         });
       }
 

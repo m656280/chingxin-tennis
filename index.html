@@ -2529,6 +2529,7 @@ let _memberNtrpFilter='';    // member directory: NTRP filter
 let _memberPosFilter='';     // member directory: position filter
 let _memberFeeFilter='';     // member directory: fee status filter ('paid'|'expiring'|'overdue'|'none'|'')
 let _memberRoleFilter='';    // member directory: role filter ('owner'|'admin'|'coach'|'member'|'')
+let _memberLoginFilter='';   // member directory: login filter (''|'loggedIn'|'notLoggedIn')
 let _coachTabSelected  = null;   // manage: currently viewed coach uid
 let _coachStatsYear    = new Date().getFullYear(); // coach stats: selected year
 let _coachStatsMonth   = new Date().getMonth() + 1; // coach stats: selected month (1-12)
@@ -3984,6 +3985,20 @@ function _renderMembersTab(el){
     }
   }
 
+  // ── 登入狀態統計（admin only）──────────────────────────────────────────
+  if(adminLike){
+    var _statAll = Object.values(usersCache).filter(function(m){
+      var s = m.status||''; return s!=='pending'&&s!=='blocked'&&s!=='rejected'&&s!=='deleted';
+    });
+    var _statLoggedIn    = _statAll.filter(function(m){ return !!m.uid || !!m.lastLoginAt; });
+    var _statNotLoggedIn = _statAll.filter(function(m){ return !m.uid && !m.lastLoginAt; });
+    html += '<div style="display:flex;gap:8px;margin-bottom:12px">'
+      + _loginStatCard('名冊人數', _statAll.length,         '#555',    '')
+      + _loginStatCard('已登入',   _statLoggedIn.length,    '#3a7a3a', 'loggedIn')
+      + _loginStatCard('未登入',   _statNotLoggedIn.length, '#8a6020', 'notLoggedIn')
+      + '</div>';
+  }
+
   // ── 統一會員名錄（搜尋 / 篩選）— 所有角色一律顯示 ──
   var _sv=function(v){ return (v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
   html+=
@@ -4030,6 +4045,13 @@ function _renderMembersTab(el){
         '<option value="expiring"'+(_memberFeeFilter==='expiring'?' selected':'')+'>🟡 即將到期</option>'+
         '<option value="overdue"'+(_memberFeeFilter==='overdue'?' selected':'')+'>🔴 已到期</option>'+
         '<option value="none"'+(_memberFeeFilter==='none'?' selected':'')+'>— 未繳費</option>'+
+      '</select>'+
+      '<select id="memberDirLogin"'+
+        ' style="width:100%;box-sizing:border-box;padding:6px 8px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-primary);font-size:12px;margin-top:6px"'+
+        ' onchange="_memberLoginFilter=this.value;_renderMemberListInTab()">'+
+        '<option value="">全部登入狀態</option>'+
+        '<option value="loggedIn"'   +(_memberLoginFilter==='loggedIn'   ?' selected':'')+'>✅ 已登入 LINE</option>'+
+        '<option value="notLoggedIn"'+(_memberLoginFilter==='notLoggedIn'?' selected':'')+'>⚪ 未登入</option>'+
       '</select>'+
     '</div>'+
     '<div id="memberDirList"></div>';
@@ -4078,6 +4100,10 @@ function _renderMemberListInTab(){
       }
     }
     if(_memberFeeFilter&&_calcMemberFeeStatus(m).status!==_memberFeeFilter) return false;
+    /* ── LINE 登入狀態篩選 ── */
+    var _hasLogin = !!m.uid || !!m.lastLoginAt;
+    if(_memberLoginFilter==='loggedIn'    &&  !_hasLogin) return false;
+    if(_memberLoginFilter==='notLoggedIn' && !!_hasLogin) return false;
     return true;
   }).sort(function(a,b){
     var ORDER={owner:0,admin:1,coach:2,member:3,annual_member:3,monthly_member:3};
@@ -4108,6 +4134,15 @@ function _renderMemberListInTab(){
     if(m.preferredPosition) meta.push(_esc(m.preferredPosition));
     var rawUid=m.userId||m.uid||'';
     var isSelf=(rawUid===_myId);
+
+    /* ── LINE 登入狀態 badge（admin only）── */
+    var _loginBadge = '';
+    if(adminLike){
+      var _hasLogin = !!m.uid || !!m.lastLoginAt;
+      _loginBadge = _hasLogin
+        ? '<span style="font-size:9.5px;font-weight:600;letter-spacing:0.04em;color:#3a7a3a;background:rgba(58,122,58,0.10);border-radius:4px;padding:2px 6px;flex-shrink:0">LINE</span>'
+        : '<span style="font-size:9.5px;font-weight:600;letter-spacing:0.04em;color:#8a8a8a;background:rgba(0,0,0,0.05);border-radius:4px;padding:2px 6px;flex-shrink:0">未登入</span>';
+    }
 
     // Management controls — admin/owner only
     var mgmtHtml='';
@@ -4141,7 +4176,10 @@ function _renderMemberListInTab(){
           '<div style="margin-top:5px;line-height:1.8">'+_memberFeeStatusHtml(m)+'</div>'+
           (meta.length?'<div class="memberMeta">'+meta.join(' · ')+'</div>':'')+
         '</div>'+
-        '<div class="'+badgeCls+'" style="flex-shrink:0;align-self:flex-start">'+roleLabel+'</div>'+
+        '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;align-self:flex-start">'+
+          '<div class="'+badgeCls+'">'+roleLabel+'</div>'+
+          _loginBadge+
+        '</div>'+
       '</div>'+
       (mgmtHtml?'<div style="padding-left:50px;margin-top:4px">'+mgmtHtml+'</div>':'')+
     '</div>';
@@ -4149,6 +4187,19 @@ function _renderMemberListInTab(){
   el.innerHTML=html;
 }
 
+/* 登入統計小卡（點擊可快速套用篩選）*/
+function _loginStatCard(label, count, color, filterVal){
+  var active = _memberLoginFilter === filterVal && filterVal !== '';
+  var border  = active ? '2px solid '+color : '1px solid var(--color-border-soft)';
+  var bg      = active ? 'rgba(0,0,0,0.04)' : 'var(--color-surface)';
+  var onclick = filterVal
+    ? 'onclick="_memberLoginFilter=(_memberLoginFilter===\''+filterVal+'\'?\'\':\''+filterVal+'\');_renderMemberListInTab()"'
+    : '';
+  return '<div '+onclick+' style="flex:1;border:'+border+';border-radius:8px;padding:8px 10px;background:'+bg+';'+(filterVal?'cursor:pointer;':'')+'">'
+    +'<div style="font-size:19px;font-weight:700;color:'+color+'">'+count+'</div>'
+    +'<div style="font-size:10.5px;color:var(--color-text-muted);margin-top:1px">'+label+'</div>'
+    +'</div>';
+}
 
 /* ── 教練管理 tab ── */
 /* ── Load Teaching Bookings (all mode=teaching bookings) ── */
@@ -5683,29 +5734,32 @@ function exportFinanceCSV(){
   });
   if(!yearRecs.length){ showToast(_finYear+' 年沒有資料可匯出'); return; }
 
-  // ── Categorise ──────────────────────────────────────────────────────
   var byDate = function(a,b){ return a.date.localeCompare(b.date); };
-  var incRecs = yearRecs.filter(function(r){
-    return !EXCL[r.status||'active'] && r.type !== 'expense';
-  }).sort(byDate);
-  var expRecs = yearRecs.filter(function(r){
-    return !EXCL[r.status||'active'] && r.type === 'expense';
-  }).sort(byDate);
-  var voidRecs = yearRecs.filter(function(r){
-    return (r.status||'active') === 'void';
+
+  // ── Active income / expense / void ──────────────────────────────────
+  var incRecs  = yearRecs.filter(function(r){ return !EXCL[r.status||'active'] && r.type!=='expense'; }).sort(byDate);
+  var expRecs  = yearRecs.filter(function(r){ return !EXCL[r.status||'active'] && r.type==='expense'; }).sort(byDate);
+  var voidRecs = yearRecs.filter(function(r){ return (r.status||'active')==='void'; }).sort(byDate);
+
+  // ── Income sub-lists by type — each explicitly sorted by date asc ────
+  // 顯式排序：確保流水號與繳費日期一對一對應，不因 cache 順序而異動
+  var annualRecs  = incRecs.filter(function(r){ return r.type==='annual'; }).sort(byDate);
+  var monthlyRecs = incRecs.filter(function(r){ return r.type==='monthly'; }).sort(byDate);
+  var coachRecs   = incRecs.filter(function(r){ return r.type==='coaching_fee'||r.type==='coach_fee'||r.type==='coaching'; }).sort(byDate);
+  var donateRecs  = incRecs.filter(function(r){ return r.type==='donate'; }).sort(byDate);
+  var otherRecs   = incRecs.filter(function(r){
+    return r.type!=='annual'&&r.type!=='monthly'&&r.type!=='coaching_fee'&&r.type!=='coach_fee'&&r.type!=='coaching'&&r.type!=='donate';
   }).sort(byDate);
 
-  // ── Totals ──────────────────────────────────────────────────────────
-  function sumType(recs, type){
-    return recs.filter(function(r){ return r.type===type; })
-               .reduce(function(a,r){ return a+((r.status==='refund')?-r.amount:r.amount); },0);
-  }
-  var annualT  = sumType(incRecs,'annual');
-  var monthlyT = sumType(incRecs,'monthly');
-  var donateT  = sumType(incRecs,'donate');
-  var otherT   = incRecs.filter(function(r){ return r.type!=='annual'&&r.type!=='monthly'&&r.type!=='donate'; })
-                         .reduce(function(a,r){ return a+((r.status==='refund')?-r.amount:r.amount); },0);
-  var incTotal = annualT + monthlyT + donateT + otherT;
+  // ── Amounts ─────────────────────────────────────────────────────────
+  function effAmt(r){ return (r.status==='refund')?-r.amount:r.amount; }
+  function sumRecs(recs){ return recs.reduce(function(a,r){ return a+effAmt(r); },0); }
+  var annualT  = sumRecs(annualRecs);
+  var monthlyT = sumRecs(monthlyRecs);
+  var coachT   = sumRecs(coachRecs);
+  var donateT  = sumRecs(donateRecs);
+  var otherT   = sumRecs(otherRecs);
+  var incTotal = annualT + monthlyT + coachT + donateT + otherT;
   var expTotal = expRecs.reduce(function(a,r){ return a+r.amount; },0);
   var balance  = incTotal - expTotal;
 
@@ -5715,57 +5769,231 @@ function exportFinanceCSV(){
     return /[,"\n\r]/.test(s)?'"'+s+'"':s;
   }
   function row(cells){ return cells.map(esc).join(','); }
-  function fmtAmt(n){ return 'NT$ '+n; }
+  function fmtAmt(n){ return 'NT$ '+(n<0?n:n); }
   function typeLabel(r){
     if(r.status==='refund') return '退款/修正';
     return FIN_TYPE_LABEL[r.type]||r.type;
   }
-  function effAmt(r){ return (r.status==='refund')?-r.amount:r.amount; }
+  /* serial: pad number to 3 digits with prefix, e.g. A001 */
+  function serial(prefix, i){ return prefix + String(i+1).padStart(3,'0'); }
+  /* write one income sub-section and return the lines */
+  function incSection(secNum, title, prefix, recs){
+    var lines = [];
+    lines.push(secNum+'、'+title);
+    if(!recs.length){
+      lines.push('（本年度無'+title+'紀錄）');
+      lines.push('');
+      return lines;
+    }
+    lines.push(row(['流水號','日期','會員','金額','備註','登記人']));
+    recs.forEach(function(r, i){
+      lines.push(row([serial(prefix,i), r.date, _finRecName(r), effAmt(r), r.note||'', r.createdByName||'']));
+    });
+    lines.push(row(['','筆數：'+recs.length,'','小計：'+fmtAmt(sumRecs(recs)),'','']));
+    lines.push('');
+    return lines;
+  }
 
-  var L = [];  // lines array
+  var L = [];
 
   // ── 一、年度財務總覽 ─────────────────────────────────────────────────
   L.push('一、'+_finYear+' 年度財務總覽');
   L.push(row(['項目','金額']));
-  L.push(row(['總收入',      fmtAmt(incTotal)]));
-  L.push(row(['　年費收入',  fmtAmt(annualT)]));
-  L.push(row(['　月費收入',  fmtAmt(monthlyT)]));
-  L.push(row(['　抖內收入',  fmtAmt(donateT)]));
-  L.push(row(['　其他收入',  fmtAmt(otherT)]));
-  L.push(row(['總支出',      fmtAmt(expTotal)]));
-  L.push(row(['結餘',        fmtAmt(balance)]));
+  L.push(row(['總收入',        fmtAmt(incTotal)]));
+  L.push(row(['　年費收入',    fmtAmt(annualT)]));
+  L.push(row(['　月費收入',    fmtAmt(monthlyT)]));
+  L.push(row(['　教練費收入',  fmtAmt(coachT)]));
+  L.push(row(['　捐款收入',    fmtAmt(donateT)]));
+  L.push(row(['　其他收入',    fmtAmt(otherT)]));
+  L.push(row(['總支出',        fmtAmt(expTotal)]));
+  L.push(row(['結餘',          fmtAmt(balance)]));
   L.push('');
 
-  // ── 二、收入明細 ─────────────────────────────────────────────────────
-  L.push('二、收入明細');
-  L.push(row(['日期','會員','類型','金額','備註','登記人']));
-  if(incRecs.length){
-    incRecs.forEach(function(r){
-      L.push(row([r.date, _finRecName(r), typeLabel(r), effAmt(r), r.note||'', r.createdByName||'']));
-    });
-  } else { L.push('（本年度無收入紀錄）'); }
+  // ── 二、收入統計表 ────────────────────────────────────────────────────
+  L.push('二、收入統計表');
+  L.push(row(['類型','筆數','金額']));
+  L.push(row(['年費',   annualRecs.length,  fmtAmt(annualT)]));
+  L.push(row(['月費',   monthlyRecs.length, fmtAmt(monthlyT)]));
+  L.push(row(['教練費', coachRecs.length,   fmtAmt(coachT)]));
+  L.push(row(['捐款',   donateRecs.length,  fmtAmt(donateT)]));
+  L.push(row(['其他收入',otherRecs.length,  fmtAmt(otherT)]));
+  L.push(row(['支出',   expRecs.length,     fmtAmt(expTotal)]));
+  L.push(row(['───','────','────────']));
+  L.push(row(['收入合計', annualRecs.length+monthlyRecs.length+coachRecs.length+donateRecs.length+otherRecs.length, fmtAmt(incTotal)]));
+  L.push(row(['結餘','', fmtAmt(balance)]));
   L.push('');
 
-  // ── 三、支出明細 ─────────────────────────────────────────────────────
-  L.push('三、支出明細');
-  L.push(row(['日期','項目','類型','金額','備註','登記人']));
-  if(expRecs.length){
-    expRecs.forEach(function(r){
-      // 支出「項目」欄：優先 note（支出描述），其次會員名（若有對象）
+  // ── 三～七、各類收入分區明細 ────────────────────────────────────────────
+  incSection('三', '年費明細',     'A', annualRecs) .forEach(function(l){ L.push(l); });
+  incSection('四', '月費明細',     'M', monthlyRecs).forEach(function(l){ L.push(l); });
+  incSection('五', '教練費明細',   'C', coachRecs)  .forEach(function(l){ L.push(l); });
+  incSection('六', '捐款明細',     'D', donateRecs) .forEach(function(l){ L.push(l); });
+  incSection('七', '其他收入明細', 'O', otherRecs)  .forEach(function(l){ L.push(l); });
+
+  // ── 八、支出明細 ─────────────────────────────────────────────────────
+  L.push('八、支出明細');
+  if(!expRecs.length){
+    L.push('（本年度無支出紀錄）');
+  } else {
+    L.push(row(['流水號','日期','項目/描述','金額','備註','登記人']));
+    expRecs.forEach(function(r, i){
       var expItem = r.note || _finRecName(r) || '';
-      L.push(row([r.date, expItem, FIN_TYPE_LABEL[r.type]||r.type, r.amount, r.note||'', r.createdByName||'']));
+      L.push(row([serial('E',i), r.date, expItem, r.amount, r.note||'', r.createdByName||'']));
     });
-  } else { L.push('（本年度無支出紀錄）'); }
+    L.push(row(['','筆數：'+expRecs.length,'','小計：'+fmtAmt(expTotal),'','']));
+  }
   L.push('');
 
-  // ── 四、作廢紀錄（稽核參考） ──────────────────────────────────────────
-  L.push('四、作廢紀錄（稽核參考，不列入加總）');
+  // ── 九、作廢紀錄（稽核參考） ──────────────────────────────────────────
+  L.push('九、作廢紀錄（稽核參考，不列入加總）');
   L.push(row(['日期','會員/項目','類型','金額','備註','登記人','狀態']));
   if(voidRecs.length){
     voidRecs.forEach(function(r){
       L.push(row([r.date, _finRecName(r), FIN_TYPE_LABEL[r.type]||r.type, r.amount, r.note||'', r.createdByName||'', '已作廢']));
     });
   } else { L.push('（本年度無作廢紀錄）'); }
+  L.push('');
+
+  // ── 十、會員繳費名冊（依類型分區，會長核帳用）────────────────────────────
+  L.push('十、'+_finYear+' 年會員繳費名冊');
+  L.push('（依繳費日期升冪排序，流水號固定，可直接列印核對）');
+  L.push('');
+
+  // 年費名冊
+  L.push('【年費】');
+  if(!annualRecs.length){
+    L.push('（無紀錄）');
+  } else {
+    L.push(row(['流水號','會員姓名','繳費日期','金額','繳費狀態']));
+    annualRecs.forEach(function(r, i){
+      var payStatus = (r.status==='refund') ? '退款' : '已繳清';
+      L.push(row([serial('A',i), _finRecName(r)||'—', r.date, fmtAmt(Math.abs(r.amount)), payStatus]));
+    });
+    // 名冊小計
+    var annualPeople = annualRecs.map(function(r){ return _finRecName(r); })
+      .filter(function(n,i,a){ return n && a.indexOf(n)===i; });  // 去重，估計人數
+    L.push(row(['','人數（約）：'+annualPeople.length+' 人','筆數：'+annualRecs.length,'合計：'+fmtAmt(annualT),'']));
+  }
+  L.push('');
+
+  // 月費名冊
+  L.push('【月費】');
+  if(!monthlyRecs.length){
+    L.push('（無紀錄）');
+  } else {
+    L.push(row(['流水號','會員姓名','繳費日期','金額','繳費狀態']));
+    monthlyRecs.forEach(function(r, i){
+      var payStatus2 = (r.status==='refund') ? '退款' : '已繳清';
+      L.push(row([serial('M',i), _finRecName(r)||'—', r.date, fmtAmt(Math.abs(r.amount)), payStatus2]));
+    });
+    var monthlyPeople = monthlyRecs.map(function(r){ return _finRecName(r); })
+      .filter(function(n,i,a){ return n && a.indexOf(n)===i; });
+    L.push(row(['','人數（約）：'+monthlyPeople.length+' 人','筆數：'+monthlyRecs.length,'合計：'+fmtAmt(monthlyT),'']));
+  }
+  L.push('');
+
+  // 教練費名冊（若有）
+  if(coachRecs.length){
+    L.push('【教練費】');
+    L.push(row(['流水號','會員姓名','繳費日期','金額','繳費狀態']));
+    coachRecs.forEach(function(r, i){
+      var payStatus3 = (r.status==='refund') ? '退款' : '已繳清';
+      L.push(row([serial('C',i), _finRecName(r)||'—', r.date, fmtAmt(Math.abs(r.amount)), payStatus3]));
+    });
+    var coachPeople = coachRecs.map(function(r){ return _finRecName(r); })
+      .filter(function(n,i,a){ return n && a.indexOf(n)===i; });
+    L.push(row(['','人數（約）：'+coachPeople.length+' 人','筆數：'+coachRecs.length,'合計：'+fmtAmt(coachT),'']));
+    L.push('');
+  }
+
+  // 名冊總計
+  var rosterTotal = annualT + monthlyT + coachT;
+  var rosterCount = annualRecs.length + monthlyRecs.length + coachRecs.length;
+  L.push(row(['名冊合計','','筆數：'+rosterCount,'總金額：'+fmtAmt(rosterTotal),'']));
+  L.push('');
+
+  // ── 十一、會員繳費狀態表 ─────────────────────────────────────────────────
+  // 應繳成員：status=approved，排除 pending/blocked/deleted
+  // 已繳定義：當年度有 active 的 annual/monthly finance record（依 year 欄位或 date 前四碼判斷）
+  // 未繳定義：應繳成員中，當年度無有效紀錄
+
+  var _yr     = _finYear;
+  var _yrStr  = String(_yr);
+
+  // 取當年有效 finance 紀錄，依 memberId 建 index
+  var _paidMap = {};   // memberId → [{type, date, amount, membershipType}]
+  financeRecords.forEach(function(r){
+    if((r.status||'active')!=='active') return;
+    if(r.type!=='annual'&&r.type!=='monthly') return;
+    var recYear = r.year || parseInt((r.date||'').slice(0,4),10) || 0;
+    if(recYear !== _yr) return;
+    var mid = r.memberId || '';
+    if(!mid) return;
+    if(!_paidMap[mid]) _paidMap[mid] = [];
+    _paidMap[mid].push({
+      type:    r.type,
+      date:    r.date||'',
+      amount:  r.amount||0,
+      msType:  r.membershipType || r.type,
+    });
+  });
+
+  // 應繳成員清單（approved，任意角色）
+  var SKIP_STATUS = {pending:1, blocked:1, rejected:1, deleted:1};
+  var _shouldPayMembers = Object.values(usersCache).filter(function(m){
+    return !SKIP_STATUS[m.status||''];
+  }).sort(function(a,b){
+    return (_mName(a)||'').localeCompare(_mName(b)||'', 'zh-Hant');
+  });
+
+  var _paidMembers   = _shouldPayMembers.filter(function(m){ return !!_paidMap[m.userId||m.uid||'']; });
+  var _unpaidMembers = _shouldPayMembers.filter(function(m){ return !_paidMap[m.userId||m.uid||'']; });
+  var _total         = _shouldPayMembers.length;
+  var _paidCnt       = _paidMembers.length;
+  var _unpaidCnt     = _unpaidMembers.length;
+  var _paidRate      = _total ? Math.round(_paidCnt/_total*100) : 0;
+
+  L.push('十一、'+_yrStr+' 年會員繳費狀態表');
+  L.push('（比對 members 名冊 × financialRecords，已繳定義：當年度有有效年費或月費紀錄）');
+  L.push('');
+
+  // 【已繳】
+  L.push('【已繳】（'+_paidCnt+' 人）');
+  if(!_paidMembers.length){
+    L.push('（本年度無已繳紀錄）');
+  } else {
+    L.push(row(['姓名','會員類型','繳費日期','金額']));
+    _paidMembers.forEach(function(m){
+      var uid  = m.userId||m.uid||'';
+      var recs = (_paidMap[uid]||[]).sort(function(a,b){ return a.date.localeCompare(b.date); });
+      var msLabel = recs.length ? (recs[0].msType==='annual'?'年費':recs[0].msType==='monthly'?'月費':recs[0].msType) : (m.membershipType==='annual'?'年費':m.membershipType==='monthly'?'月費':'—');
+      var latestDate  = recs.length ? recs[recs.length-1].date : '—';
+      var totalPaid   = recs.reduce(function(s,r){ return s+r.amount; },0);
+      L.push(row([_mName(m)||m.userId||'—', msLabel, latestDate, fmtAmt(totalPaid)]));
+    });
+  }
+  L.push('');
+
+  // 【未繳】
+  L.push('【未繳】（'+_unpaidCnt+' 人）');
+  if(!_unpaidMembers.length){
+    L.push('（本年度無未繳名單）');
+  } else {
+    L.push(row(['姓名','會員類型（歷史）']));
+    _unpaidMembers.forEach(function(m){
+      var msHist = m.membershipType==='annual'?'年費（去年）':m.membershipType==='monthly'?'月費（去年）':'未設定';
+      L.push(row([_mName(m)||m.userId||'—', msHist]));
+    });
+  }
+  L.push('');
+
+  // 統計
+  L.push('【統計】');
+  L.push(row(['項目','人數']));
+  L.push(row(['應繳人數（核准會員）',_total]));
+  L.push(row(['已繳人數',_paidCnt]));
+  L.push(row(['未繳人數',_unpaidCnt]));
+  L.push(row(['繳費率',_paidRate+'%']));
 
   // ── Build & Download ─────────────────────────────────────────────────
   var csv      = '﻿' + L.join('\r\n');  // UTF-8 BOM for Numbers/Excel
