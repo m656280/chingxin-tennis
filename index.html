@@ -1481,7 +1481,8 @@ button {
     <div class="finScreenHeader">
       <span class="finScreenTitle">財務</span>
       <div class="finHeaderActions">
-        <button class="finActionBtn" id="finExportBtn" onclick="exportFinanceCSV()">匯出</button>
+        <button class="finActionBtn" id="finExportPDFBtn" onclick="exportFinancePDF()">PDF</button>
+        <button class="finActionBtn" id="finExportBtn" onclick="exportFinanceCSV()">CSV</button>
         <button class="finActionBtn finActionBtnPrimary" id="finAddBtn" onclick="openFinanceForm()">＋ 新增</button>
       </div>
     </div>
@@ -5699,29 +5700,328 @@ function permanentDeleteFinanceRecord(){
   permanentDeleteFinanceRecordById(_finEditId);
 }
 
-/* ── Finance: member name resolver (independent per-record; never mutates cache) ── */
+/* ── Finance: member name resolver (independent per-record; never mutates cache) ──
+   優先序：
+     1. usersCache[memberId].realName   ← 正式姓名（最可靠）
+     2. usersCache[memberId].displayName ← 顯示名稱（次之）
+     3. r.memberRealName                 ← 寫入時快照的正式名
+     4. r.memberNameSnapshot             ← 寫入時快照（可能是 realName 也可能是 displayName）
+     5. r.memberDisplayName / r.memberName / ... ← 其餘欄位
+   ─────────────────────────────────────────────────────────────────────────── */
 function _finRecName(r){
-  // Prefer a snapshot baked in at write time, then stored display/real fields,
-  // then fall back to live cache. Each lookup is read-only; void records on the
-  // same member never pollute this path.
-  var fromCache = '';
-  if(r.memberId && usersCache[r.memberId]){
-    var cu = usersCache[r.memberId];
-    fromCache = cu.realName || cu.displayName || cu.name || '';
-  }
-  if(!fromCache && r.uid && usersCache[r.uid]){
-    var cu2 = usersCache[r.uid];
-    fromCache = cu2.realName || cu2.displayName || cu2.name || '';
-  }
-  return r.memberNameSnapshot
+  var uid = r.memberId || r.uid || '';
+  var cu  = uid ? (usersCache[uid] || null) : null;
+  // Live cache first — most up-to-date and accurate
+  if(cu){ return cu.realName || cu.displayName || cu.name || ''; }
+  // No live match: use fields captured at write time, prefer real name
+  return r.memberRealName
+      || r.memberNameSnapshot
       || r.memberDisplayName
-      || r.memberRealName
       || r.memberName
       || r.primaryName
       || r.name
-      || fromCache
       || r.member
       || '';
+}
+
+/* ── Finance: export-only name resolver — same priority but flags unlinked records ──
+   memberId 存在但 usersCache 找不到 → 顯示快照名稱並標記「（未綁定會員）」
+   供 CSV / PDF 匯出使用；不影響 UI 渲染路徑。
+   ─────────────────────────────────────────────────────────────────────────── */
+function _finExportName(r){
+  var uid = r.memberId || r.uid || '';
+  var cu  = uid ? (usersCache[uid] || null) : null;
+  if(uid && !cu){
+    // memberId 有值但找不到對應 member — 標記供後續清理
+    var fallback = r.memberRealName || r.memberNameSnapshot || r.memberDisplayName
+                 || r.memberName || r.primaryName || r.name || r.member || uid;
+    return fallback + '（未綁定會員）';
+  }
+  var name = _finRecName(r);
+  return name || '—';
+}
+
+/* ── Finance: Export PDF ── */
+function exportFinancePDF(){
+  if(!isAdminLike()){ showToast('僅管理員可匯出'); return; }
+
+  var EXCL    = {void:1, cancelled:1, deleted:1, archived:1};
+  var yearRecs = financeRecords.filter(function(r){
+    return (r.year || parseInt(r.date.slice(0,4),10)) === _finYear;
+  });
+  if(!yearRecs.length){ showToast(_finYear+' 年沒有資料可匯出'); return; }
+
+  var byDate = function(a,b){ return a.date.localeCompare(b.date); };
+  function effAmt(r){ return (r.status==='refund')?-r.amount:r.amount; }
+  function sumRecs(recs){ return recs.reduce(function(a,r){ return a+effAmt(r); },0); }
+  function fmtN(n){ return 'NT$ '+n.toLocaleString(); }
+
+  var incRecs    = yearRecs.filter(function(r){ return !EXCL[r.status||'active'] && r.type!=='expense'; }).sort(byDate);
+  var expRecs    = yearRecs.filter(function(r){ return !EXCL[r.status||'active'] && r.type==='expense'; }).sort(byDate);
+  var voidRecs   = yearRecs.filter(function(r){ return (r.status||'active')==='void'; }).sort(byDate);
+  var annualRecs = incRecs.filter(function(r){ return r.type==='annual'; }).sort(byDate);
+  var monthlyRecs= incRecs.filter(function(r){ return r.type==='monthly'; }).sort(byDate);
+  var coachRecs  = incRecs.filter(function(r){ return r.type==='coaching_fee'||r.type==='coach_fee'||r.type==='coaching'; }).sort(byDate);
+  var donateRecs = incRecs.filter(function(r){ return r.type==='donate'; }).sort(byDate);
+  var otherRecs  = incRecs.filter(function(r){
+    return r.type!=='annual'&&r.type!=='monthly'&&r.type!=='coaching_fee'&&r.type!=='coach_fee'&&r.type!=='coaching'&&r.type!=='donate';
+  }).sort(byDate);
+
+  var annualT  = sumRecs(annualRecs); var monthlyT = sumRecs(monthlyRecs);
+  var coachT   = sumRecs(coachRecs);  var donateT  = sumRecs(donateRecs);
+  var otherT   = sumRecs(otherRecs);
+  var incTotal = annualT+monthlyT+coachT+donateT+otherT;
+  var expTotal = expRecs.reduce(function(a,r){ return a+r.amount; },0);
+  var balance  = incTotal - expTotal;
+
+  // ── paidMap for audit ─────────────────────────────────────────────────
+  var _yr = _finYear, _yrStr = String(_yr);
+  var paidMap = {};
+  financeRecords.forEach(function(r){
+    if((r.status||'active')!=='active') return;
+    if(r.type!=='annual'&&r.type!=='monthly') return;
+    var ry = r.year || parseInt((r.date||'').slice(0,4),10) || 0;
+    if(ry!==_yr) return;
+    var mid = r.memberId||''; if(!mid) return;
+    if(!paidMap[mid]) paidMap[mid]=[];
+    paidMap[mid].push({type:r.type,date:r.date||'',amount:r.amount||0});
+  });
+  var SKIP_ST = {pending:1,blocked:1,rejected:1,deleted:1,resigned:1};
+  var shouldPay = Object.values(usersCache).filter(function(m){ return !SKIP_ST[m.status||'']; })
+    .sort(function(a,b){ return (_mName(a)||'').localeCompare(_mName(b)||'','zh-Hant'); });
+  var paidCnt   = shouldPay.filter(function(m){ return !!paidMap[m.userId||m.uid||'']; }).length;
+  var unpaidMs  = shouldPay.filter(function(m){ return !paidMap[m.userId||m.uid||'']; });
+  var paidRate  = shouldPay.length ? Math.round(paidCnt/shouldPay.length*100) : 0;
+  var anomaly   = shouldPay.filter(function(m){ return !m.membershipType; });
+
+  // ── build the PDF page ────────────────────────────────────────────────
+  var html = _buildFinancePDFHtml({
+    year:_finYear, yrStr:_yrStr,
+    incTotal:incTotal, annualT:annualT, monthlyT:monthlyT,
+    coachT:coachT, donateT:donateT, otherT:otherT,
+    expTotal:expTotal, balance:balance,
+    annualRecs:annualRecs, monthlyRecs:monthlyRecs,
+    coachRecs:coachRecs, donateRecs:donateRecs,
+    otherRecs:otherRecs, expRecs:expRecs, voidRecs:voidRecs,
+    shouldPayLen:shouldPay.length, paidCnt:paidCnt,
+    unpaidMs:unpaidMs, paidRate:paidRate, anomaly:anomaly,
+    fmtN:fmtN, effAmt:effAmt,
+  });
+
+  var blob     = new Blob([html], {type:'text/html;charset=utf-8'});
+  var blobUrl  = URL.createObjectURL(blob);
+  var filename = 'chingxin-finance-'+_finYear+'.pdf';
+
+  var _isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  var _isLine = /Line\//i.test(navigator.userAgent);
+
+  if(_isIOS || _isLine){
+    // Show sheet with open-in-browser button + instructions
+    _showPDFSheet(blobUrl, filename);
+    return;
+  }
+  var win = window.open(blobUrl, '_blank');
+  if(!win){ showToast('請允許開啟新視窗後重試'); }
+}
+
+/* ── PDF HTML builder ── */
+function _buildFinancePDFHtml(d){
+  var year = d.year;
+
+  // ── tiny helpers ──
+  function esc(v){
+    return String(v===null||v===undefined?'':v)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+  function serial(p,i){ return p+String(i+1).padStart(3,'0'); }
+
+  // ── table builder ──
+  function table(headers, rows, footer){
+    var h = '<thead><tr>'+headers.map(function(h){ return '<th>'+esc(h)+'</th>'; }).join('')+'</tr></thead>';
+    var body = rows.length
+      ? '<tbody>'+rows.map(function(r){
+          return '<tr>'+r.map(function(c){ return '<td>'+esc(c)+'</td>'; }).join('')+'</tr>';
+        }).join('')+'</tbody>'
+      : '<tbody><tr><td colspan="'+headers.length+'" style="text-align:center;color:#888">（無紀錄）</td></tr></tbody>';
+    var foot = footer
+      ? '<tfoot><tr>'+footer.map(function(c){ return '<td>'+esc(c)+'</td>'; }).join('')+'</tr></tfoot>'
+      : '';
+    return '<table>'+h+body+foot+'</table>';
+  }
+
+  // ── income section helper ──
+  function incSection(title, prefix, recs, total){
+    if(!recs.length) return '';
+    var rows = recs.map(function(r,i){
+      return [serial(prefix,i), r.date, _finExportName(r), d.fmtN(d.effAmt(r)), r.note||'—', r.createdByName||'—'];
+    });
+    var foot = ['','','筆數：'+recs.length,'合計：'+d.fmtN(total),'',''];
+    return '<h3>'+esc(title)+'</h3>'+
+      table(['流水號','日期','會員','金額','備註','登記人'], rows, foot);
+  }
+
+  // ── CSS ──
+  var css = [
+    '@page { size:A4 portrait; margin:14mm 12mm 14mm 12mm; }',
+    'body { font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei","Heiti TC",sans-serif; font-size:10px; color:#1a1a1a; margin:0; line-height:1.5; }',
+    '@media screen { body { max-width:210mm; margin:0 auto; padding:10mm; background:#eee; } .page { background:#fff; padding:14mm 12mm; margin-bottom:8mm; box-shadow:0 2px 8px rgba(0,0,0,0.12); } }',
+    '@media print { .no-print { display:none !important; } .page-break { page-break-before:always; } }',
+    '.print-bar { background:#1a1a2e; color:#fff; padding:10px 16px; display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:0; }',
+    '.print-bar button { background:#4a7c4e; color:#fff; border:none; padding:8px 20px; border-radius:6px; font-size:13px; cursor:pointer; }',
+    '.print-bar span { font-size:12px; opacity:.7; }',
+    'header { text-align:center; padding-bottom:12px; border-bottom:2px solid #2a4a2e; margin-bottom:14px; }',
+    '.brand-name { font-size:20px; font-weight:700; letter-spacing:.15em; color:#2a4a2e; }',
+    '.brand-sub  { font-size:11px; letter-spacing:.06em; color:#666; margin-top:2px; }',
+    '.report-title { font-size:14px; font-weight:600; margin-top:8px; color:#1a1a1a; }',
+    'h2 { font-size:13px; font-weight:700; color:#2a4a2e; border-bottom:1px solid #2a4a2e; padding-bottom:4px; margin:16px 0 8px; }',
+    'h3 { font-size:11.5px; font-weight:600; color:#1a1a1a; margin:12px 0 6px; }',
+    'table { width:100%; border-collapse:collapse; font-size:9.5px; margin-bottom:10px; }',
+    'th { background:#2a4a2e; color:#fff; padding:4px 6px; text-align:left; font-weight:600; font-size:9px; letter-spacing:.04em; }',
+    'td { padding:3.5px 6px; border-bottom:1px solid #e8e8e8; }',
+    'tr:last-child td { border-bottom:none; }',
+    'tfoot td { font-weight:600; background:#f5f5f0; border-top:1px solid #aaa; }',
+    '.stat-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px; }',
+    '.stat-card { border:1px solid #d8d8d8; border-radius:6px; padding:8px 10px; }',
+    '.stat-label { font-size:9px; color:#777; letter-spacing:.04em; text-transform:uppercase; margin-bottom:4px; }',
+    '.stat-value { font-size:15px; font-weight:700; color:#2a4a2e; }',
+    '.stat-card.balance { border-color:#2a4a2e; background:#f0f5f0; }',
+    '.stat-card.balance .stat-value { color:#1a3a1e; }',
+    '.summary-table td:last-child { text-align:right; font-weight:600; }',
+    '.audit-ok   { color:#2a7a2a; font-weight:600; }',
+    '.audit-warn { color:#a83232; font-weight:600; }',
+  ].join('\n');
+
+  // ── overview section ──
+  var overviewHtml =
+    '<h2>年度財務總覽</h2>'+
+    '<div class="stat-grid">'+
+      '<div class="stat-card"><div class="stat-label">總收入</div><div class="stat-value">'+esc(d.fmtN(d.incTotal))+'</div></div>'+
+      '<div class="stat-card"><div class="stat-label">總支出</div><div class="stat-value">'+esc(d.fmtN(d.expTotal))+'</div></div>'+
+      '<div class="stat-card balance"><div class="stat-label">結餘</div><div class="stat-value">'+esc(d.fmtN(d.balance))+'</div></div>'+
+    '</div>'+
+    '<h2>收入統計表</h2>'+
+    table(
+      ['類型','筆數','金額'],
+      [
+        ['年費',   d.annualRecs.length,  d.fmtN(d.annualT)],
+        ['月費',   d.monthlyRecs.length, d.fmtN(d.monthlyT)],
+        ['教練費', d.coachRecs.length,   d.fmtN(d.coachT)],
+        ['捐款',   d.donateRecs.length,  d.fmtN(d.donateT)],
+        ['其他收入',d.otherRecs.length,  d.fmtN(d.otherT)],
+        ['支出',   d.expRecs.length,     d.fmtN(d.expTotal)],
+      ],
+      ['收入合計',
+       d.annualRecs.length+d.monthlyRecs.length+d.coachRecs.length+d.donateRecs.length+d.otherRecs.length,
+       d.fmtN(d.incTotal)]
+    );
+
+  // ── detail sections ──
+  var detailHtml =
+    incSection('年費明細（A 系列）',   'A', d.annualRecs,  d.annualT) +
+    incSection('月費明細（M 系列）',   'M', d.monthlyRecs, d.monthlyT)+
+    incSection('教練費明細（C 系列）', 'C', d.coachRecs,   d.coachT)  +
+    incSection('捐款明細（D 系列）',   'D', d.donateRecs,  d.donateT) +
+    incSection('其他收入明細（O 系列）','O', d.otherRecs,  d.otherT);
+
+  // expense
+  if(d.expRecs.length){
+    var expRows  = d.expRecs.map(function(r,i){
+      return [serial('E',i), r.date, r.note||_finExportName(r), d.fmtN(r.amount), r.createdByName||'—'];
+    });
+    var expFoot  = ['','','筆數：'+d.expRecs.length,'合計：'+d.fmtN(d.expTotal),''];
+    detailHtml  += '<h3>支出明細（E 系列）</h3>'+table(['流水號','日期','項目/描述','金額','登記人'], expRows, expFoot);
+  }
+
+  // void
+  if(d.voidRecs.length){
+    var voidRows = d.voidRecs.map(function(r){
+      return [r.date, _finExportName(r), FIN_TYPE_LABEL[r.type]||r.type, d.fmtN(r.amount), r.note||'—', '已作廢'];
+    });
+    detailHtml += '<h3>作廢紀錄（稽核參考，不列入加總）</h3>'+table(['日期','會員/項目','類型','金額','備註','狀態'],voidRows,null);
+  }
+
+  // ── audit section ──
+  var unpaidRows = d.unpaidMs.map(function(m){
+    var hist = m.membershipType==='annual'?'年費':m.membershipType==='monthly'?'月費':'未設定';
+    return [_mName(m)||'—', hist, '當年度無有效繳費紀錄'];
+  });
+  var anomalyRows = d.anomaly.map(function(m){
+    return [_mName(m)||'—', 'membershipType 未設定'];
+  });
+  var auditHtml =
+    '<h2>會員繳費稽核表</h2>'+
+    table(['項目','人數'],[
+      ['應繳人數（核准會員）', d.shouldPayLen],
+      ['已繳人數',             d.paidCnt],
+      ['未繳人數',             d.unpaidMs.length],
+      ['繳費率',               d.paidRate+'%'],
+    ], null)+
+    '<h3>未繳名單（'+d.unpaidMs.length+' 人）</h3>'+
+    (d.unpaidMs.length
+      ? table(['姓名','歷史類型','說明'], unpaidRows, null)
+      : '<p class="audit-ok">✓ 本年度全員已繳</p>')+
+    '<h3>資料異常（'+d.anomaly.length+' 筆）</h3>'+
+    (d.anomaly.length
+      ? table(['姓名','異常原因'], anomalyRows, null)
+      : '<p class="audit-ok">✓ 無異常</p>');
+
+  // ── assemble ──
+  return '<!DOCTYPE html><html lang="zh-Hant"><head>'+
+    '<meta charset="UTF-8">'+
+    '<meta name="viewport" content="width=device-width,initial-scale=1">'+
+    '<title>清心網球協會　'+year+'年度財務報表</title>'+
+    '<style>'+css+'</style>'+
+    '</head><body>'+
+    '<div class="no-print print-bar">'+
+      '<span>'+year+' 年度財務報表　清心網球協會</span>'+
+      '<button onclick="window.print()">列印 / 儲存 PDF</button>'+
+    '</div>'+
+    // Page 1
+    '<div class="page">'+
+      '<header>'+
+        '<div class="brand-name">CHING XIN</div>'+
+        '<div class="brand-sub">高雄市清心網球協會</div>'+
+        '<div class="report-title">'+year+' 年度財務報表</div>'+
+      '</header>'+
+      overviewHtml+
+    '</div>'+
+    // Page 2+ detail
+    '<div class="page page-break">'+
+      '<h2>收入 / 支出明細</h2>'+
+      detailHtml+
+    '</div>'+
+    // Last page audit
+    '<div class="page page-break">'+
+      auditHtml+
+    '</div>'+
+    '<script>'+
+      'if(!/Mobi|Android/i.test(navigator.userAgent)){setTimeout(function(){window.print();},600);}'+
+    '</'+'script>'+
+    '</body></html>';
+}
+
+/* ── PDF: Action Sheet for iOS / LINE WebView ── */
+function _showPDFSheet(blobUrl, filename){
+  var old = document.getElementById('_finPDFSheet');
+  if(old) old.remove();
+  var el = document.createElement('div');
+  el.id  = '_finPDFSheet';
+  el.innerHTML =
+    '<div style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:4000" onclick="_closePDFSheet()"></div>'+
+    '<div style="position:fixed;bottom:0;left:0;right:0;z-index:4001;background:var(--color-surface);border-radius:18px 18px 0 0;padding:20px 20px 40px">'+
+      '<div style="width:36px;height:4px;border-radius:2px;background:var(--color-border);margin:0 auto 18px"></div>'+
+      '<div style="font-size:15px;font-weight:700;margin-bottom:6px;color:var(--color-text-primary)">匯出 PDF</div>'+
+      '<div style="font-size:12.5px;color:var(--color-text-secondary);margin-bottom:18px;line-height:1.7">'+
+        '點選下方按鈕在瀏覽器中開啟財務報表，<br>再點「列印 / 儲存 PDF」即可下載。'+
+      '</div>'+
+      '<a href="'+blobUrl+'" target="_blank" style="display:block;text-align:center;padding:12px;background:#2a4a2e;color:#fff;border-radius:10px;font-size:14px;font-weight:600;text-decoration:none;margin-bottom:10px">在瀏覽器中開啟報表</a>'+
+      '<button onclick="_closePDFSheet()" style="width:100%;padding:12px;background:var(--color-surface-alt);color:var(--color-text-secondary);border:none;border-radius:10px;font-size:14px;cursor:pointer">取消</button>'+
+    '</div>';
+  document.body.appendChild(el);
+}
+function _closePDFSheet(){
+  var el = document.getElementById('_finPDFSheet');
+  if(el) el.remove();
 }
 
 /* ── Finance: Export CSV ── */
@@ -5787,7 +6087,7 @@ function exportFinanceCSV(){
     }
     lines.push(row(['流水號','日期','會員','金額','備註','登記人']));
     recs.forEach(function(r, i){
-      lines.push(row([serial(prefix,i), r.date, _finRecName(r), effAmt(r), r.note||'', r.createdByName||'']));
+      lines.push(row([serial(prefix,i), r.date, _finExportName(r), effAmt(r), r.note||'', r.createdByName||'']));
     });
     lines.push(row(['','筆數：'+recs.length,'','小計：'+fmtAmt(sumRecs(recs)),'','']));
     lines.push('');
@@ -5837,7 +6137,7 @@ function exportFinanceCSV(){
   } else {
     L.push(row(['流水號','日期','項目/描述','金額','備註','登記人']));
     expRecs.forEach(function(r, i){
-      var expItem = r.note || _finRecName(r) || '';
+      var expItem = r.note || _finExportName(r);
       L.push(row([serial('E',i), r.date, expItem, r.amount, r.note||'', r.createdByName||'']));
     });
     L.push(row(['','筆數：'+expRecs.length,'','小計：'+fmtAmt(expTotal),'','']));
@@ -5849,7 +6149,7 @@ function exportFinanceCSV(){
   L.push(row(['日期','會員/項目','類型','金額','備註','登記人','狀態']));
   if(voidRecs.length){
     voidRecs.forEach(function(r){
-      L.push(row([r.date, _finRecName(r), FIN_TYPE_LABEL[r.type]||r.type, r.amount, r.note||'', r.createdByName||'', '已作廢']));
+      L.push(row([r.date, _finExportName(r), FIN_TYPE_LABEL[r.type]||r.type, r.amount, r.note||'', r.createdByName||'', '已作廢']));
     });
   } else { L.push('（本年度無作廢紀錄）'); }
   L.push('');
