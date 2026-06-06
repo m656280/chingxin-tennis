@@ -832,6 +832,9 @@ button {
 .feeTypeBadge   { display:inline-block; font-size:10px; border-radius:4px; padding:2px 6px;
   white-space:nowrap; border:1px solid var(--color-border); color:var(--color-text-muted); }
 .feeStatusBadge { display:inline-block; font-size:10px; border-radius:4px; padding:2px 6px; white-space:nowrap; }
+.sourceBadge { display:inline-block; font-size:9px; font-weight:600; letter-spacing:0.05em; border-radius:3px; padding:1px 5px; white-space:nowrap; line-height:1.6; }
+.sourceBadge.line   { background:#06c755; color:#fff; }
+.sourceBadge.manual { background:#8a7f6e; color:#fff; }
 .feeStatusBadge.paid     { background:rgba(39,174,96,0.12); border:1px solid rgba(39,174,96,0.35); color:#27ae60; }
 .feeStatusBadge.expiring { background:rgba(243,156,18,0.12); border:1px solid rgba(243,156,18,0.40); color:#c8860a; }
 .feeStatusBadge.overdue  { background:rgba(231,76,60,0.10); border:1px solid rgba(231,76,60,0.35); color:#c0392b; }
@@ -1805,6 +1808,62 @@ button {
   </div>
 </div>
 
+<!-- ── Manual Member Sheet (admin) ── -->
+<div class="subSheet" id="manualMemberSheet">
+  <div class="sheetHandle"></div>
+  <div class="subSheetHeader">
+    <button class="subSheetBack" onclick="closeManualMemberSheet()">‹</button>
+    <span class="subSheetTitle">新增手動會員</span>
+    <span style="width:32px"></span>
+  </div>
+  <div class="formSection">
+    <p style="font-size:12px;color:var(--color-text-muted);line-height:1.6;margin:0 0 16px">
+      適用於無 LINE 帳號的會員。管理員手動建立後即視為「已核准」。
+    </p>
+    <div class="formRow">
+      <label class="formLabel">正式姓名 <span style="color:#e74c3c">*</span></label>
+      <input class="formInput" id="mmRealName" type="text" placeholder="必填，用於財務與名冊">
+    </div>
+    <div class="formRow">
+      <label class="formLabel">電話（選填）</label>
+      <input class="formInput" id="mmPhone" type="tel" placeholder="日後轉 LINE 綁定用">
+    </div>
+    <div class="formRow">
+      <label class="formLabel">角色</label>
+      <select class="formSelect" id="mmRole">
+        <option value="member">會員</option>
+        <option value="coach">教練</option>
+      </select>
+    </div>
+    <div class="formRow">
+      <label class="formLabel">繳費類型</label>
+      <select class="formSelect" id="mmMsType">
+        <option value="">未設定</option>
+        <option value="annual">年費會員</option>
+        <option value="monthly">月費會員</option>
+      </select>
+    </div>
+    <div class="formRow">
+      <label class="formLabel">NTRP</label>
+      <select class="formSelect" id="mmNtrp">
+        <option value="">未設定</option>
+      </select>
+    </div>
+    <div class="formRow">
+      <label class="formLabel">慣用位置</label>
+      <select class="formSelect" id="mmPos">
+        <option value="">未設定</option>
+        <option value="前場">前場</option>
+        <option value="後場">後場</option>
+        <option value="雙打">雙打</option>
+        <option value="全能">全能</option>
+      </select>
+    </div>
+    <div id="mmError" style="display:none;margin-bottom:12px;padding:9px 12px;border-radius:8px;background:rgba(231,76,60,0.08);border:1px solid rgba(231,76,60,0.3);font-size:12px;color:#c0392b;line-height:1.45"></div>
+    <button class="primaryBtn" id="mmSubmitBtn" onclick="submitManualMember()">建立會員</button>
+  </div>
+</div>
+
 <!-- ── Finance Detail Sheet (read-only) ── -->
 <div class="subSheet" id="finDetailSheet">
   <div class="sheetHandle"></div>
@@ -2346,15 +2405,16 @@ async function _upsertAndRoute(profile){
     if(!snap.exists){
       // First login — create doc with safe defaults only
       await memberRef.set({
-        uid:         uid,
-        displayName: profile.displayName || '',
-        photoURL:    profile.pictureUrl  || '',
-        status:      'pending',
-        role:        'member',
-        createdAt:   now,
-        approvedAt:  null,
-        approvedBy:  null,
-        lastLoginAt: now,
+        uid:          uid,
+        displayName:  profile.displayName || '',
+        photoURL:     profile.pictureUrl  || '',
+        status:       'pending',
+        role:         'member',
+        memberSource: 'line',
+        createdAt:    now,
+        approvedAt:   null,
+        approvedBy:   null,
+        lastLoginAt:  now,
       });
       _liffDbg('created', 'pending/member');
       snap = await memberRef.get();
@@ -3991,6 +4051,7 @@ function _renderMembersTab(el){
     var _scAll = Object.values(usersCache).filter(function(m){
       var s = m.status||''; return s!=='pending'&&s!=='blocked'&&s!=='rejected'&&s!=='deleted';
     });
+    // 統計依 membershipType 判斷，不依 role（教練/管理員也可能繳年費/月費）
     var _scAnnual  = _scAll.filter(function(m){ return m.membershipType==='annual'; });
     var _scMonthly = _scAll.filter(function(m){ return m.membershipType==='monthly'; });
     html += '<div style="display:flex;gap:8px;margin-bottom:12px">'
@@ -3998,6 +4059,14 @@ function _renderMembersTab(el){
       + _memberStatCard('年費會員', _scAnnual.length,  '#2a5a9a', 'annual')
       + _memberStatCard('月費會員', _scMonthly.length, '#8a6020', 'monthly')
       + '</div>';
+    // 新增手動會員按鈕（admin only）
+    html += '<button onclick="openManualMemberSheet()"'
+      + ' style="display:flex;align-items:center;gap:6px;width:100%;padding:9px 14px;'
+      + 'border-radius:8px;border:1px dashed var(--color-border);background:transparent;'
+      + 'color:var(--color-text-muted);font-size:12px;cursor:pointer;'
+      + 'margin-bottom:14px;text-align:left;font-family:var(--font-body)">'
+      + '<span style="font-size:16px;line-height:1">＋</span> 新增手動會員'
+      + '</button>';
   }
 
   // ── 統一會員名錄（搜尋 / 篩選）— 所有角色一律顯示 ──
@@ -4046,13 +4115,7 @@ function _renderMembersTab(el){
         '<option value="overdue"'+(_memberFeeFilter==='overdue'?' selected':'')+'>🔴 已到期</option>'+
         '<option value="none"'+(_memberFeeFilter==='none'?' selected':'')+'>— 未繳費</option>'+
       '</select>'+
-      '<select id="memberDirMsType"'+
-        ' style="width:100%;box-sizing:border-box;padding:6px 8px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-primary);font-size:12px;margin-top:6px"'+
-        ' onchange="_memberMsTypeFilter=this.value;_renderMemberListInTab()">'+
-        '<option value="">全部會員類型</option>'+
-        '<option value="annual"' +(_memberMsTypeFilter==='annual' ?' selected':'')+'>年費會員</option>'+
-        '<option value="monthly"'+(_memberMsTypeFilter==='monthly'?' selected':'')+'>月費會員</option>'+
-      '</select>'+
+
     '</div>'+
     '<div id="memberDirList"></div>';
 
@@ -4091,7 +4154,8 @@ function _renderMemberListInTab(){
     /* ── 角色篩選（純 role 欄位，不混入 membershipType）── */
     if(_memberRoleFilter && m.role !== _memberRoleFilter) return false;
     if(_memberFeeFilter && _calcMemberFeeStatus(m).status !== _memberFeeFilter) return false;
-    /* ── 會員類型篩選（membershipType 獨立欄位）── */
+    /* ── 會員類型篩選：只依 membershipType，不排除任何 role
+       ─ coach/admin/owner 若有 membershipType 也應出現 ── */
     if(_memberMsTypeFilter && (m.membershipType||'') !== _memberMsTypeFilter) return false;
     return true;
   }).sort(function(a,b){
@@ -4123,6 +4187,11 @@ function _renderMemberListInTab(){
     if(m.preferredPosition) meta.push(_esc(m.preferredPosition));
     var rawUid=m.userId||m.uid||'';
     var isSelf=(rawUid===_myId);
+    // memberSource badge（admin 才顯示）
+    var _src = m.memberSource || 'line';
+    var sourceBadgeHtml = adminLike
+      ? '<span class="sourceBadge '+_src+'">'+ (_src==='manual'?'手動':'LINE') + '</span>'
+      : '';
 
     /* （登入狀態 badge 已移除 — members 本身就是已登入資料）*/
 
@@ -4158,7 +4227,10 @@ function _renderMemberListInTab(){
           '<div style="margin-top:5px;line-height:1.8">'+_memberFeeStatusHtml(m)+'</div>'+
           (meta.length?'<div class="memberMeta">'+meta.join(' · ')+'</div>':'')+
         '</div>'+
-        '<div class="'+badgeCls+'" style="flex-shrink:0;align-self:flex-start">'+roleLabel+'</div>'+
+        '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0;align-self:flex-start">'+
+          '<div class="'+badgeCls+'">'+roleLabel+'</div>'+
+          sourceBadgeHtml+
+        '</div>'+
       '</div>'+
       (mgmtHtml?'<div style="padding-left:50px;margin-top:4px">'+mgmtHtml+'</div>':'')+
     '</div>';
@@ -4172,7 +4244,7 @@ function _memberStatCard(label, count, color, filterVal){
   var border  = active ? '2px solid '+color : '1px solid var(--color-border-soft)';
   var bg      = active ? 'rgba(0,0,0,0.04)' : 'var(--color-surface)';
   var handler = filterVal
-    ? 'onclick="_memberMsTypeFilter=(_memberMsTypeFilter===\''+filterVal+'\'?\'\':\''+filterVal+'\');_renderMemberListInTab()"'
+    ? 'onclick="_memberMsTypeFilter=(_memberMsTypeFilter===\''+filterVal+'\'?\'\':\''+filterVal+'\');_memberRoleFilter=\'\';_renderMemberListInTab()"'
     : 'onclick="_memberMsTypeFilter=\'\';_renderMemberListInTab()"';
   return '<div '+handler+' style="flex:1;border:'+border+';border-radius:8px;padding:8px 10px;background:'+bg+';cursor:pointer">'
     +'<div style="font-size:19px;font-weight:700;color:'+color+'">'+count+'</div>'
@@ -5255,7 +5327,12 @@ function _renderFinDetail(source, isAdmin, fmt){
   var q = _finSearchQuery.toLowerCase().trim();
   var filtered = q
     ? source.filter(function(r){
+        // live lookup — 管理員改名後搜尋也能立即找到
+        var _scu = r.memberId ? (usersCache[r.memberId] || null) : null;
+        var _sLive = _scu ? (_scu.realName || _scu.displayName || '') : '';
         return (r.member||'').toLowerCase().includes(q)
+            || (r.memberRealName||'').toLowerCase().includes(q)
+            || _sLive.toLowerCase().includes(q)
             || (r.note||'').toLowerCase().includes(q)
             || (r.createdByName||'').toLowerCase().includes(q);
       })
@@ -5276,6 +5353,9 @@ function _renderFinDetail(source, isAdmin, fmt){
       ? (usersCache[r.memberId] || null)
       : (r.member ? Object.values(usersCache).find(function(x){ return (x.displayName||'')===r.member; }) : null);
     var _ms=memberObj?memberObj.status:null;
+    // live name — 優先 usersCache，fallback 到寫入時快照
+    var _liveN = memberObj ? (memberObj.realName || memberObj.displayName || '') : '';
+    var _dispN = _liveN || r.memberRealName || r.member || '—';
     var resignedTag = (_ms==='resigned')
       ? '<span style="font-size:9.5px;letter-spacing:0.05em;color:#8C4637;background:rgba(130,65,52,0.09);padding:2px 7px;border-radius:99px;margin-left:6px;vertical-align:middle">已退會</span>'
       : (_ms==='deleted')
@@ -5300,7 +5380,7 @@ function _renderFinDetail(source, isAdmin, fmt){
     html += '<div class="financeRecord'+(isVoid?' finRecordVoid':'')+'" style="align-items:flex-start">'
       + '<div class="finRecordLeft financeRecordLeft"'
       + ' onclick="openFinanceDetail(\''+r.id+'\')">'
-        + '<div class="financeRecordName">'+(r.memberRealName||r.member||'—')+resignedTag+'</div>'
+        + '<div class="financeRecordName">'+_dispN+resignedTag+'</div>'
         + (r.note?'<div class="finRecordNote">'+r.note+'</div>':'')
         + '<div class="finRecordDateMeta">'+dateMeta+'</div>'
         + statusBadge
@@ -5902,87 +5982,90 @@ function _buildFinancePDFHtml(d){
   }
 
   // ── income detail column specs ──
-  // A4 landscape ≈ 269mm 可用 —— 金額/日期/流水號 clip:false 絕不截斷
-  // 欄寬以 mm 為單位更可靠（Chrome 列印引擎優先處理 mm/pt）
+  // A4 portrait 186mm 可用 — 5 欄，無備註欄，金額 clip:false
+  // 欄寬加總 = 100%：流水號10+日期18+會員28+金額20+登記人24
   var INC_COLS = [
-    {width:'18mm', clip:false},                        // 流水號 A001
-    {width:'28mm', clip:false},                        // 日期 2026-01-15
-    {width:'40mm', clip:true},                         // 會員名
-    {width:'30mm', align:'right', clip:false},          // 金額 NT$ 12,000 — 絕不截斷
-    {width:'auto', clip:true},                         // 備註（剩餘空間自適應）
-    {width:'28mm', clip:true},                         // 登記人
+    {width:'10%', clip:false},               // 流水號 A001
+    {width:'18%', clip:false},               // 日期 2026-01-15
+    {width:'28%', clip:true},                // 會員名
+    {width:'20%', align:'right', clip:false}, // 金額 NT$ 3,600 — 絕不截斷
+    {width:'24%', clip:true},                // 登記人
   ];
 
-  // ── income section helper ──
+  // ── income section helper（5欄，備註已移除，A4 portrait 不超寬）──
   function incSection(title, prefix, recs, total){
     if(!recs.length) return '';
     var rows = recs.map(function(r,i){
-      return [serial(prefix,i), r.date, _finExportName(r), d.fmtN(d.effAmt(r)), r.note||'—', r.createdByName||'—'];
+      return [serial(prefix,i), r.date, _finExportName(r), d.fmtN(d.effAmt(r)), r.createdByName||'—'];
     });
-    var foot = ['','','筆數：'+recs.length,'合計：'+d.fmtN(total),'',''];
-    return '<h3>'+esc(title)+'</h3>'+
-      table(['流水號','日期','會員','金額','備註','登記人'], rows, foot, 'inc-table', INC_COLS);
+    var foot = ['','','筆數：'+recs.length,'合計：'+d.fmtN(total),''];
+    return '<div class="section"><h3>'+esc(title)+'</h3>'+
+      table(['流水號','日期','會員','金額','登記人'], rows, foot, 'inc-table', INC_COLS)+
+      '</div>';
   }
 
   // ── CSS ──
+  // A4 portrait 186mm 可用 (210mm - 12mm×2)
+  // Screen: .page 白卡片；Print: flat doc，@page 完全掌控版面
   var css = [
-    /* ── Print setup ── */
-    '@page { size:A4 landscape; margin:12mm 14mm 12mm 14mm; }',
-    /* ── Base ── */
-    'body { font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei","Heiti TC",sans-serif; font-size:10px; color:#1a1a1a; margin:0; line-height:1.4; }',
-    /* ── Screen wrapper ── */
-    '@media screen { body { max-width:100%; margin:0 auto; padding:0; background:#eee; } .page { background:#fff; padding:14mm 14mm; margin-bottom:8mm; box-shadow:0 2px 8px rgba(0,0,0,0.12); max-width:297mm; margin-left:auto; margin-right:auto; } }',
-    /* ── Print-only rules ── */
+    /* === Screen-only wrapper === */
+    '@media screen {',
+    '  body { font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei","Heiti TC",sans-serif; font-size:10px; color:#1a1a1a; margin:0; line-height:1.4; background:#ddd; }',
+    '  .print-bar { display:flex; align-items:center; justify-content:space-between; gap:10px; background:#1a1a2e; color:#fff; padding:10px 16px; }',
+    '  .print-bar button { background:#4a7c4e; color:#fff; border:none; padding:8px 24px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; }',
+    '  .print-bar button:hover { background:#3a6a3e; }',
+    '  .print-bar span { font-size:12px; opacity:.7; }',
+    '  .page { background:#fff; max-width:186mm; margin:8mm auto; padding:14mm 12mm; box-shadow:0 2px 8px rgba(0,0,0,0.18); box-sizing:border-box; }',
+    '  .page-header-compact { display:none; }',
+    '}',
+    /* === Print-only === */
     '@media print {',
-    '  .no-print, .print-bar { display:none !important; }',
+    '  @page { size:A4 portrait; margin:12mm; }',
+    '  * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }',
+    '  body { font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei","Heiti TC",sans-serif; font-size:9px; color:#000; margin:0; padding:0; background:#fff; line-height:1.3; }',
+    '  .print-bar { display:none !important; }',
+    '  .page { background:#fff; box-shadow:none; padding:0; margin:0; max-width:none; width:100%; }',
     '  .page-break { page-break-before:always; break-before:page; }',
+    '  .section { page-break-inside:avoid; break-inside:avoid; }',
     '  .page-header-compact { display:block !important; }',
-    '  body { font-size:9pt; color:#000; }',
-    '  table { font-size:9pt; }',
     '  thead { display:table-header-group; }',
     '  tr { page-break-inside:avoid; break-inside:avoid; }',
-    '  .stat-grid { display:flex !important; flex-wrap:wrap; gap:6px; }',
-    '  .stat-card { flex:1 1 28%; border:1px solid #999 !important; }',
+    '  h2 { page-break-after:avoid; break-after:avoid; }',
+    '  h3 { page-break-after:avoid; break-after:avoid; }',
+    '  table { table-layout:fixed !important; width:100% !important; border-collapse:collapse !important; overflow:hidden; }',
+    '  th, td { font-size:9px !important; padding:3px 4px !important; white-space:nowrap; overflow:hidden; text-overflow:clip; }',
+    '  .td-right { text-align:right !important; }',
+    '  .td-clip { overflow:hidden; text-overflow:ellipsis; }',
     '}',
-    /* ── Print bar (screen only) ── */
-    '.print-bar { background:#1a1a2e; color:#fff; padding:10px 16px; display:flex; align-items:center; justify-content:space-between; gap:10px; }',
-    '.print-bar button { background:#4a7c4e; color:#fff; border:none; padding:8px 24px; border-radius:6px; font-size:13px; cursor:pointer; font-weight:600; }',
-    '.print-bar button:hover { background:#3a6a3e; }',
-    '.print-bar span { font-size:12px; opacity:.7; }',
-    /* ── Compact per-page header (print only) ── */
-    '.page-header-compact { display:none; font-size:8.5pt; color:#444; text-align:right; border-bottom:1.5px solid #2a4a2e; padding-bottom:3px; margin-bottom:10px; letter-spacing:.04em; font-weight:600; }',
-    /* ── Report header ── */
+    /* === Shared (screen + print) base styles === */
+    'body { font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei","Heiti TC",sans-serif; font-size:10px; color:#1a1a1a; line-height:1.4; }',
+    /* Compact per-page print header */
+    '.page-header-compact { font-size:8pt; color:#444; text-align:right; border-bottom:1px solid #2a4a2e; padding-bottom:3px; margin-bottom:10px; letter-spacing:.04em; font-weight:600; }',
+    /* Report header */
     'header { text-align:center; padding-bottom:10px; border-bottom:2px solid #2a4a2e; margin-bottom:14px; }',
-    '.report-org { font-size:15px; font-weight:700; letter-spacing:.08em; color:#2a4a2e; }',
-    '.report-title { font-size:11.5px; font-weight:600; margin-top:5px; color:#333; letter-spacing:.04em; }',
-    /* ── Section headings ── */
-    'h2 { font-size:12.5px; font-weight:700; color:#2a4a2e; border-bottom:1.5px solid #2a4a2e; padding-bottom:4px; margin:16px 0 8px; }',
-    'h3 { font-size:10.5px; font-weight:600; color:#1a1a1a; margin:10px 0 4px; }',
-    /* ── Tables: general ── */
-    'table { width:100%; border-collapse:collapse; font-size:9.5px; margin-bottom:10px; border:1px solid #ccc; }',
-    /* ── Income detail table: fixed layout with colgroup widths ── */
+    '.report-org { font-size:14px; font-weight:700; letter-spacing:.08em; color:#2a4a2e; }',
+    '.report-title { font-size:11px; font-weight:600; margin-top:5px; color:#333; letter-spacing:.04em; }',
+    /* Section headings */
+    'h2 { font-size:11.5px; font-weight:700; color:#2a4a2e; border-bottom:1.5px solid #2a4a2e; padding-bottom:3px; margin:14px 0 7px; }',
+    'h3 { font-size:10px; font-weight:600; color:#1a1a1a; margin:9px 0 4px; }',
+    /* Tables */
+    'table { width:100%; border-collapse:collapse; font-size:9.5px; margin-bottom:9px; }',
     '.inc-table { table-layout:fixed; }',
-    /* ── Table header row ── */
-    'th { background:#2a4a2e; color:#fff; padding:5px 6px; text-align:left; font-weight:600; font-size:9px; letter-spacing:.04em; white-space:nowrap; border-right:1px solid rgba(255,255,255,0.2); }',
-    'th:last-child { border-right:none; }',
-    /* ── Table data cells ── */
-    'td { padding:4px 6px; border-bottom:1px solid #ddd; border-right:1px solid #eee; line-height:1.3; white-space:nowrap; vertical-align:middle; }',
-    'td:last-child { border-right:none; }',
+    'th { background:#2a4a2e; color:#fff; padding:4px 5px; text-align:left; font-weight:600; font-size:9px; letter-spacing:.03em; white-space:nowrap; }',
+    'td { padding:3px 5px; border-bottom:1px solid #ddd; font-size:9px; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:clip; vertical-align:middle; }',
+    'tbody tr:nth-child(even) { background:#f7f7f5; }',
     'tr:last-child td { border-bottom:none; }',
-    'tbody tr:nth-child(even) { background:#fafafa; }',
-    /* ── Footer row ── */
-    'tfoot td { font-weight:700; background:#f0f5f0; border-top:1.5px solid #2a4a2e; }',
-    /* ── Utility classes ── */
+    'tfoot td { font-weight:700; background:#eef3ee; border-top:1.5px solid #2a4a2e; }',
     '.td-right { text-align:right; }',
-    '.td-clip  { overflow:hidden; text-overflow:ellipsis; }',
-    /* ── Summary stat cards ── */
-    '.stat-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px; }',
-    '.stat-card { border:1px solid #d8d8d8; border-radius:5px; padding:8px 12px; }',
-    '.stat-label { font-size:8.5px; color:#666; letter-spacing:.05em; text-transform:uppercase; margin-bottom:4px; }',
-    '.stat-value { font-size:16px; font-weight:700; color:#2a4a2e; }',
+    '.td-clip { overflow:hidden; text-overflow:ellipsis; }',
+    /* Summary stat cards */
+    '.stat-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; margin-bottom:12px; }',
+    '.stat-card { border:1px solid #d8d8d8; border-radius:4px; padding:7px 10px; }',
+    '.stat-label { font-size:8px; color:#666; letter-spacing:.05em; text-transform:uppercase; margin-bottom:3px; }',
+    '.stat-value { font-size:15px; font-weight:700; color:#2a4a2e; }',
     '.stat-card.balance { border-color:#2a4a2e; background:#f0f5f0; }',
     '.stat-card.balance .stat-value { color:#1a3a1e; }',
-    /* ── Audit ── */
+    /* Audit */
     '.audit-ok   { color:#2a7a2a; font-weight:600; }',
     '.audit-warn { color:#a83232; font-weight:600; }',
   ].join('\n');
@@ -6083,7 +6166,7 @@ function _buildFinancePDFHtml(d){
     '<div class="page page-break">'+
       '<div class="page-header-compact">高雄市清心網球協會｜'+year+' 年度財務報表</div>'+
       '<h2>收入 / 支出明細</h2>'+
-      detailHtml+
+      '<div class="section">'+detailHtml+'</div>'+
     '</div>'+
     // Last page audit
     '<div class="page page-break">'+
@@ -6728,7 +6811,11 @@ function openFinanceDetail(id){
   }
 
   var html = detailRow('類型', TYPE_LABEL[rec.type]||rec.type||'');
-  html += detailRow('會員', rec.memberRealName||rec.memberDisplayName||rec.member||'');
+  // live lookup — 優先 usersCache，fallback 到快照
+  var _rdCu = rec.memberId ? (usersCache[rec.memberId] || null) : null;
+  var _rdN  = (_rdCu ? (_rdCu.realName || _rdCu.displayName || '') : '')
+           || rec.memberRealName || rec.memberDisplayName || rec.member || '';
+  html += detailRow('會員', _rdN);
   html += detailRow('日期', rec.date||'');
   html += detailRow('金額', rec.amount != null ? 'NT$ '+Number(rec.amount).toLocaleString() : '');
   if(rec.note) html += detailRow('備註', rec.note);
@@ -7789,6 +7876,109 @@ function loadFinanceRecords(){
       console.warn('[loadFinanceRecords] Firestore error:', e);
     });
 }
+
+/* ── Manual Member: open / close / submit ─────────────────────────────────────
+   Phase 1: 手動建立會員（無 LINE）。
+   docId = Firestore auto-ID，建立後回寫 uid 欄位（與 LINE 會員一致）。
+   memberSource = 'manual'，status = 'approved'（admin 建立，不需待審）。
+   ─────────────────────────────────────────────────────────────────────────── */
+
+function openManualMemberSheet(){
+  if(!isAdminLike()){ showToast('僅管理員可新增手動會員'); return; }
+  // Reset form
+  document.getElementById('mmRealName').value = '';
+  document.getElementById('mmPhone').value = '';
+  document.getElementById('mmRole').value = 'member';
+  document.getElementById('mmMsType').value = '';
+  document.getElementById('mmNtrp').value = '';
+  document.getElementById('mmPos').value = '';
+  var err = document.getElementById('mmError');
+  if(err){ err.style.display='none'; err.textContent=''; }
+  var btn = document.getElementById('mmSubmitBtn');
+  if(btn){ btn.disabled=false; btn.textContent='建立會員'; }
+  // Populate NTRP select
+  var ntrpSel = document.getElementById('mmNtrp');
+  if(ntrpSel && ntrpSel.options.length < 2){
+    NTRP_OPTIONS.forEach(function(o){
+      var opt = document.createElement('option');
+      opt.value = o.v;
+      opt.textContent = 'NTRP ' + o.v + '｜' + o.label;
+      ntrpSel.appendChild(opt);
+    });
+  }
+  document.getElementById('sheetBackdrop').classList.add('open');
+  document.getElementById('manualMemberSheet').classList.add('open');
+}
+
+function closeManualMemberSheet(){
+  document.getElementById('manualMemberSheet').classList.remove('open');
+  document.getElementById('sheetBackdrop').classList.remove('open');
+}
+
+function submitManualMember(){
+  if(!isAdminLike()){ showToast('僅管理員可新增手動會員'); return; }
+  var realName = (document.getElementById('mmRealName').value || '').trim();
+  var err = document.getElementById('mmError');
+  if(!realName){
+    if(err){ err.textContent='請填寫正式姓名'; err.style.display='block'; }
+    return;
+  }
+  if(err){ err.style.display='none'; err.textContent=''; }
+
+  var phone        = (document.getElementById('mmPhone').value   || '').trim();
+  var role         = document.getElementById('mmRole').value   || 'member';
+  var msType       = document.getElementById('mmMsType').value || '';
+  var ntrp         = document.getElementById('mmNtrp').value   || '';
+  var pos          = document.getElementById('mmPos').value    || '';
+  var now          = firebase.firestore.FieldValue.serverTimestamp();
+  var creatorUid   = currentUser ? (currentUser.uid || currentUser.userId || '') : '';
+
+  var memberData = {
+    uid:              '',          // 建立後由回呼更新
+    realName:         realName,
+    displayName:      realName,    // 手動會員用 realName 代替 LINE 暱稱
+    photoURL:         '',
+    phone:            phone,
+    role:             role,
+    membershipType:   msType,
+    status:           'approved',  // 管理員建立，直接 approved
+    memberSource:     'manual',
+    approved:         true,
+    ntrp:             ntrp,
+    preferredPosition: pos,
+    createdAt:        now,
+    updatedAt:        now,
+    approvedAt:       now,
+    approvedBy:       creatorUid,
+    lastLoginAt:      null,
+  };
+
+  var btn = document.getElementById('mmSubmitBtn');
+  if(btn){ btn.disabled=true; btn.textContent='建立中…'; }
+
+  if(!db){
+    if(err){ err.textContent='資料庫連線失敗'; err.style.display='block'; }
+    if(btn){ btn.disabled=false; btn.textContent='建立會員'; }
+    return;
+  }
+
+  db.collection('members').add(memberData)
+    .then(function(docRef){
+      // 回寫 uid = docId（與 LINE 會員保持一致的慣例）
+      return docRef.update({ uid: docRef.id, updatedAt: now });
+    })
+    .then(function(){
+      showToast('手動會員「' + realName + '」已建立');
+      closeManualMemberSheet();
+    })
+    .catch(function(e){
+      var msg = e.message || String(e);
+      console.error('[submitManualMember]', msg);
+      if(err){ err.textContent='建立失敗：' + msg; err.style.display='block'; }
+      if(btn){ btn.disabled=false; btn.textContent='建立會員'; }
+    });
+}
+
 
 /* ── Load Users Cache from Firestore (real-time) ── */
 function loadUsersCache(){
