@@ -5861,27 +5861,40 @@ function _buildFinancePDFHtml(d){
 
   // ── table builder ──
   // colSpecs: optional array of {width, align} per column
+  // colSpecs: optional array of {width, align, clip} per column
+  //   clip:false (default) → content always fully visible, no ellipsis
+  //   clip:true            → overflow:hidden + text-overflow:ellipsis
+  //   align:'right'        → text-align:right (amount cols)
   function table(headers, rows, footer, tableClass, colSpecs){
     var colgroup = '';
     if(colSpecs && colSpecs.length){
       colgroup = '<colgroup>'+colSpecs.map(function(s){ return '<col style="width:'+s.width+'">'; }).join('')+'</colgroup>';
     }
+    function cellCls(i){
+      var spec = colSpecs && colSpecs[i];
+      var cls = [];
+      if(spec && spec.align === 'right') cls.push('td-right');
+      if(spec && spec.clip)             cls.push('td-clip');
+      return cls.length ? ' class="'+cls.join(' ')+'"' : '';
+    }
     var h = '<thead><tr>'+headers.map(function(hd,i){
-      var a = colSpecs&&colSpecs[i]&&colSpecs[i].align==='right'?' style="text-align:right"':'';
+      var s = colSpecs && colSpecs[i];
+      var style = [];
+      if(s && s.align === 'right') style.push('text-align:right');
+      if(s && s.clip) style.push('overflow:hidden;text-overflow:ellipsis');
+      var a = style.length ? ' style="'+style.join(';')+'"' : '';
       return '<th'+a+'>'+esc(hd)+'</th>';
     }).join('')+'</tr></thead>';
     var body = rows.length
       ? '<tbody>'+rows.map(function(r){
           return '<tr>'+r.map(function(c,i){
-            var a = colSpecs&&colSpecs[i]&&colSpecs[i].align==='right'?' class="td-right"':'';
-            return '<td'+a+'>'+esc(c)+'</td>';
+            return '<td'+cellCls(i)+'>'+esc(c)+'</td>';
           }).join('')+'</tr>';
         }).join('')+'</tbody>'
-      : '<tbody><tr><td colspan="'+headers.length+'" style="text-align:center;color:#888">（無紀錄）</td></tr></tbody>';
+      : '<tbody><tr><td colspan="'+headers.length+'" style="text-align:center;color:#888">(無紀錄)</td></tr></tbody>';
     var foot = footer
       ? '<tfoot><tr>'+footer.map(function(c,i){
-          var a = colSpecs&&colSpecs[i]&&colSpecs[i].align==='right'?' class="td-right"':'';
-          return '<td'+a+'>'+esc(c)+'</td>';
+          return '<td'+cellCls(i)+'>'+esc(c)+'</td>';
         }).join('')+'</tr></tfoot>'
       : '';
     var cls = tableClass?' class="'+tableClass+'"':'';
@@ -5889,13 +5902,15 @@ function _buildFinancePDFHtml(d){
   }
 
   // ── income detail column specs ──
+  // A4 landscape ≈ 269mm 可用 —— 金額/日期/流水號 clip:false 絕不截斷
+  // 欄寬以 mm 為單位更可靠（Chrome 列印引擎優先處理 mm/pt）
   var INC_COLS = [
-    {width:'12%'},
-    {width:'16%'},
-    {width:'22%'},
-    {width:'16%', align:'right'},
-    {width:'18%'},
-    {width:'16%'},
+    {width:'18mm', clip:false},                        // 流水號 A001
+    {width:'28mm', clip:false},                        // 日期 2026-01-15
+    {width:'40mm', clip:true},                         // 會員名
+    {width:'30mm', align:'right', clip:false},          // 金額 NT$ 12,000 — 絕不截斷
+    {width:'auto', clip:true},                         // 備註（剩餘空間自適應）
+    {width:'28mm', clip:true},                         // 登記人
   ];
 
   // ── income section helper ──
@@ -5911,36 +5926,66 @@ function _buildFinancePDFHtml(d){
 
   // ── CSS ──
   var css = [
-    '@page { size:A4 portrait; margin:14mm 12mm 14mm 12mm; }',
+    /* ── Print setup ── */
+    '@page { size:A4 landscape; margin:12mm 14mm 12mm 14mm; }',
+    /* ── Base ── */
     'body { font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei","Heiti TC",sans-serif; font-size:10px; color:#1a1a1a; margin:0; line-height:1.4; }',
-    '@media screen { body { max-width:210mm; margin:0 auto; padding:10mm; background:#eee; } .page { background:#fff; padding:14mm 12mm; margin-bottom:8mm; box-shadow:0 2px 8px rgba(0,0,0,0.12); } }',
-    '@media print { .no-print { display:none !important; } .print-bar { display:none !important; } .page-break { page-break-before:always; } .page-header-compact { display:block !important; } }',
-    '.print-bar { background:#1a1a2e; color:#fff; padding:10px 16px; display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:0; }',
-    '.print-bar button { background:#4a7c4e; color:#fff; border:none; padding:8px 20px; border-radius:6px; font-size:13px; cursor:pointer; }',
+    /* ── Screen wrapper ── */
+    '@media screen { body { max-width:100%; margin:0 auto; padding:0; background:#eee; } .page { background:#fff; padding:14mm 14mm; margin-bottom:8mm; box-shadow:0 2px 8px rgba(0,0,0,0.12); max-width:297mm; margin-left:auto; margin-right:auto; } }',
+    /* ── Print-only rules ── */
+    '@media print {',
+    '  .no-print, .print-bar { display:none !important; }',
+    '  .page-break { page-break-before:always; break-before:page; }',
+    '  .page-header-compact { display:block !important; }',
+    '  body { font-size:9pt; color:#000; }',
+    '  table { font-size:9pt; }',
+    '  thead { display:table-header-group; }',
+    '  tr { page-break-inside:avoid; break-inside:avoid; }',
+    '  .stat-grid { display:flex !important; flex-wrap:wrap; gap:6px; }',
+    '  .stat-card { flex:1 1 28%; border:1px solid #999 !important; }',
+    '}',
+    /* ── Print bar (screen only) ── */
+    '.print-bar { background:#1a1a2e; color:#fff; padding:10px 16px; display:flex; align-items:center; justify-content:space-between; gap:10px; }',
+    '.print-bar button { background:#4a7c4e; color:#fff; border:none; padding:8px 24px; border-radius:6px; font-size:13px; cursor:pointer; font-weight:600; }',
+    '.print-bar button:hover { background:#3a6a3e; }',
     '.print-bar span { font-size:12px; opacity:.7; }',
-    '.page-header-compact { display:none; font-size:9px; color:#555; text-align:right; border-bottom:1px solid #ccc; padding-bottom:4px; margin-bottom:10px; letter-spacing:.04em; }',
+    /* ── Compact per-page header (print only) ── */
+    '.page-header-compact { display:none; font-size:8.5pt; color:#444; text-align:right; border-bottom:1.5px solid #2a4a2e; padding-bottom:3px; margin-bottom:10px; letter-spacing:.04em; font-weight:600; }',
+    /* ── Report header ── */
     'header { text-align:center; padding-bottom:10px; border-bottom:2px solid #2a4a2e; margin-bottom:14px; }',
-    '.report-org { font-size:14px; font-weight:700; letter-spacing:.08em; color:#2a4a2e; }',
-    '.report-title { font-size:12px; font-weight:600; margin-top:5px; color:#1a1a1a; letter-spacing:.04em; }',
-    'h2 { font-size:13px; font-weight:700; color:#2a4a2e; border-bottom:1px solid #2a4a2e; padding-bottom:4px; margin:16px 0 8px; }',
-    'h3 { font-size:11px; font-weight:600; color:#1a1a1a; margin:10px 0 4px; }',
-    'table { width:100%; border-collapse:collapse; table-layout:fixed; font-size:9.5px; margin-bottom:10px; }',
-    'th { background:#2a4a2e; color:#fff; padding:4px 6px; text-align:left; font-weight:600; font-size:9px; letter-spacing:.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }',
-    'td { padding:3px 6px; border-bottom:1px solid #e8e8e8; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:middle; }',
+    '.report-org { font-size:15px; font-weight:700; letter-spacing:.08em; color:#2a4a2e; }',
+    '.report-title { font-size:11.5px; font-weight:600; margin-top:5px; color:#333; letter-spacing:.04em; }',
+    /* ── Section headings ── */
+    'h2 { font-size:12.5px; font-weight:700; color:#2a4a2e; border-bottom:1.5px solid #2a4a2e; padding-bottom:4px; margin:16px 0 8px; }',
+    'h3 { font-size:10.5px; font-weight:600; color:#1a1a1a; margin:10px 0 4px; }',
+    /* ── Tables: general ── */
+    'table { width:100%; border-collapse:collapse; font-size:9.5px; margin-bottom:10px; border:1px solid #ccc; }',
+    /* ── Income detail table: fixed layout with colgroup widths ── */
+    '.inc-table { table-layout:fixed; }',
+    /* ── Table header row ── */
+    'th { background:#2a4a2e; color:#fff; padding:5px 6px; text-align:left; font-weight:600; font-size:9px; letter-spacing:.04em; white-space:nowrap; border-right:1px solid rgba(255,255,255,0.2); }',
+    'th:last-child { border-right:none; }',
+    /* ── Table data cells ── */
+    'td { padding:4px 6px; border-bottom:1px solid #ddd; border-right:1px solid #eee; line-height:1.3; white-space:nowrap; vertical-align:middle; }',
+    'td:last-child { border-right:none; }',
     'tr:last-child td { border-bottom:none; }',
-    'tfoot td { font-weight:600; background:#f5f5f0; border-top:1px solid #aaa; }',
+    'tbody tr:nth-child(even) { background:#fafafa; }',
+    /* ── Footer row ── */
+    'tfoot td { font-weight:700; background:#f0f5f0; border-top:1.5px solid #2a4a2e; }',
+    /* ── Utility classes ── */
     '.td-right { text-align:right; }',
+    '.td-clip  { overflow:hidden; text-overflow:ellipsis; }',
+    /* ── Summary stat cards ── */
     '.stat-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px; }',
-    '.stat-card { border:1px solid #d8d8d8; border-radius:6px; padding:8px 10px; }',
-    '.stat-label { font-size:9px; color:#777; letter-spacing:.04em; text-transform:uppercase; margin-bottom:4px; }',
-    '.stat-value { font-size:15px; font-weight:700; color:#2a4a2e; }',
+    '.stat-card { border:1px solid #d8d8d8; border-radius:5px; padding:8px 12px; }',
+    '.stat-label { font-size:8.5px; color:#666; letter-spacing:.05em; text-transform:uppercase; margin-bottom:4px; }',
+    '.stat-value { font-size:16px; font-weight:700; color:#2a4a2e; }',
     '.stat-card.balance { border-color:#2a4a2e; background:#f0f5f0; }',
     '.stat-card.balance .stat-value { color:#1a3a1e; }',
-    '.summary-table td:last-child { text-align:right; font-weight:600; }',
+    /* ── Audit ── */
     '.audit-ok   { color:#2a7a2a; font-weight:600; }',
     '.audit-warn { color:#a83232; font-weight:600; }',
   ].join('\n');
-
   // ── overview section ──
   var overviewHtml =
     '<h2>年度財務總覽</h2>'+
@@ -6019,34 +6064,40 @@ function _buildFinancePDFHtml(d){
   return '<!DOCTYPE html><html lang="zh-Hant"><head>'+
     '<meta charset="UTF-8">'+
     '<meta name="viewport" content="width=device-width,initial-scale=1">'+
-    '<title>清心網球協會　'+year+'年度財務報表</title>'+
+    '<title>高雄市清心網球協會　'+year+'年度財務報表</title>'+
     '<style>'+css+'</style>'+
     '</head><body>'+
     '<div class="no-print print-bar">'+
-      '<span>'+year+' 年度財務報表　清心網球協會</span>'+
-      '<button onclick="window.print()">列印 / 儲存 PDF</button>'+
+      '<span>'+year+' 年度財務報表　高雄市清心網球協會</span>'+
+      '<button id="printBtn" type="button">列印 / 儲存 PDF</button>'+
     '</div>'+
     // Page 1
     '<div class="page">'+
       '<header>'+
-        '<div class="report-org">清心網球協會</div>'+
+        '<div class="report-org">高雄市清心網球協會</div>'+
         '<div class="report-title">'+year+' 年度財務報表</div>'+
       '</header>'+
       overviewHtml+
     '</div>'+
     // Page 2+ detail
     '<div class="page page-break">'+
-      '<div class="page-header-compact">清心網球協會｜'+year+' 年度財務報表</div>'+
+      '<div class="page-header-compact">高雄市清心網球協會｜'+year+' 年度財務報表</div>'+
       '<h2>收入 / 支出明細</h2>'+
       detailHtml+
     '</div>'+
     // Last page audit
     '<div class="page page-break">'+
-      '<div class="page-header-compact">清心網球協會｜'+year+' 年度財務報表</div>'+
+      '<div class="page-header-compact">高雄市清心網球協會｜'+year+' 年度財務報表</div>'+
       auditHtml+
     '</div>'+
     '<script>'+
-      'if(!/Mobi|Android/i.test(navigator.userAgent)){setTimeout(function(){window.print();},600);}'+
+      '(function(){'+
+        'var btn=document.getElementById("printBtn");'+
+        'if(btn){btn.addEventListener("click",function(){window.print();});}'+
+        'if(!/Mobi|Android/i.test(navigator.userAgent)){'+
+          'setTimeout(function(){window.print();},800);'+
+        '}'+
+      '})();'+
     '</'+'script>'+
     '</body></html>';
 }
