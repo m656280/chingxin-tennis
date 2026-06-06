@@ -1826,7 +1826,7 @@ button {
     </div>
     <div class="formRow">
       <label class="formLabel">電話（選填）</label>
-      <input class="formInput" id="mmPhone" type="tel" placeholder="日後轉 LINE 綁定用">
+      <input class="formInput" id="mmPhone" type="tel" placeholder="">
     </div>
     <div class="formRow">
       <label class="formLabel">角色</label>
@@ -5327,12 +5327,10 @@ function _renderFinDetail(source, isAdmin, fmt){
   var q = _finSearchQuery.toLowerCase().trim();
   var filtered = q
     ? source.filter(function(r){
-        // live lookup — 管理員改名後搜尋也能立即找到
-        var _scu = r.memberId ? (usersCache[r.memberId] || null) : null;
-        var _sLive = _scu ? (_scu.realName || _scu.displayName || '') : '';
-        return (r.member||'').toLowerCase().includes(q)
-            || (r.memberRealName||'').toLowerCase().includes(q)
-            || _sLive.toLowerCase().includes(q)
+        // 姓名只搜 live usersCache（已改名即時反映，不搜快照）
+        var _scu   = r.memberId ? (usersCache[r.memberId] || null) : null;
+        var _sName = _scu ? (_scu.realName || _scu.displayName || '') : '';
+        return _sName.toLowerCase().includes(q)
             || (r.note||'').toLowerCase().includes(q)
             || (r.createdByName||'').toLowerCase().includes(q);
       })
