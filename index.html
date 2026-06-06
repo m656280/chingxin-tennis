@@ -3424,19 +3424,21 @@ function _renderAllBookingsTab(el){
     '</div>';
   }
 
-  /* ── 修復工具 accordion（reset state whenever the tab re-renders） ── */
-  _repairState = {status:'idle', autoMove:[], manualReview:[], error:null};
-
-  var repairSection =
-    '<div class="abSection" style="margin-top:4px">'
-    +'<div class="abSectionHdr" onclick="(function(){var b=document.getElementById(\'repairBody\');var c=document.getElementById(\'repairChev\');b.classList.toggle(\'open\');c.classList.toggle(\'open\');})()">'
-    +'<span class="abSectionTitle">🔧 修復工具</span>'
-    +'<span class="abSectionChevron" id="repairChev">▾</span>'
-    +'</div>'
-    +'<div class="abSectionBody" id="repairBody">'
-    +'<div id="repairToolInner">'+_repairToolHtml()+'</div>'
-    +'</div>'
-    +'</div>';
+  /* ── 修復工具 accordion — owner only ── */
+  var repairSection = '';
+  if(_currentRole() === 'owner'){
+    _repairState = {status:'idle', autoMove:[], manualReview:[], done:_repairState ? (_repairState.done||[]) : [], error:null};
+    repairSection =
+      '<div class="abSection" style="margin-top:4px">'
+      +'<div class="abSectionHdr" onclick="(function(){var b=document.getElementById(\'repairBody\');var c=document.getElementById(\'repairChev\');b.classList.toggle(\'open\');c.classList.toggle(\'open\');})()">'
+      +'<span class="abSectionTitle">🔧 修復工具</span>'
+      +'<span class="abSectionChevron" id="repairChev">▾</span>'
+      +'</div>'
+      +'<div class="abSectionBody" id="repairBody">'
+      +'<div id="repairToolInner">'+_repairToolHtml()+'</div>'
+      +'</div>'
+      +'</div>';
+  }
 
   var html = '<div style="padding:12px 0 4px">'
     +'<button class="abActionBtn" style="margin-left:0;font-size:11px" onclick="allBookingsCache=null;renderManage()">↺ 重新載入</button>'
@@ -3468,6 +3470,7 @@ function _repairRefreshUI(){
 }
 
 function _scanOverlapBookings(){
+  if(_currentRole() !== 'owner'){ console.warn('[repair] 權限不足'); return; }
   if(!db){ showToast('無法連線'); return; }
   _repairState = {status:'scanning', autoMove:[], manualReview:[], done:_repairState.done||[], error:null};  /* preserve done log */
   _repairRefreshUI();
@@ -3649,6 +3652,7 @@ function _repairDoneSection(s){
 
 /* 確認視窗 */
 function _showRepairConfirmDlg(idx){
+  if(_currentRole() !== 'owner'){ console.warn('[repair] 權限不足'); return; }
   var r = _repairState.autoMove[idx];
   if(!r) return;
   var bd = document.createElement('div');
@@ -3679,6 +3683,12 @@ function _closeRepairConfirmDlg(){
 }
 
 function _executeOverlapRepair(idx){
+  /* ── 雙重權限驗證：UI 層已隱藏，此處再擋直接呼叫 ── */
+  if(_currentRole() !== 'owner'){
+    console.warn('[repair] 權限不足，操作已中止');
+    showToast('僅 Owner 可執行此操作');
+    return;
+  }
   if(!db){ showToast('無法連線'); return; }
   var r = _repairState.autoMove[idx];
   if(!r){ showToast('找不到修復項目'); return; }
