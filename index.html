@@ -5741,15 +5741,15 @@ function _finExportName(r){
   return name || '—';
 }
 
-/* ── Finance: Export PDF ── */
-function exportFinancePDF(){
-  if(!isAdminLike()){ showToast('僅管理員可匯出'); return; }
-
+/* ── Finance: 資料準備（CSV 與 PDF 共用）────────────────────────────────────
+   使用呼叫當下的全域 financeRecords / usersCache / _finExportName()。
+   ─────────────────────────────────────────────────────────────────────────── */
+function _prepFinancePDFData(targetYear){
   var EXCL    = {void:1, cancelled:1, deleted:1, archived:1};
-  var yearRecs = financeRecords.filter(function(r){
-    return (r.year || parseInt(r.date.slice(0,4),10)) === _finYear;
+  var allRecs  = financeRecords;
+  var yearRecs = allRecs.filter(function(r){
+    return (r.year || parseInt((r.date||'0000').slice(0,4),10)) === targetYear;
   });
-  if(!yearRecs.length){ showToast(_finYear+' 年沒有資料可匯出'); return; }
 
   var byDate = function(a,b){ return a.date.localeCompare(b.date); };
   function effAmt(r){ return (r.status==='refund')?-r.amount:r.amount; }
@@ -5767,36 +5767,32 @@ function exportFinancePDF(){
     return r.type!=='annual'&&r.type!=='monthly'&&r.type!=='coaching_fee'&&r.type!=='coach_fee'&&r.type!=='coaching'&&r.type!=='donate';
   }).sort(byDate);
 
-  var annualT  = sumRecs(annualRecs); var monthlyT = sumRecs(monthlyRecs);
-  var coachT   = sumRecs(coachRecs);  var donateT  = sumRecs(donateRecs);
-  var otherT   = sumRecs(otherRecs);
-  var incTotal = annualT+monthlyT+coachT+donateT+otherT;
-  var expTotal = expRecs.reduce(function(a,r){ return a+r.amount; },0);
-  var balance  = incTotal - expTotal;
+  var annualT = sumRecs(annualRecs), monthlyT = sumRecs(monthlyRecs);
+  var coachT  = sumRecs(coachRecs),  donateT  = sumRecs(donateRecs);
+  var otherT  = sumRecs(otherRecs);
+  var incTotal= annualT+monthlyT+coachT+donateT+otherT;
+  var expTotal= expRecs.reduce(function(a,r){ return a+r.amount; },0);
+  var balance = incTotal - expTotal;
 
-  // ── paidMap for audit ─────────────────────────────────────────────────
-  var _yr = _finYear, _yrStr = String(_yr);
   var paidMap = {};
-  financeRecords.forEach(function(r){
+  allRecs.forEach(function(r){
     if((r.status||'active')!=='active') return;
     if(r.type!=='annual'&&r.type!=='monthly') return;
-    var ry = r.year || parseInt((r.date||'').slice(0,4),10) || 0;
-    if(ry!==_yr) return;
+    var ry = r.year || parseInt((r.date||'0000').slice(0,4),10) || 0;
+    if(ry!==targetYear) return;
     var mid = r.memberId||''; if(!mid) return;
-    if(!paidMap[mid]) paidMap[mid]=[];
-    paidMap[mid].push({type:r.type,date:r.date||'',amount:r.amount||0});
+    (paidMap[mid]=paidMap[mid]||[]).push({type:r.type,date:r.date||'',amount:r.amount||0});
   });
-  var SKIP_ST = {pending:1,blocked:1,rejected:1,deleted:1,resigned:1};
-  var shouldPay = Object.values(usersCache).filter(function(m){ return !SKIP_ST[m.status||'']; })
+  var SKIP_ST  = {pending:1,blocked:1,rejected:1,deleted:1,resigned:1};
+  var shouldPay= Object.values(usersCache).filter(function(m){ return !SKIP_ST[m.status||'']; })
     .sort(function(a,b){ return (_mName(a)||'').localeCompare(_mName(b)||'','zh-Hant'); });
-  var paidCnt   = shouldPay.filter(function(m){ return !!paidMap[m.userId||m.uid||'']; }).length;
-  var unpaidMs  = shouldPay.filter(function(m){ return !paidMap[m.userId||m.uid||'']; });
-  var paidRate  = shouldPay.length ? Math.round(paidCnt/shouldPay.length*100) : 0;
-  var anomaly   = shouldPay.filter(function(m){ return !m.membershipType; });
+  var paidCnt  = shouldPay.filter(function(m){ return !!paidMap[m.userId||m.uid||'']; }).length;
+  var unpaidMs = shouldPay.filter(function(m){ return !paidMap[m.userId||m.uid||'']; });
+  var paidRate = shouldPay.length ? Math.round(paidCnt/shouldPay.length*100) : 0;
+  var anomaly  = shouldPay.filter(function(m){ return !m.membershipType; });
 
-  // ── build the PDF page ────────────────────────────────────────────────
-  var html = _buildFinancePDFHtml({
-    year:_finYear, yrStr:_yrStr,
+  return {
+    year:targetYear, yrStr:String(targetYear),
     incTotal:incTotal, annualT:annualT, monthlyT:monthlyT,
     coachT:coachT, donateT:donateT, otherT:otherT,
     expTotal:expTotal, balance:balance,
@@ -5806,22 +5802,72 @@ function exportFinancePDF(){
     shouldPayLen:shouldPay.length, paidCnt:paidCnt,
     unpaidMs:unpaidMs, paidRate:paidRate, anomaly:anomaly,
     fmtN:fmtN, effAmt:effAmt,
-  });
+    hasRecords: yearRecs.length > 0,
+  };
+}
 
-  var blob     = new Blob([html], {type:'text/html;charset=utf-8'});
-  var blobUrl  = URL.createObjectURL(blob);
-  var filename = 'chingxin-finance-'+_finYear+'.pdf';
+/* ── Finance: Export PDF — 導向正式路由，完全不使用 blob: URL ───────────────
+   路徑：/report/finance/{year}
+   Firebase Hosting 的 "source":"**" rewrite 讓此路徑回傳 index.html，
+   路由攔截器接手後直接從 Firestore 讀資料並渲染報表。
+   LINE WebView / iOS / Android 全部適用。
+   ─────────────────────────────────────────────────────────────────────────── */
+function exportFinancePDF(){
+  if(!isAdminLike()){ showToast('僅管理員可匯出'); return; }
+  if(!financeRecords.length){ showToast(_finYear+' 年沒有資料可匯出'); return; }
+  window.location.href = '/report/finance/' + _finYear;
+}
 
-  var _isIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-  var _isLine = /Line\//i.test(navigator.userAgent);
+/* ── Finance: Standalone report page — called by route interceptor ───────────
+   直接從 Firestore 讀資料（不依賴 auth 狀態），接管整頁渲染。
+   usersCache / financeRecords 全域在此函式內填入 Firestore 資料。
+   ─────────────────────────────────────────────────────────────────────────── */
+async function _loadFinanceReportPage(year){
+  document.body.innerHTML =
+    '<div style="display:flex;align-items:center;justify-content:center;min-height:100dvh;'+
+    'font-family:\'PingFang TC\',sans-serif;font-size:14px;color:#666">'+
+    '載入 '+year+' 年財務報表中…</div>';
 
-  if(_isIOS || _isLine){
-    // Show sheet with open-in-browser button + instructions
-    _showPDFSheet(blobUrl, filename);
+  if(!db){
+    document.body.innerHTML =
+      '<div style="padding:40px;text-align:center;color:#c00">資料庫連線失敗，請重新整理。</div>';
     return;
   }
-  var win = window.open(blobUrl, '_blank');
-  if(!win){ showToast('請允許開啟新視窗後重試'); }
+  try {
+    var results = await Promise.all([
+      db.collection('financialRecords').get(),
+      db.collection('members').get()
+    ]);
+    financeRecords = results[0].docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+    usersCache = {};
+    results[1].docs.forEach(function(d){ usersCache[d.id] = Object.assign({userId:d.id}, d.data()); });
+
+    var d = _prepFinancePDFData(year);
+    if(!d.hasRecords){
+      document.body.innerHTML =
+        '<div style="padding:40px;text-align:center;font-family:sans-serif;color:#888">'+
+        year+' 年無財務記錄</div>';
+      return;
+    }
+    var html = _buildFinancePDFHtml(d);
+    document.open('text/html', 'replace');
+    document.write(html);
+    document.close();
+  } catch(e){
+    document.body.innerHTML =
+      '<div style="padding:40px;text-align:center;font-family:sans-serif;color:#c00">'+
+      '報表載入失敗：'+(e.message||String(e))+'<br><br>'+
+      '<button onclick="history.back()" '+
+        'style="padding:8px 20px;border-radius:6px;border:1px solid #ccc;cursor:pointer">返回</button>'+
+      '</div>';
+  }
+}
+
+/* ── PDF: Action Sheet — 已廢棄，保留以防舊呼叫 ── */
+function _showPDFSheet(){ /* no-op */ }
+function _closePDFSheet(){
+  var el = document.getElementById('_finPDFSheet');
+  if(el) el.remove();
 }
 
 /* ── PDF HTML builder ── */
@@ -6000,25 +6046,8 @@ function _buildFinancePDFHtml(d){
     '</body></html>';
 }
 
-/* ── PDF: Action Sheet for iOS / LINE WebView ── */
-function _showPDFSheet(blobUrl, filename){
-  var old = document.getElementById('_finPDFSheet');
-  if(old) old.remove();
-  var el = document.createElement('div');
-  el.id  = '_finPDFSheet';
-  el.innerHTML =
-    '<div style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:4000" onclick="_closePDFSheet()"></div>'+
-    '<div style="position:fixed;bottom:0;left:0;right:0;z-index:4001;background:var(--color-surface);border-radius:18px 18px 0 0;padding:20px 20px 40px">'+
-      '<div style="width:36px;height:4px;border-radius:2px;background:var(--color-border);margin:0 auto 18px"></div>'+
-      '<div style="font-size:15px;font-weight:700;margin-bottom:6px;color:var(--color-text-primary)">匯出 PDF</div>'+
-      '<div style="font-size:12.5px;color:var(--color-text-secondary);margin-bottom:18px;line-height:1.7">'+
-        '點選下方按鈕在瀏覽器中開啟財務報表，<br>再點「列印 / 儲存 PDF」即可下載。'+
-      '</div>'+
-      '<a href="'+blobUrl+'" target="_blank" style="display:block;text-align:center;padding:12px;background:#2a4a2e;color:#fff;border-radius:10px;font-size:14px;font-weight:600;text-decoration:none;margin-bottom:10px">在瀏覽器中開啟報表</a>'+
-      '<button onclick="_closePDFSheet()" style="width:100%;padding:12px;background:var(--color-surface-alt);color:var(--color-text-secondary);border:none;border-radius:10px;font-size:14px;cursor:pointer">取消</button>'+
-    '</div>';
-  document.body.appendChild(el);
-}
+/* ── PDF: Action Sheet — 已廢棄，改用 window.location.href 直接跳轉 ── */
+function _showPDFSheet(blobUrl){ window.location.href = blobUrl; }
 function _closePDFSheet(){
   var el = document.getElementById('_finPDFSheet');
   if(el) el.remove();
@@ -9286,10 +9315,17 @@ function render(){
   loadWeekBookings();
 }
 
-// Startup: auth gate manages when renders fire.
-// DEV mode (DEV_ROLE set) → _showMainApp() called immediately → renders fire.
-// Production → renders fire only after status === 'active' confirmed.
-initAuth();
+// ── Startup: route interceptor → auth gate ──────────────────────────────────
+// /report/finance/{year}  → standalone report page (no auth required)
+// everything else          → normal LIFF auth flow
+(function(){
+  var _rm = window.location.pathname.match(/^\/report\/finance\/(\d{4})(?:\/.*)?$/);
+  if(_rm){
+    _loadFinanceReportPage(parseInt(_rm[1], 10));   // takes over the page
+  } else {
+    initAuth();                                      // normal flow
+  }
+})();
 </script>
 
 <!-- ── Finance Confirm Dialog ── -->
