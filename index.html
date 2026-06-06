@@ -1274,6 +1274,194 @@ button {
   color:var(--color-text-primary);
 }
 
+/* ── Finance: Monthly Income/Expense Report ────────────────────────────────
+   _calcMonthlyReport：純計算，回傳 [{month, income, expense, balance, cumulative}]
+   _renderMonthlyReport：渲染 UI 表格
+   _renderAnnualSummaryTable：渲染年度分類合計表（含筆數）
+   _renderMemberPaymentTracker：渲染每位會員本年度繳費月份追蹤
+   ─────────────────────────────────────────────────────────────────────── */
+
+function _calcMonthlyReport(source){
+  var EXCL = {void:1, cancelled:1, deleted:1, archived:1};
+  var byMonth = {};
+  source.forEach(function(r){
+    if(EXCL[r.status||'active']) return;
+    var month = (r.date||'').slice(0,7);
+    if(!month || month.length < 7) return;
+    if(!byMonth[month]) byMonth[month] = {income:0, expense:0};
+    var eff = (r.status==='refund') ? -r.amount : r.amount;
+    if(r.type === 'expense'){
+      byMonth[month].expense += r.amount; // 支出以正數計
+    } else {
+      byMonth[month].income += eff;
+    }
+  });
+  var months = Object.keys(byMonth).sort();
+  var cumulative = 0;
+  return months.map(function(m){
+    var d = byMonth[m];
+    var balance = d.income - d.expense;
+    cumulative += balance;
+    return {month:m, income:d.income, expense:d.expense, balance:balance, cumulative:cumulative};
+  });
+}
+
+function _renderMonthlyReport(source, fmt){
+  var data = _calcMonthlyReport(source);
+  if(!data.length) return '';
+  var TITLE  = 'font-size:11px;font-weight:700;letter-spacing:0.08em;color:var(--color-text-muted);text-transform:uppercase;margin:20px 0 8px;padding-bottom:4px;border-bottom:1.5px solid var(--color-border)';
+  var TH     = 'padding:8px 8px;font-size:10.5px;font-weight:600;letter-spacing:0.04em;color:var(--color-text-muted);border-bottom:1.5px solid var(--color-border);white-space:nowrap';
+  var TD     = 'padding:7px 8px;font-size:12px;border-bottom:1px solid var(--color-border-soft);white-space:nowrap';
+  var GREEN  = '#2a6a2a';
+  var RED    = 'var(--color-clay)';
+  var html   = '<div style="'+TITLE+'">每月收支結餘</div>';
+  html += '<div style="overflow-x:auto;margin-bottom:20px"><table style="width:100%;border-collapse:collapse"><thead><tr>';
+  ['月份','收入','支出','當月結餘','累積結餘'].forEach(function(h,i){
+    html += '<th style="'+TH+(i>0?''';'+'text-align:right':'')+'"'>'+h+'</th>';
+  });
+  html += '</tr></thead><tbody>';
+  data.forEach(function(row){
+    var bColor = row.balance < 0 ? RED : GREEN;
+    var cColor = row.cumulative < 0 ? RED : 'var(--color-text-primary)';
+    html += '<tr>';
+    html += '<td style="'+TD+';font-weight:500">'+row.month+'</td>';
+    html += '<td style="'+TD+';text-align:right">'+fmt(row.income)+'</td>';
+    html += '<td style="'+TD+';text-align:right;color:'+RED+'">'+fmt(row.expense)+'</td>';
+    html += '<td style="'+TD+';text-align:right;font-weight:600;color:'+bColor+'">'+fmt(row.balance)+'</td>';
+    html += '<td style="'+TD+';text-align:right;font-weight:600;color:'+cColor+'">'+fmt(row.cumulative)+'</td>';
+    html += '</tr>';
+  });
+  var tInc = data.reduce(function(a,r){return a+r.income;},0);
+  var tExp = data.reduce(function(a,r){return a+r.expense;},0);
+  var tBal = tInc - tExp;
+  html += '<tr style="background:var(--color-surface-alt)">';
+  html += '<td style="'+TD+';font-weight:700;border-top:1.5px solid var(--color-border)">合計</td>';
+  html += '<td style="'+TD+';text-align:right;font-weight:700;border-top:1.5px solid var(--color-border)">'+fmt(tInc)+'</td>';
+  html += '<td style="'+TD+';text-align:right;font-weight:700;color:'+RED+';border-top:1.5px solid var(--color-border)">'+fmt(tExp)+'</td>';
+  html += '<td style="'+TD+';text-align:right;font-weight:700;color:'+(tBal<0?RED:GREEN)+';border-top:1.5px solid var(--color-border)">'+fmt(tBal)+'</td>';
+  html += '<td style="'+TD+';border-top:1.5px solid var(--color-border)"></td>';
+  html += '</tr></tbody></table></div>';
+  return html;
+}
+
+function _renderAnnualSummaryTable(source, fmt){
+  var EXCL  = {void:1, cancelled:1, deleted:1, archived:1};
+  var COACH = {coaching_fee:1, coach_fee:1, coaching:1};
+  var cats  = [
+    {key:'annual',  label:'年費',  inc:true,  amt:0, cnt:0},
+    {key:'monthly', label:'月費',  inc:true,  amt:0, cnt:0},
+    {key:'coach',   label:'教練費',inc:true,  amt:0, cnt:0},
+    {key:'donate',  label:'捐款',  inc:true,  amt:0, cnt:0},
+    {key:'other',   label:'其他收入',inc:true,amt:0, cnt:0},
+    {key:'expense', label:'支出',  inc:false, amt:0, cnt:0},
+  ];
+  var cmap = {};
+  cats.forEach(function(c){ cmap[c.key] = c; });
+
+  source.forEach(function(r){
+    if(EXCL[r.status||'active']) return;
+    var eff = (r.status==='refund') ? -r.amount : r.amount;
+    if     (r.type==='annual')   { cmap.annual.amt  += eff; cmap.annual.cnt++;  }
+    else if(r.type==='monthly')  { cmap.monthly.amt += eff; cmap.monthly.cnt++; }
+    else if(COACH[r.type])        { cmap.coach.amt   += eff; cmap.coach.cnt++;   }
+    else if(r.type==='donate')   { cmap.donate.amt  += eff; cmap.donate.cnt++;  }
+    else if(r.type==='expense')  { cmap.expense.amt += r.amount; cmap.expense.cnt++; }
+    else                          { cmap.other.amt   += eff; cmap.other.cnt++;   }
+  });
+
+  var incCats  = cats.filter(function(c){ return c.inc; });
+  var totalInc = incCats.reduce(function(a,c){ return a+c.amt; },0);
+  var totalExp = cmap.expense.amt;
+  var balance  = totalInc - totalExp;
+
+  var TITLE  = 'font-size:11px;font-weight:700;letter-spacing:0.08em;color:var(--color-text-muted);text-transform:uppercase;margin:20px 0 8px;padding-bottom:4px;border-bottom:1.5px solid var(--color-border)';
+  var TH     = 'padding:8px 8px;font-size:10.5px;font-weight:600;letter-spacing:0.04em;color:var(--color-text-muted);border-bottom:1.5px solid var(--color-border)';
+  var TD     = 'padding:7px 8px;font-size:12px;border-bottom:1px solid var(--color-border-soft)';
+  var GREEN  = '#2a6a2a';
+  var RED    = 'var(--color-clay)';
+
+  var html = '<div style="'+TITLE+'">年度財務總覽</div>';
+  html += '<table style="width:100%;border-collapse:collapse;margin-bottom:20px"><thead><tr>';
+  html += '<th style="'+TH+'">類型</th><th style="'+TH+';text-align:right">筆數</th><th style="'+TH+';text-align:right">金額</th>';
+  html += '</tr></thead><tbody>';
+
+  cats.forEach(function(cat){
+    if(!cat.cnt && !cat.amt) return;
+    var isExp  = !cat.inc;
+    var color  = isExp ? RED : (cat.amt < 0 ? RED : 'var(--color-text-primary)');
+    var prefix = isExp ? '−' : '';
+    html += '<tr>';
+    html += '<td style="'+TD+'">'+cat.label+'</td>';
+    html += '<td style="'+TD+';text-align:right;color:var(--color-text-muted)">'+cat.cnt+'</td>';
+    html += '<td style="'+TD+';text-align:right;font-weight:500;color:'+color+'">'+prefix+fmt(cat.amt)+'</td>';
+    html += '</tr>';
+  });
+
+  html += '</tbody><tfoot>';
+  html += '<tr style="background:var(--color-surface-alt)">';
+  html += '<td style="'+TD+';font-weight:700;border-top:1.5px solid var(--color-border)">收入合計</td>';
+  html += '<td style="'+TD+';border-top:1.5px solid var(--color-border)"></td>';
+  html += '<td style="'+TD+';text-align:right;font-weight:700;border-top:1.5px solid var(--color-border)">'+fmt(totalInc)+'</td>';
+  html += '</tr>';
+  html += '<tr style="background:var(--color-surface-alt)">';
+  html += '<td style="'+TD+';font-weight:700">結餘</td>';
+  html += '<td style="'+TD+'"></td>';
+  html += '<td style="'+TD+';text-align:right;font-weight:700;color:'+(balance<0?RED:GREEN)+'">'+fmt(balance)+'</td>';
+  html += '</tr></tfoot></table>';
+  return html;
+}
+
+function _renderMemberPaymentTracker(source, fmt){
+  var EXCL = {void:1, cancelled:1, deleted:1, archived:1};
+  var map  = {};
+  source.forEach(function(r){
+    if(EXCL[r.status||'active']) return;
+    if(r.type === 'expense') return;
+    var mid = r.memberId || '';
+    if(!mid) return;
+    if(!map[mid]) map[mid] = {total:0, months:[]};
+    var eff = (r.status==='refund') ? -r.amount : r.amount;
+    map[mid].total += eff;
+    var month = (r.date||'').slice(0,7);
+    if(month && map[mid].months.indexOf(month) === -1) map[mid].months.push(month);
+  });
+
+  var entries = Object.keys(map).map(function(mid){
+    var cu = usersCache[mid] || {};
+    var name    = cu.realName || cu.displayName || mid;
+    var msType  = cu.membershipType || '';
+    var typeLbl = msType==='annual'?'年費':msType==='monthly'?'月費':'—';
+    var expiry  = cu.membershipExpiry || cu.expireDate || '—';
+    return {name:name, typeLbl:typeLbl, months:map[mid].months.slice().sort(), total:map[mid].total, expiry:expiry};
+  }).sort(_sortByOrder);
+
+  if(!entries.length) return '';
+
+  var TITLE = 'font-size:11px;font-weight:700;letter-spacing:0.08em;color:var(--color-text-muted);text-transform:uppercase;margin:20px 0 8px;padding-bottom:4px;border-bottom:1.5px solid var(--color-border)';
+  var TH    = 'padding:8px 8px;font-size:10.5px;font-weight:600;letter-spacing:0.04em;color:var(--color-text-muted);border-bottom:1.5px solid var(--color-border);white-space:nowrap';
+  var TD    = 'padding:7px 8px;font-size:12px;border-bottom:1px solid var(--color-border-soft)';
+
+  var html = '<div style="'+TITLE+'">會員繳費追蹤</div>';
+  html += '<div style="overflow-x:auto;margin-bottom:20px"><table style="width:100%;border-collapse:collapse"><thead><tr>';
+  ['會員','類型','本年繳費月份','合計','到期日'].forEach(function(h,i){
+    html += '<th style="'+TH+(i===3?''';'+'text-align:right':'')+'"'>'+h+'</th>';
+  });
+  html += '</tr></thead><tbody>';
+
+  entries.forEach(function(e){
+    html += '<tr>';
+    html += '<td style="'+TD+';font-weight:500">'+_esc(e.name)+'</td>';
+    html += '<td style="'+TD+';color:var(--color-text-muted)">'+_esc(e.typeLbl)+'</td>';
+    html += '<td style="'+TD+';font-size:11px;color:var(--color-text-secondary)">'+_esc(e.months.join('、')||'—')+'</td>';
+    html += '<td style="'+TD+';text-align:right;font-weight:500">'+fmt(e.total)+'</td>';
+    html += '<td style="'+TD+';font-size:11px;color:var(--color-text-muted)">'+_esc(e.expiry)+'</td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  return html;
+}
+
+
 /* ── Finance: Expiring Members ── */
 .finExpireBlock { margin-top:18px; }
 .finExpireBlockTitle { font-size:10.5px; letter-spacing:0.08em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:10px; padding-left:2px; }
@@ -2590,7 +2778,9 @@ let _memberNtrpFilter='';    // member directory: NTRP filter
 let _memberPosFilter='';     // member directory: position filter
 let _memberFeeFilter='';     // member directory: fee status filter ('paid'|'expiring'|'overdue'|'none'|'')
 let _memberRoleFilter='';     // member directory: role filter ('owner'|'admin'|'coach'|'member'|'')
-let _memberMsTypeFilter='';   // member directory: membershipType filter (''|'annual'|'monthly')
+let _memberMsTypeFilter='';
+let _memberSortMode    = false;   // 排序模式 toggle
+let _sortDraft         = null;    // {uid: number} 排序模式暫存   // member directory: membershipType filter (''|'annual'|'monthly')
 let _coachTabSelected  = null;   // manage: currently viewed coach uid
 let _coachStatsYear    = new Date().getFullYear(); // coach stats: selected year
 let _coachStatsMonth   = new Date().getMonth() + 1; // coach stats: selected month (1-12)
@@ -4060,13 +4250,36 @@ function _renderMembersTab(el){
       + _memberStatCard('月費會員', _scMonthly.length, '#8a6020', 'monthly')
       + '</div>';
     // 新增手動會員按鈕（admin only）
-    html += '<button onclick="openManualMemberSheet()"'
-      + ' style="display:flex;align-items:center;gap:6px;width:100%;padding:9px 14px;'
-      + 'border-radius:8px;border:1px dashed var(--color-border);background:transparent;'
-      + 'color:var(--color-text-muted);font-size:12px;cursor:pointer;'
-      + 'margin-bottom:14px;text-align:left;font-family:var(--font-body)">'
-      + '<span style="font-size:16px;line-height:1">＋</span> 新增手動會員'
-      + '</button>';
+    // ── 頂部固定操作列（sticky，捲動時仍可見）──
+    var _memberCount = _scAll ? _scAll.length : 0;
+    var _STICKY = 'position:sticky;top:0;z-index:10;background:var(--color-bg);'
+               + 'padding:10px 0 10px;margin-bottom:8px;';
+    var _BTN_BASE = 'font-size:12px;padding:6px 14px;border-radius:6px;cursor:pointer;font-family:var(--font-body)';
+    html += '<div style="'+_STICKY+'">';
+    html += '  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">';
+    if(_memberSortMode){
+      html += '  <span style="font-size:12px;font-weight:600;color:#2a4a2e;">'
+            + '排序模式&nbsp;·&nbsp;共 '+_memberCount+' 位會員</span>';
+      html += '  <div style="display:flex;gap:8px">';
+      html += '    <button data-sort-save onclick="saveMemberSort()"'
+            + ' style="'+_BTN_BASE+';border:none;background:#2a4a2e;color:#fff;font-weight:600;">儲存排序</button>';
+      html += '    <button onclick="cancelMemberSort()"'
+            + ' style="'+_BTN_BASE+';border:1px solid var(--color-border);background:transparent;'
+            + 'color:var(--color-text-muted);">取消排序</button>';
+      html += '  </div>';
+    } else {
+      html += '  <span style="font-size:11px;color:var(--color-text-muted);">'
+            + '共 '+_memberCount+' 位會員</span>';
+      html += '  <div style="display:flex;gap:6px">';
+      html += '    <button onclick="openManualMemberSheet()"'
+            + ' style="'+_BTN_BASE+';border:1px dashed var(--color-border);background:transparent;'
+            + 'color:var(--color-text-muted);">＋ 新增</button>';
+      html += '    <button onclick="enterMemberSortMode()"'
+            + ' style="'+_BTN_BASE+';border:1px solid var(--color-border);background:transparent;'
+            + 'color:var(--color-text-muted);">排序模式</button>';
+      html += '  </div>';
+    }
+    html += '  </div></div>';
   }
 
   // ── 統一會員名錄（搜尋 / 篩選）— 所有角色一律顯示 ──
@@ -4159,11 +4372,18 @@ function _renderMemberListInTab(){
     if(_memberMsTypeFilter && (m.membershipType||'') !== _memberMsTypeFilter) return false;
     return true;
   }).sort(function(a,b){
-    var ORDER={owner:0,admin:1,coach:2,member:3,annual_member:3,monthly_member:3};
-    var oa=ORDER[a.role]!=null?ORDER[a.role]:4;
-    var ob=ORDER[b.role]!=null?ORDER[b.role]:4;
-    if(oa!==ob) return oa-ob;
-    return (a.realName||a.displayName||'').localeCompare(b.realName||b.displayName||'','zh-Hant');
+    // 排序模式：依 _sortDraft 暫存順序
+    if(_memberSortMode && _sortDraft){
+      var uda=a.userId||a.uid||'', udb=b.userId||b.uid||'';
+      var oa=_sortDraft[uda]!=null?_sortDraft[uda]:99999;
+      var ob=_sortDraft[udb]!=null?_sortDraft[udb]:99999;
+      if(oa!==ob) return oa-ob;
+      return (a.realName||a.displayName||'').localeCompare(b.realName||b.displayName||'','zh-Hant');
+    }
+    // 一般模式：createdAt DESC（最新加入排最上面）
+    var ta=a.createdAt&&a.createdAt.toDate?a.createdAt.toDate().getTime():0;
+    var tb=b.createdAt&&b.createdAt.toDate?b.createdAt.toDate().getTime():0;
+    return tb-ta;
   });
 
   if(!list.length){
@@ -4218,6 +4438,17 @@ function _renderMemberListInTab(){
       }
     }
 
+    // 排序模式：以 ↑↓ 覆蓋管理操作
+    if(_memberSortMode && adminLike){
+      mgmtHtml='<div style="display:flex;gap:6px;padding:4px 0 2px">'+
+        '<button onclick="moveMemberUp(\''+rawUid+'\')"'
+         +' style="font-size:16px;line-height:1;padding:3px 12px;border-radius:6px;'
+         +'border:1px solid var(--color-border);background:transparent;cursor:pointer">↑</button>'+
+        '<button onclick="moveMemberDown(\''+rawUid+'\')"'
+         +' style="font-size:16px;line-height:1;padding:3px 12px;border-radius:6px;'
+         +'border:1px solid var(--color-border);background:transparent;cursor:pointer">↓</button>'+
+      '</div>';
+    }
     html+='<div class="memberCard" style="flex-direction:column;align-items:stretch;padding:10px 0">'+
       '<div style="display:flex;align-items:center;gap:10px">'+
         '<div class="memberAvatar">'+avatarHtml+'</div>'+
@@ -5216,6 +5447,9 @@ function _renderFinOverview(source, balance, annual, monthly, donate, expense, i
   html += '<div class="finChartSummaryRow" style="margin-bottom:8px">';
   html += '<span class="finChartSummaryLabel">總收入</span><span class="finChartSummaryVal">'+fmt(income)+'</span>';
   html += '</div>';
+  html += _renderMonthlyReport(source, fmt);
+  html += _renderAnnualSummaryTable(source, fmt);
+  html += _renderMemberPaymentTracker(source, fmt);
   html += _renderExpiringSoon();
   return html;
 }
@@ -5841,7 +6075,7 @@ function _prepFinancePDFData(targetYear){
   });
   var SKIP_ST  = {pending:1,blocked:1,rejected:1,deleted:1,resigned:1};
   var shouldPay= Object.values(usersCache).filter(function(m){ return !SKIP_ST[m.status||'']; })
-    .sort(function(a,b){ return (_mName(a)||'').localeCompare(_mName(b)||'','zh-Hant'); });
+    .sort(_sortByOrder);
   var paidCnt  = shouldPay.filter(function(m){ return !!paidMap[m.userId||m.uid||'']; }).length;
   var unpaidMs = shouldPay.filter(function(m){ return !paidMap[m.userId||m.uid||'']; });
   var paidRate = shouldPay.length ? Math.round(paidCnt/shouldPay.length*100) : 0;
@@ -6006,48 +6240,17 @@ function _buildFinancePDFHtml(d){
   // A4 portrait 186mm 可用 (210mm - 12mm×2)
   // Screen: .page 白卡片；Print: flat doc，@page 完全掌控版面
   var css = [
-    /* === Screen-only wrapper === */
-    '@media screen {',
-    '  body { font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei","Heiti TC",sans-serif; font-size:10px; color:#1a1a1a; margin:0; line-height:1.4; background:#ddd; }',
-    '  .print-bar { display:flex; align-items:center; justify-content:space-between; gap:10px; background:#1a1a2e; color:#fff; padding:10px 16px; }',
-    '  .print-bar button { background:#4a7c4e; color:#fff; border:none; padding:8px 24px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; }',
-    '  .print-bar button:hover { background:#3a6a3e; }',
-    '  .print-bar span { font-size:12px; opacity:.7; }',
-    '  .page { background:#fff; max-width:186mm; margin:8mm auto; padding:14mm 12mm; box-shadow:0 2px 8px rgba(0,0,0,0.18); box-sizing:border-box; }',
-    '  .page-header-compact { display:none; }',
-    '}',
-    /* === Print-only === */
-    '@media print {',
-    '  @page { size:A4 portrait; margin:12mm; }',
-    '  * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }',
-    '  body { font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei","Heiti TC",sans-serif; font-size:9px; color:#000; margin:0; padding:0; background:#fff; line-height:1.3; }',
-    '  .print-bar { display:none !important; }',
-    '  .page { background:#fff; box-shadow:none; padding:0; margin:0; max-width:none; width:100%; }',
-    '  .page-break { page-break-before:always; break-before:page; }',
-    '  .section { page-break-inside:avoid; break-inside:avoid; }',
-    '  .page-header-compact { display:block !important; }',
-    '  thead { display:table-header-group; }',
-    '  tr { page-break-inside:avoid; break-inside:avoid; }',
-    '  h2 { page-break-after:avoid; break-after:avoid; }',
-    '  h3 { page-break-after:avoid; break-after:avoid; }',
-    '  table { table-layout:fixed !important; width:100% !important; border-collapse:collapse !important; overflow:hidden; }',
-    '  th, td { font-size:9px !important; padding:3px 4px !important; white-space:nowrap; overflow:hidden; text-overflow:clip; }',
-    '  .td-right { text-align:right !important; }',
-    '  .td-clip { overflow:hidden; text-overflow:ellipsis; }',
-    '}',
-    /* === Shared (screen + print) base styles === */
-    'body { font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei","Heiti TC",sans-serif; font-size:10px; color:#1a1a1a; line-height:1.4; }',
-    /* Compact per-page print header */
-    '.page-header-compact { font-size:8pt; color:#444; text-align:right; border-bottom:1px solid #2a4a2e; padding-bottom:3px; margin-bottom:10px; letter-spacing:.04em; font-weight:600; }',
-    /* Report header */
+    /* ── @page：MUST be top-level, NOT inside @media print ── */
+    '@page { size:A4 portrait; margin:12mm; }',
+
+    /* ── Base shared (screen + print) ── */
+    'body { font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei","Heiti TC",sans-serif; font-size:10px; color:#1a1a1a; line-height:1.4; margin:0; }',
     'header { text-align:center; padding-bottom:10px; border-bottom:2px solid #2a4a2e; margin-bottom:14px; }',
     '.report-org { font-size:14px; font-weight:700; letter-spacing:.08em; color:#2a4a2e; }',
     '.report-title { font-size:11px; font-weight:600; margin-top:5px; color:#333; letter-spacing:.04em; }',
-    /* Section headings */
     'h2 { font-size:11.5px; font-weight:700; color:#2a4a2e; border-bottom:1.5px solid #2a4a2e; padding-bottom:3px; margin:14px 0 7px; }',
     'h3 { font-size:10px; font-weight:600; color:#1a1a1a; margin:9px 0 4px; }',
-    /* Tables */
-    'table { width:100%; border-collapse:collapse; font-size:9.5px; margin-bottom:9px; }',
+    'table { width:100%; border-collapse:collapse; font-size:9px; margin-bottom:9px; }',
     '.inc-table { table-layout:fixed; }',
     'th { background:#2a4a2e; color:#fff; padding:4px 5px; text-align:left; font-weight:600; font-size:9px; letter-spacing:.03em; white-space:nowrap; }',
     'td { padding:3px 5px; border-bottom:1px solid #ddd; font-size:9px; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:clip; vertical-align:middle; }',
@@ -6056,17 +6259,48 @@ function _buildFinancePDFHtml(d){
     'tfoot td { font-weight:700; background:#eef3ee; border-top:1.5px solid #2a4a2e; }',
     '.td-right { text-align:right; }',
     '.td-clip { overflow:hidden; text-overflow:ellipsis; }',
-    /* Summary stat cards */
+    '.page-header-compact { font-size:8pt; color:#444; text-align:right; border-bottom:1px solid #2a4a2e; padding-bottom:3px; margin-bottom:10px; letter-spacing:.04em; font-weight:600; }',
     '.stat-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; margin-bottom:12px; }',
     '.stat-card { border:1px solid #d8d8d8; border-radius:4px; padding:7px 10px; }',
     '.stat-label { font-size:8px; color:#666; letter-spacing:.05em; text-transform:uppercase; margin-bottom:3px; }',
     '.stat-value { font-size:15px; font-weight:700; color:#2a4a2e; }',
     '.stat-card.balance { border-color:#2a4a2e; background:#f0f5f0; }',
     '.stat-card.balance .stat-value { color:#1a3a1e; }',
-    /* Audit */
     '.audit-ok   { color:#2a7a2a; font-weight:600; }',
     '.audit-warn { color:#a83232; font-weight:600; }',
-  ].join('\n');
+    '.section { margin-bottom:14px; }',
+
+    /* ── Screen-only ── */
+    '@media screen {',
+    '  body { background:#ddd; overflow-x:hidden; }',
+    '  .print-bar { display:flex; align-items:center; justify-content:space-between; gap:10px; background:#1a1a2e; color:#fff; padding:10px 16px; position:sticky; top:0; z-index:99; }',
+    '  .print-bar button { background:#4a7c4e; color:#fff; border:none; padding:8px 24px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; }',
+    '  .print-bar button:hover { background:#3a6a3e; }',
+    '  .print-bar span { font-size:12px; opacity:.7; }',
+    '  .page { background:#fff; width:100%; max-width:186mm; margin:8mm auto; padding:14mm 12mm; box-shadow:0 2px 8px rgba(0,0,0,0.18); box-sizing:border-box; }',
+    '  .page-header-compact { display:none; }',
+    '}',
+
+    /* ── Print-only ── */
+    '@media print {',
+    '  * { box-sizing:border-box !important; }',
+    '  body { background:#fff !important; color:#000 !important; margin:0 !important; padding:0 !important; font-size:9pt; }',
+    '  .print-bar { display:none !important; }',
+    '  .page { background:#fff !important; box-shadow:none !important; padding:0 !important; margin:0 !important; max-width:none !important; width:100% !important; border:none !important; }',
+    '  .page-break { page-break-before:always !important; break-before:page !important; }',
+    '  .section { page-break-inside:avoid !important; break-inside:avoid !important; }',
+    '  .page-header-compact { display:block !important; }',
+    '  thead { display:table-header-group !important; }',
+    '  tr { page-break-inside:avoid !important; break-inside:avoid !important; }',
+    '  h2 { page-break-after:avoid !important; break-after:avoid !important; }',
+    '  h3 { page-break-after:avoid !important; break-after:avoid !important; }',
+    '  table { table-layout:fixed !important; width:100% !important; border-collapse:collapse !important; max-width:100% !important; }',
+    '  th, td { font-size:9pt !important; padding:3px 4px !important; white-space:nowrap !important; overflow:hidden !important; text-overflow:clip !important; max-width:100%; }',
+    '  .td-right { text-align:right !important; }',
+    '  .stat-grid { display:flex !important; flex-wrap:wrap !important; gap:5px !important; }',
+    '  .stat-card { flex:1 1 28% !important; page-break-inside:avoid; }',
+    '}',
+  ].join('\\n');
   // ── overview section ──
   var overviewHtml =
     '<h2>年度財務總覽</h2>'+
@@ -6090,6 +6324,38 @@ function _buildFinancePDFHtml(d){
        d.annualRecs.length+d.monthlyRecs.length+d.coachRecs.length+d.donateRecs.length+d.otherRecs.length,
        d.fmtN(d.incTotal)]
     );
+
+  // ── monthly report for PDF ──
+  var _pdfMonthSrc = d.annualRecs.concat(d.monthlyRecs, d.coachRecs, d.donateRecs, d.otherRecs, d.expRecs, d.voidRecs);
+  var _pdfByMonth = {};
+  var _EXCL_PDF   = {void:1, cancelled:1, deleted:1, archived:1};
+  _pdfMonthSrc.forEach(function(r){
+    if(_EXCL_PDF[r.status||'active']) return;
+    var _m = (r.date||'').slice(0,7);
+    if(!_m || _m.length < 7) return;
+    if(!_pdfByMonth[_m]) _pdfByMonth[_m] = {income:0, expense:0};
+    var eff = (r.status==='refund') ? -r.amount : r.amount;
+    if(r.type === 'expense'){ _pdfByMonth[_m].expense += r.amount; }
+    else                    { _pdfByMonth[_m].income  += eff; }
+  });
+  var _pdfMonths = Object.keys(_pdfByMonth).sort();
+  var _pdfCum = 0;
+  var _pdfMonthRows = _pdfMonths.map(function(m){
+    var md = _pdfByMonth[m];
+    var bal = md.income - md.expense;
+    _pdfCum += bal;
+    return [m, d.fmtN(md.income), d.fmtN(md.expense), d.fmtN(bal), d.fmtN(_pdfCum)];
+  });
+  var _MONTHLY_COLS = [
+    {width:'22%', clip:false},
+    {width:'20%', align:'right', clip:false},
+    {width:'18%', align:'right', clip:false},
+    {width:'20%', align:'right', clip:false},
+    {width:'20%', align:'right', clip:false},
+  ];
+  var monthlyPdfHtml = _pdfMonthRows.length
+    ? '<h2>每月收支結餘</h2>'+table(['月份','收入','支出','當月結餘','累積結餘'], _pdfMonthRows, null, 'inc-table', _MONTHLY_COLS)
+    : '';
 
   // ── detail sections ──
   var detailHtml =
@@ -6159,6 +6425,7 @@ function _buildFinancePDFHtml(d){
         '<div class="report-title">'+year+' 年度財務報表</div>'+
       '</header>'+
       overviewHtml+
+      monthlyPdfHtml+
     '</div>'+
     // Page 2+ detail
     '<div class="page page-break">'+
@@ -6344,7 +6611,7 @@ function exportFinanceCSV(){
   var _SKIP = {pending:1, blocked:1, rejected:1, deleted:1, resigned:1};
   var _shouldPay = Object.values(usersCache).filter(function(m){
     return !_SKIP[m.status||''];
-  }).sort(function(a,b){ return (_mName(a)||'').localeCompare(_mName(b)||'','zh-Hant'); });
+  }).sort(_sortByOrder);
 
   var _paidCnt   = _shouldPay.filter(function(m){ return !!_paidMap[m.userId||m.uid||'']; }).length;
   var _unpaidMs  = _shouldPay.filter(function(m){ return !_paidMap[m.userId||m.uid||'']; });
@@ -6888,11 +7155,7 @@ function renderMembers(filter){
                 || String(m.ntrp||'').includes(f)
                 || (m.preferredPosition||'').toLowerCase().includes(f);
     })
-    .sort(function(a,b){
-      if(a.role==='coach' && b.role!=='coach') return -1;
-      if(b.role==='coach' && a.role!=='coach') return  1;
-      return _mName(a).localeCompare(_mName(b),'zh');
-    });
+    .sort(_sortByOrder);
   if(!list.length){
     el.innerHTML = '<div class="emptyState"><div class="emptyStateIcon">—</div>目前無會員資料</div>';
   } else {
@@ -7345,11 +7608,9 @@ function _dvShowDetail(enc){
     var addControls = '';
     if(_canMgr && _total < _cap){
       var memberOpts = '<option value="">— 選擇會員 —</option>';
-      Object.keys(usersCache).sort(function(a,b){
-        return _mName(usersCache[a]).localeCompare(_mName(usersCache[b]),'zh-Hant');
-      }).forEach(function(uid){
-        var m = usersCache[uid];
-        if(!m) return;
+      Object.values(usersCache).sort(_sortByOrder).forEach(function(m){
+        var uid = m.userId || m.uid || '';
+        if(!uid) return;
         var s = m.status||'active';
         if(s==='pending'||s==='blocked'||s==='deleted'||s==='resigned') return;
         if(_pIds.indexOf(uid) >= 0) return; /* skip already-in players */
@@ -7975,6 +8236,93 @@ function submitManualMember(){
       if(err){ err.textContent='建立失敗：' + msg; err.style.display='block'; }
       if(btn){ btn.disabled=false; btn.textContent='建立會員'; }
     });
+}
+
+
+/* ── Member sort utility ─────────────────────────────────────────────────────
+   sortOrder ASC → null 排最後 → 同值時 realName/displayName 筆畫
+   用於財務選人下拉、繳費追蹤表、PDF、CSV、會員名錄。
+   ─────────────────────────────────────────────────────────────────────────── */
+function _sortByOrder(a, b){
+  var oa = (a.sortOrder != null) ? a.sortOrder : 99999;
+  var ob = (b.sortOrder != null) ? b.sortOrder : 99999;
+  if(oa !== ob) return oa - ob;
+  return (a.realName||a.displayName||'').localeCompare(b.realName||b.displayName||'','zh-Hant');
+}
+
+/* ── Member sort mode functions ──────────────────────────────────────────────
+   enterMemberSortMode : 進入排序模式，建立 _sortDraft（依現有 sortOrder → 連續整數）
+   cancelMemberSort    : 放棄暫存，離開排序模式
+   saveMemberSort      : batch write _sortDraft → Firestore sortOrder
+   moveMemberUp/Down   : 交換 _sortDraft 中相鄰成員的順序
+   ─────────────────────────────────────────────────────────────────────────── */
+function enterMemberSortMode(){
+  if(!isAdminLike()) return;
+  _memberSortMode = true;
+  _sortDraft = {};
+  // 以目前排序快照建立 draft（sortOrder ASC，null 排最後 → 確保連續整數）
+  var SKIP = {pending:1, blocked:1, rejected:1, deleted:1};
+  var sorted = Object.values(usersCache).filter(function(m){
+    return !SKIP[m.status||''];
+  }).sort(_sortByOrder);
+  sorted.forEach(function(m, i){
+    var uid = m.userId || m.uid || '';
+    if(uid) _sortDraft[uid] = i + 1;
+  });
+  renderManage();
+}
+
+function cancelMemberSort(){
+  _memberSortMode = false;
+  _sortDraft = null;
+  renderManage();
+}
+
+function saveMemberSort(){
+  if(!_sortDraft || !db){ showToast('無法儲存'); return; }
+  var btn = document.querySelector('[data-sort-save]');
+  if(btn){ btn.disabled = true; btn.textContent = '儲存中…'; }
+  var batch = db.batch();
+  Object.keys(_sortDraft).forEach(function(uid){
+    batch.update(db.collection('members').doc(uid), {sortOrder: _sortDraft[uid]});
+  });
+  batch.commit()
+    .then(function(){
+      showToast('排序已儲存');
+      _memberSortMode = false;
+      _sortDraft = null;
+      // usersCache 由 onSnapshot 自動更新
+    })
+    .catch(function(e){
+      showToast('儲存失敗：'+(e.message||String(e)));
+      if(btn){ btn.disabled = false; btn.textContent = '儲存排序'; }
+    });
+}
+
+function moveMemberUp(uid){
+  if(!_sortDraft) return;
+  var SKIP = {pending:1, blocked:1, rejected:1, deleted:1};
+  var ordered = Object.values(usersCache)
+    .filter(function(m){ var u=m.userId||m.uid||''; return u && _sortDraft[u]!=null && !SKIP[m.status||'']; })
+    .sort(function(a,b){ return _sortDraft[a.userId||a.uid] - _sortDraft[b.userId||b.uid]; });
+  var idx = ordered.findIndex(function(m){ return (m.userId||m.uid) === uid; });
+  if(idx <= 0) return;
+  var prevUid = ordered[idx-1].userId || ordered[idx-1].uid;
+  var tmp = _sortDraft[uid]; _sortDraft[uid] = _sortDraft[prevUid]; _sortDraft[prevUid] = tmp;
+  _renderMemberListInTab();
+}
+
+function moveMemberDown(uid){
+  if(!_sortDraft) return;
+  var SKIP = {pending:1, blocked:1, rejected:1, deleted:1};
+  var ordered = Object.values(usersCache)
+    .filter(function(m){ var u=m.userId||m.uid||''; return u && _sortDraft[u]!=null && !SKIP[m.status||'']; })
+    .sort(function(a,b){ return _sortDraft[a.userId||a.uid] - _sortDraft[b.userId||b.uid]; });
+  var idx = ordered.findIndex(function(m){ return (m.userId||m.uid) === uid; });
+  if(idx < 0 || idx >= ordered.length - 1) return;
+  var nextUid = ordered[idx+1].userId || ordered[idx+1].uid;
+  var tmp = _sortDraft[uid]; _sortDraft[uid] = _sortDraft[nextUid]; _sortDraft[nextUid] = tmp;
+  _renderMemberListInTab();
 }
 
 
