@@ -5854,74 +5854,15 @@ function exportFinanceCSV(){
   } else { L.push('（本年度無作廢紀錄）'); }
   L.push('');
 
-  // ── 十、會員繳費名冊（依類型分區，會長核帳用）────────────────────────────
-  L.push('十、'+_finYear+' 年會員繳費名冊');
-  L.push('（依繳費日期升冪排序，流水號固定，可直接列印核對）');
-  L.push('');
+  // ── 十、會員繳費稽核表 ────────────────────────────────────────────────────
+  // 目的：查誰沒繳、誰資料異常。已繳明細已在三～八，不重複列出。
+  // 已繳定義：當年度有 active 的 annual/monthly finance record
 
-  // 年費名冊
-  L.push('【年費】');
-  if(!annualRecs.length){
-    L.push('（無紀錄）');
-  } else {
-    L.push(row(['流水號','會員姓名','繳費日期','金額','繳費狀態']));
-    annualRecs.forEach(function(r, i){
-      var payStatus = (r.status==='refund') ? '退款' : '已繳清';
-      L.push(row([serial('A',i), _finRecName(r)||'—', r.date, fmtAmt(Math.abs(r.amount)), payStatus]));
-    });
-    // 名冊小計
-    var annualPeople = annualRecs.map(function(r){ return _finRecName(r); })
-      .filter(function(n,i,a){ return n && a.indexOf(n)===i; });  // 去重，估計人數
-    L.push(row(['','人數（約）：'+annualPeople.length+' 人','筆數：'+annualRecs.length,'合計：'+fmtAmt(annualT),'']));
-  }
-  L.push('');
+  var _yr    = _finYear;
+  var _yrStr = String(_yr);
 
-  // 月費名冊
-  L.push('【月費】');
-  if(!monthlyRecs.length){
-    L.push('（無紀錄）');
-  } else {
-    L.push(row(['流水號','會員姓名','繳費日期','金額','繳費狀態']));
-    monthlyRecs.forEach(function(r, i){
-      var payStatus2 = (r.status==='refund') ? '退款' : '已繳清';
-      L.push(row([serial('M',i), _finRecName(r)||'—', r.date, fmtAmt(Math.abs(r.amount)), payStatus2]));
-    });
-    var monthlyPeople = monthlyRecs.map(function(r){ return _finRecName(r); })
-      .filter(function(n,i,a){ return n && a.indexOf(n)===i; });
-    L.push(row(['','人數（約）：'+monthlyPeople.length+' 人','筆數：'+monthlyRecs.length,'合計：'+fmtAmt(monthlyT),'']));
-  }
-  L.push('');
-
-  // 教練費名冊（若有）
-  if(coachRecs.length){
-    L.push('【教練費】');
-    L.push(row(['流水號','會員姓名','繳費日期','金額','繳費狀態']));
-    coachRecs.forEach(function(r, i){
-      var payStatus3 = (r.status==='refund') ? '退款' : '已繳清';
-      L.push(row([serial('C',i), _finRecName(r)||'—', r.date, fmtAmt(Math.abs(r.amount)), payStatus3]));
-    });
-    var coachPeople = coachRecs.map(function(r){ return _finRecName(r); })
-      .filter(function(n,i,a){ return n && a.indexOf(n)===i; });
-    L.push(row(['','人數（約）：'+coachPeople.length+' 人','筆數：'+coachRecs.length,'合計：'+fmtAmt(coachT),'']));
-    L.push('');
-  }
-
-  // 名冊總計
-  var rosterTotal = annualT + monthlyT + coachT;
-  var rosterCount = annualRecs.length + monthlyRecs.length + coachRecs.length;
-  L.push(row(['名冊合計','','筆數：'+rosterCount,'總金額：'+fmtAmt(rosterTotal),'']));
-  L.push('');
-
-  // ── 十一、會員繳費狀態表 ─────────────────────────────────────────────────
-  // 應繳成員：status=approved，排除 pending/blocked/deleted
-  // 已繳定義：當年度有 active 的 annual/monthly finance record（依 year 欄位或 date 前四碼判斷）
-  // 未繳定義：應繳成員中，當年度無有效紀錄
-
-  var _yr     = _finYear;
-  var _yrStr  = String(_yr);
-
-  // 取當年有效 finance 紀錄，依 memberId 建 index
-  var _paidMap = {};   // memberId → [{type, date, amount, membershipType}]
+  // 建 paidMap：memberId → [{type, date, amount, msType}]（當年有效繳費）
+  var _paidMap = {};
   financeRecords.forEach(function(r){
     if((r.status||'active')!=='active') return;
     if(r.type!=='annual'&&r.type!=='monthly') return;
@@ -5930,70 +5871,72 @@ function exportFinanceCSV(){
     var mid = r.memberId || '';
     if(!mid) return;
     if(!_paidMap[mid]) _paidMap[mid] = [];
-    _paidMap[mid].push({
-      type:    r.type,
-      date:    r.date||'',
-      amount:  r.amount||0,
-      msType:  r.membershipType || r.type,
-    });
+    _paidMap[mid].push({type:r.type, date:r.date||'', amount:r.amount||0, msType:r.membershipType||r.type});
   });
 
-  // 應繳成員清單（approved，任意角色）
-  var SKIP_STATUS = {pending:1, blocked:1, rejected:1, deleted:1};
-  var _shouldPayMembers = Object.values(usersCache).filter(function(m){
-    return !SKIP_STATUS[m.status||''];
-  }).sort(function(a,b){
-    return (_mName(a)||'').localeCompare(_mName(b)||'', 'zh-Hant');
+  // 應繳成員（approved，不含 pending/blocked/deleted/resigned）
+  var _SKIP = {pending:1, blocked:1, rejected:1, deleted:1, resigned:1};
+  var _shouldPay = Object.values(usersCache).filter(function(m){
+    return !_SKIP[m.status||''];
+  }).sort(function(a,b){ return (_mName(a)||'').localeCompare(_mName(b)||'','zh-Hant'); });
+
+  var _paidCnt   = _shouldPay.filter(function(m){ return !!_paidMap[m.userId||m.uid||'']; }).length;
+  var _unpaidMs  = _shouldPay.filter(function(m){ return !_paidMap[m.userId||m.uid||'']; });
+  var _total     = _shouldPay.length;
+  var _unpaidCnt = _unpaidMs.length;
+  var _paidRate  = _total ? Math.round(_paidCnt/_total*100) : 0;
+
+  // 資料異常：membershipType 未設定，或有繳費但 memberId 無對應 member 文件
+  var _anomaly = [];
+  _shouldPay.forEach(function(m){
+    if(!m.membershipType){
+      _anomaly.push({name:_mName(m)||'—', reason:'membershipType 未設定', uid:m.userId||m.uid||''});
+    }
+  });
+  // 孤立 finance 記錄（memberId 對不到 usersCache）
+  Object.keys(_paidMap).forEach(function(mid){
+    if(!usersCache[mid]){
+      var r0 = _paidMap[mid][0];
+      _anomaly.push({name:'(uid:'+mid.slice(0,12)+'...)', reason:'finance 記錄存在但 members 無此 uid', uid:mid});
+    }
   });
 
-  var _paidMembers   = _shouldPayMembers.filter(function(m){ return !!_paidMap[m.userId||m.uid||'']; });
-  var _unpaidMembers = _shouldPayMembers.filter(function(m){ return !_paidMap[m.userId||m.uid||'']; });
-  var _total         = _shouldPayMembers.length;
-  var _paidCnt       = _paidMembers.length;
-  var _unpaidCnt     = _unpaidMembers.length;
-  var _paidRate      = _total ? Math.round(_paidCnt/_total*100) : 0;
-
-  L.push('十一、'+_yrStr+' 年會員繳費狀態表');
-  L.push('（比對 members 名冊 × financialRecords，已繳定義：當年度有有效年費或月費紀錄）');
-  L.push('');
-
-  // 【已繳】
-  L.push('【已繳】（'+_paidCnt+' 人）');
-  if(!_paidMembers.length){
-    L.push('（本年度無已繳紀錄）');
-  } else {
-    L.push(row(['姓名','會員類型','繳費日期','金額']));
-    _paidMembers.forEach(function(m){
-      var uid  = m.userId||m.uid||'';
-      var recs = (_paidMap[uid]||[]).sort(function(a,b){ return a.date.localeCompare(b.date); });
-      var msLabel = recs.length ? (recs[0].msType==='annual'?'年費':recs[0].msType==='monthly'?'月費':recs[0].msType) : (m.membershipType==='annual'?'年費':m.membershipType==='monthly'?'月費':'—');
-      var latestDate  = recs.length ? recs[recs.length-1].date : '—';
-      var totalPaid   = recs.reduce(function(s,r){ return s+r.amount; },0);
-      L.push(row([_mName(m)||m.userId||'—', msLabel, latestDate, fmtAmt(totalPaid)]));
-    });
-  }
-  L.push('');
-
-  // 【未繳】
-  L.push('【未繳】（'+_unpaidCnt+' 人）');
-  if(!_unpaidMembers.length){
-    L.push('（本年度無未繳名單）');
-  } else {
-    L.push(row(['姓名','會員類型（歷史）']));
-    _unpaidMembers.forEach(function(m){
-      var msHist = m.membershipType==='annual'?'年費（去年）':m.membershipType==='monthly'?'月費（去年）':'未設定';
-      L.push(row([_mName(m)||m.userId||'—', msHist]));
-    });
-  }
+  L.push('十、'+_yrStr+' 年會員繳費稽核表');
+  L.push('（已繳明細見三～八區，此區僅列未繳名單與資料異常）');
   L.push('');
 
   // 統計
-  L.push('【統計】');
+  L.push('【繳費統計】');
   L.push(row(['項目','人數']));
-  L.push(row(['應繳人數（核准會員）',_total]));
-  L.push(row(['已繳人數',_paidCnt]));
-  L.push(row(['未繳人數',_unpaidCnt]));
-  L.push(row(['繳費率',_paidRate+'%']));
+  L.push(row(['應繳人數（核准會員）', _total]));
+  L.push(row(['已繳人數',             _paidCnt]));
+  L.push(row(['未繳人數',             _unpaidCnt]));
+  L.push(row(['繳費率',               _paidRate+'%']));
+  L.push('');
+
+  // 未繳名單
+  L.push('【未繳名單】（'+_unpaidCnt+' 人）');
+  if(!_unpaidMs.length){
+    L.push('（本年度全員已繳）');
+  } else {
+    L.push(row(['姓名','歷史類型','說明']));
+    _unpaidMs.forEach(function(m){
+      var hist = m.membershipType==='annual'?'年費':m.membershipType==='monthly'?'月費':'未設定';
+      L.push(row([_mName(m)||m.userId||'—', hist, '當年度無有效繳費紀錄']));
+    });
+  }
+  L.push('');
+
+  // 資料異常名單
+  L.push('【資料異常】（'+_anomaly.length+' 筆）');
+  if(!_anomaly.length){
+    L.push('（無異常）');
+  } else {
+    L.push(row(['姓名/識別','異常原因']));
+    _anomaly.forEach(function(a){
+      L.push(row([a.name, a.reason]));
+    });
+  }
 
   // ── Build & Download ─────────────────────────────────────────────────
   var csv      = '﻿' + L.join('\r\n');  // UTF-8 BOM for Numbers/Excel
