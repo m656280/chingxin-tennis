@@ -1115,15 +1115,21 @@ button {
 .navTab svg { opacity:0.70 !important; }
 
 /* year picker button (replaces segmented) */
+/* picker row: year + month side-by-side, wraps on narrow screens */
+.finPickerRow {
+  display:flex; flex-wrap:wrap; gap:8px;
+  margin-bottom:14px; align-items:center;
+}
 .finYearPicker {
   display:inline-flex; align-items:center; gap:5px;
   padding:5px 12px; border-radius:99px;
   border:1px solid var(--color-border); background:var(--color-surface-alt);
   font-size:13px; letter-spacing:0.04em; color:var(--color-text-primary);
   cursor:pointer; font-family:var(--font-body);
-  transition:border-color 150ms ease;
+  transition:border-color 150ms ease; white-space:nowrap;
 }
 .finYearPicker:hover { border-color:var(--color-text-primary); }
+.finYearPicker.active { border-color:var(--color-text-primary); background:var(--color-surface); font-weight:500; }
 .finYearPickerCaret { font-size:10px; opacity:0.55; }
 
 /* year dropdown popup */
@@ -1273,6 +1279,25 @@ button {
   font-family:var(--font-body); font-size:13px; font-weight:500;
   color:var(--color-text-primary);
 }
+
+/* ── Finance: Monthly Balance Table ── */
+.finMonthlyBlock { margin-top:20px; }
+.finMonthlyTitle { font-size:10.5px; letter-spacing:0.08em; color:var(--color-text-muted); text-transform:uppercase; margin-bottom:10px; padding-left:2px; }
+.finMonthlyTable { width:100%; border-collapse:collapse; font-size:12.5px; }
+.finMonthlyTable th { font-size:10.5px; letter-spacing:0.05em; color:var(--color-text-muted); text-align:left; padding:4px 8px 6px; border-bottom:1px solid var(--color-border); font-weight:500; }
+.finMonthlyTable th:not(:first-child) { text-align:right; }
+.finMonthlyTable td { padding:8px 8px; border-bottom:1px solid var(--color-border-soft); color:var(--color-text-primary); vertical-align:middle; }
+.finMonthlyTable td:not(:first-child) { text-align:right; font-variant-numeric:tabular-nums; }
+.finMonthlyTable tbody tr:last-child td { border-bottom:none; }
+.finMonthlyTable .fm-month { font-size:12px; color:var(--color-text-secondary); letter-spacing:0.03em; }
+.finMonthlyTable .fm-income { color:#2a6e36; }
+.finMonthlyTable .fm-expense { color:var(--color-clay); }
+.finMonthlyTable .fm-net-pos { color:#2a6e36; font-weight:500; }
+.finMonthlyTable .fm-net-neg { color:var(--color-clay); font-weight:500; }
+.finMonthlyTable .fm-cum-pos { color:#2a6e36; font-weight:600; }
+.finMonthlyTable .fm-cum-neg { color:var(--color-clay); font-weight:600; }
+.finMonthlyTable tfoot td { font-weight:700; font-size:12.5px; background:var(--color-surface-alt); border-top:1.5px solid var(--color-border); padding:8px 8px; }
+.finMonthlyTable tfoot td:not(:first-child) { text-align:right; }
 
 /* ── Finance: Expiring Members ── */
 .finExpireBlock { margin-top:18px; }
@@ -1496,8 +1521,9 @@ button {
     <div id="financeContent"></div>
   </div>
 
-  <!-- ── Finance Year Dropdown ── -->
+  <!-- ── Finance Year / Month Dropdowns ── -->
   <div class="finYearDropdown" id="finYearDropdown" style="display:none"></div>
+  <div class="finYearDropdown" id="finMonthDropdown" style="display:none"></div>
 
   <!-- ── Bottom Nav ── -->
   <nav class="bottomNav">
@@ -2602,6 +2628,7 @@ let _notifUnsubscribe  = null; // Firestore onSnapshot unsubscribe fn for notifi
 let financeRecords = [];      // local array; Firestore layer can be added later
 let _finSearchQuery = '';     // finance search filter state
 let _finYear = 2026;    // active year ledger (fixed range 2026–2036)
+let _finMonth = 0;      // 0 = all months, 1–12 = specific month
 let _finEditId = null; // null = add mode; string = edit mode
 let _bkEditId  = null; // null = add mode; string = edit booking id
 let _finConfirmCallback = null; // pending callback for finConfirmDlg
@@ -5098,6 +5125,7 @@ function setAdminRole(userId, makeAdmin){
 /* ── Finance: Render ── */
 const FIN_TYPE_LABEL = {annual:'年費',monthly:'月費',donate:'抖內',expense:'支出'};
 const FIN_TYPE_CLASS = {annual:'fin-annual',monthly:'fin-monthly',donate:'fin-donate',expense:'fin-expense'};
+const FIN_MONTH_LABELS = ['全部月份','1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
 
 /* ── Dev/Test Override ── */
 // 本地測試用：設定 role 繞過 Firebase auth。上線後保持 null。
@@ -5151,9 +5179,11 @@ function renderFinance(){
   const searchBar = document.getElementById('finSearchInput');
   if(searchBar) searchBar.style.display = _finViewTab === 'detail' ? '' : 'none';
 
-  // Filter by active year
+  // Filter by active year + optional month
   const source = allRecords.filter(function(r){
-    return (r.year || parseInt(r.date.slice(0,4),10)) === _finYear;
+    if((r.year || parseInt(r.date.slice(0,4),10)) !== _finYear) return false;
+    if(_finMonth > 0 && parseInt((r.date||'').slice(5,7),10) !== _finMonth) return false;
+    return true;
   });
 
   // Stats（void 不列入；refund 扣除）
@@ -5173,11 +5203,16 @@ function renderFinance(){
   const balance = income - expense;
   const fmt = function(n){ return 'NT$ '+(n).toLocaleString(); };
 
-  // Year picker
-  const yearPickerHtml = '<div style="margin-bottom:14px">'
+  // Year + Month picker row
+  const _mLabel = FIN_MONTH_LABELS[_finMonth] || '全部月份';
+  const yearPickerHtml = '<div class="finPickerRow">'
     + '<button class="finYearPicker" onclick="toggleFinYearDropdown(event)">'
     + _finYear + ' <span class="finYearPickerCaret">▼</span>'
-    + '</button></div>';
+    + '</button>'
+    + '<button class="finYearPicker'+(_finMonth > 0 ? ' active' : '')+'" onclick="toggleFinMonthDropdown(event)">'
+    + _mLabel + ' <span class="finYearPickerCaret">▼</span>'
+    + '</button>'
+    + '</div>';
 
   // View tabs
   const VIEW_TABS = [{key:'overview',label:'總覽'},{key:'detail',label:'明細'},{key:'chart',label:'圖表分析'}];
@@ -5216,7 +5251,93 @@ function _renderFinOverview(source, balance, annual, monthly, donate, expense, i
   html += '<div class="finChartSummaryRow" style="margin-bottom:8px">';
   html += '<span class="finChartSummaryLabel">總收入</span><span class="finChartSummaryVal">'+fmt(income)+'</span>';
   html += '</div>';
+  html += _renderMonthlyBalance(source, fmt);
   html += _renderExpiringSoon();
+  return html;
+}
+
+/* ── Finance: Monthly Balance Table ──────────────────────────────────────────
+   依月份彙總收入、支出、當月結餘與累積結餘。
+   source = 當年度已過濾的 financeRecords（void/refund 已在 sumT 處理，
+   但此處需自行過濾 void 並處理 refund）。
+   ─────────────────────────────────────────────────────────────────────────── */
+function _renderMonthlyBalance(source, fmt){
+  // 月份篩選時不顯示（只有單月，累積結餘無意義）
+  if(_finMonth > 0) return '';
+
+  // 排除 void；refund 以負值計入
+  var EXCL = {void:1, cancelled:1, deleted:1, archived:1};
+  var valid = source.filter(function(r){ return !EXCL[r.status||'active']; });
+
+  if(!valid.length) return '';
+
+  // 取得所有月份（YYYY-MM），由舊到新排序
+  var monthSet = {};
+  valid.forEach(function(r){
+    var m = (r.date||'').slice(0,7);
+    if(m) monthSet[m] = true;
+  });
+  var months = Object.keys(monthSet).sort();
+  if(!months.length) return '';
+
+  // 各月匯總
+  var rows = months.map(function(mm){
+    var recs = valid.filter(function(r){ return (r.date||'').slice(0,7)===mm; });
+    var inc = 0, exp = 0;
+    recs.forEach(function(r){
+      var eff = (r.status==='refund') ? -r.amount : r.amount;
+      if(r.type==='expense') exp += r.amount;  // 支出只有 active（refund 退費退給會員，仍為支出方向）
+      else inc += eff;
+    });
+    // 支出 refund 在此視為「退費收回」→ 減少支出
+    recs.forEach(function(r){
+      if(r.type==='expense' && r.status==='refund') exp -= r.amount;
+    });
+    return {mm:mm, inc:inc, exp:exp, net:inc-exp};
+  });
+
+  // 累積結餘
+  var cum = 0;
+  rows.forEach(function(row){ cum += row.net; row.cum = cum; });
+
+  // 總計
+  var totalInc = rows.reduce(function(a,r){ return a+r.inc; },0);
+  var totalExp = rows.reduce(function(a,r){ return a+r.exp; },0);
+  var totalNet = totalInc - totalExp;
+
+  function fmtPos(n){  // 收入/支出（恆正）
+    return 'NT$ '+n.toLocaleString();
+  }
+  function fmtNet(n){  // 結餘（可負）：負值顯示 −
+    return (n<0?'−':'')+'NT$ '+Math.abs(n).toLocaleString();
+  }
+  function netCls(n, prefix){
+    return prefix+(n>=0?'-pos':'-neg');
+  }
+
+  var html = '<div class="finMonthlyBlock">';
+  html += '<div class="finMonthlyTitle">每月收支結餘</div>';
+  html += '<div style="overflow-x:auto"><table class="finMonthlyTable">';
+  html += '<thead><tr><th>月份</th><th>收入</th><th>支出</th><th>當月結餘</th><th>累積結餘</th></tr></thead>';
+  html += '<tbody>';
+  rows.forEach(function(row){
+    html += '<tr>';
+    html += '<td class="fm-month">'+row.mm+'</td>';
+    html += '<td class="fm-income">'+fmtPos(row.inc)+'</td>';
+    html += '<td class="fm-expense">'+fmtPos(row.exp)+'</td>';
+    html += '<td class="'+netCls(row.net,'fm-net')+'">'+fmtNet(row.net)+'</td>';
+    html += '<td class="'+netCls(row.cum,'fm-cum')+'">'+fmtNet(row.cum)+'</td>';
+    html += '</tr>';
+  });
+  html += '</tbody>';
+  html += '<tfoot><tr>';
+  html += '<td>合計</td>';
+  html += '<td style="text-align:right;color:#2a6e36">'+fmtPos(totalInc)+'</td>';
+  html += '<td style="text-align:right;color:var(--color-clay)">'+fmtPos(totalExp)+'</td>';
+  html += '<td style="text-align:right" class="'+netCls(totalNet,'fm-net')+'">'+fmtNet(totalNet)+'</td>';
+  html += '<td></td>';
+  html += '</tr></tfoot>';
+  html += '</table></div></div>';
   return html;
 }
 
@@ -5590,9 +5711,49 @@ function closeFinYearDropdown(){
   if(dd) dd.style.display = 'none';
 }
 
+/* ── Finance: Month Dropdown ── */
+function toggleFinMonthDropdown(evt){
+  evt && evt.stopPropagation();
+  const dd = document.getElementById('finMonthDropdown');
+  if(!dd) return;
+  if(dd.style.display !== 'none' && dd.style.display !== ''){
+    closeFinMonthDropdown(); return;
+  }
+  dd.innerHTML = FIN_MONTH_LABELS.map(function(label, i){
+    return '<button class="finYearDropItem'+(i===_finMonth?' active':'')+'" onclick="switchFinMonth('+i+')">'
+      + label + (i===_finMonth?' ✓':'') + '</button>';
+  }).join('');
+  const btn = evt && evt.currentTarget;
+  if(btn){
+    const r = btn.getBoundingClientRect();
+    dd.style.top  = (r.bottom + 6)+'px';
+    dd.style.left = r.left+'px';
+  } else {
+    dd.style.top = '120px'; dd.style.left = '80px';
+  }
+  dd.style.display = 'block';
+  setTimeout(function(){
+    document.addEventListener('click', _closeFinMonthOnOutside, {once:true});
+  }, 0);
+}
+function _closeFinMonthOnOutside(){ closeFinMonthDropdown(); }
+function closeFinMonthDropdown(){
+  const dd = document.getElementById('finMonthDropdown');
+  if(dd) dd.style.display = 'none';
+}
+function switchFinMonth(m){
+  _finMonth = m;
+  _finSearchQuery = '';
+  closeFinMonthDropdown();
+  const inp = document.getElementById('finSearchInput');
+  if(inp) inp.value = '';
+  renderFinance();
+}
+
 /* ── Finance: Year Switcher ── */
 function switchFinYear(y){
   _finYear = y;
+  _finMonth = 0;   // reset month filter when switching year
   _finSearchQuery = '';
   closeFinYearDropdown();
   const inp = document.getElementById('finSearchInput');
@@ -5800,11 +5961,18 @@ function _finExportName(r){
 /* ── Finance: 資料準備（CSV 與 PDF 共用）────────────────────────────────────
    使用呼叫當下的全域 financeRecords / usersCache / _finExportName()。
    ─────────────────────────────────────────────────────────────────────────── */
-function _prepFinancePDFData(targetYear){
+function _prepFinancePDFData(targetYear, targetMonth){
+  // targetMonth: 0 or falsy = all months, 1–12 = specific month
   var EXCL    = {void:1, cancelled:1, deleted:1, archived:1};
   var allRecs  = financeRecords;
   var yearRecs = allRecs.filter(function(r){
-    return (r.year || parseInt((r.date||'0000').slice(0,4),10)) === targetYear;
+    var ry = r.year || parseInt((r.date||'0000').slice(0,4),10);
+    if(ry !== targetYear) return false;
+    if(targetMonth){
+      var mm = parseInt((r.date||'0000').slice(5,7),10);
+      if(mm !== targetMonth) return false;
+    }
+    return true;
   });
 
   var byDate = function(a,b){ return a.date.localeCompare(b.date); };
@@ -5847,6 +6015,25 @@ function _prepFinancePDFData(targetYear){
   var paidRate = shouldPay.length ? Math.round(paidCnt/shouldPay.length*100) : 0;
   var anomaly  = shouldPay.filter(function(m){ return !m.membershipType; });
 
+  // ── 每月收支結餘 ──
+  var allValid = yearRecs.filter(function(r){ return !EXCL[r.status||'active']; });
+  var mmSet = {};
+  allValid.forEach(function(r){ var m=(r.date||'').slice(0,7); if(m) mmSet[m]=true; });
+  var monthlyRows = Object.keys(mmSet).sort().map(function(mm){
+    var recs = allValid.filter(function(r){ return (r.date||'').slice(0,7)===mm; });
+    var inc = 0, exp = 0;
+    recs.forEach(function(r){
+      if(r.type==='expense'){
+        exp += (r.status==='refund') ? -r.amount : r.amount;
+      } else {
+        inc += (r.status==='refund') ? -r.amount : r.amount;
+      }
+    });
+    return {mm:mm, inc:inc, exp:exp, net:inc-exp};
+  });
+  var cum = 0;
+  monthlyRows.forEach(function(row){ cum += row.net; row.cum = cum; });
+
   return {
     year:targetYear, yrStr:String(targetYear),
     incTotal:incTotal, annualT:annualT, monthlyT:monthlyT,
@@ -5857,6 +6044,9 @@ function _prepFinancePDFData(targetYear){
     otherRecs:otherRecs, expRecs:expRecs, voidRecs:voidRecs,
     shouldPayLen:shouldPay.length, paidCnt:paidCnt,
     unpaidMs:unpaidMs, paidRate:paidRate, anomaly:anomaly,
+    monthlyRows:monthlyRows,
+    month: targetMonth || 0,
+    reportTitle: String(targetYear)+'年'+(targetMonth ? targetMonth+'月' : '度')+'財務報表',
     fmtN:fmtN, effAmt:effAmt,
     hasRecords: yearRecs.length > 0,
   };
@@ -5871,6 +6061,18 @@ function _prepFinancePDFData(targetYear){
 function exportFinancePDF(){
   if(!isAdminLike()){ showToast('僅管理員可匯出'); return; }
   if(!financeRecords.length){ showToast(_finYear+' 年沒有資料可匯出'); return; }
+  if(_finMonth > 0){
+    // 月份篩選：直接在本地產生 PDF，開新視窗渲染
+    var d = _prepFinancePDFData(_finYear, _finMonth);
+    if(!d.hasRecords){
+      showToast(_finYear+'年'+_finMonth+'月沒有資料可匯出'); return;
+    }
+    var html = _buildFinancePDFHtml(d);
+    var w = window.open('', '_blank');
+    if(w){ w.document.open('text/html','replace'); w.document.write(html); w.document.close(); }
+    else { showToast('請允許彈出視窗後重試'); }
+    return;
+  }
   window.location.href = '/report/finance/' + _finYear;
 }
 
@@ -6056,6 +6258,19 @@ function _buildFinancePDFHtml(d){
     'tfoot td { font-weight:700; background:#eef3ee; border-top:1.5px solid #2a4a2e; }',
     '.td-right { text-align:right; }',
     '.td-clip { overflow:hidden; text-overflow:ellipsis; }',
+    /* Monthly balance table */
+    '.monthly-table { width:100%; border-collapse:collapse; font-size:9px; margin-bottom:9px; table-layout:fixed; }',
+    '.monthly-table th { background:#2a4a2e; color:#fff; padding:4px 5px; font-weight:600; font-size:8.5px; letter-spacing:.03em; white-space:nowrap; }',
+    '.monthly-table th:not(:first-child) { text-align:right; }',
+    '.monthly-table td { padding:3px 5px; border-bottom:1px solid #ddd; font-size:9px; white-space:nowrap; vertical-align:middle; }',
+    '.monthly-table td:not(:first-child) { text-align:right; font-variant-numeric:tabular-nums; }',
+    '.monthly-table tbody tr:nth-child(even) { background:#f7f7f5; }',
+    '.monthly-table tfoot td { font-weight:700; background:#eef3ee; border-top:1.5px solid #2a4a2e; }',
+    '.monthly-table tfoot td:not(:first-child) { text-align:right; }',
+    '.mt-inc { color:#2a4a2e; }',
+    '.mt-exp { color:#8c3a2a; }',
+    '.mt-pos { color:#2a4a2e; font-weight:600; }',
+    '.mt-neg { color:#8c3a2a; font-weight:600; }',
     /* Summary stat cards */
     '.stat-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; margin-bottom:12px; }',
     '.stat-card { border:1px solid #d8d8d8; border-radius:4px; padding:7px 10px; }',
@@ -6141,34 +6356,53 @@ function _buildFinancePDFHtml(d){
       ? table(['姓名','異常原因'], anomalyRows, null)
       : '<p class="audit-ok">✓ 無異常</p>');
 
+  // ── monthly balance HTML for PDF（月份篩選時不顯示）──
+  var monthlyBalanceHtml = '';
+  if(d.monthlyRows && d.monthlyRows.length && !d.month){
+    function fmtMTPos(n){ return 'NT$ '+n.toLocaleString(); }
+    function fmtMTNet(n){ return (n<0?'−':'')+'NT$ '+Math.abs(n).toLocaleString(); }
+    var mTotInc = d.monthlyRows.reduce(function(a,r){return a+r.inc;},0);
+    var mTotExp = d.monthlyRows.reduce(function(a,r){return a+r.exp;},0);
+    var mTotNet = mTotInc - mTotExp;
+    var MO_COLS = [{width:'18%'},{width:'22%',align:'right'},{width:'22%',align:'right'},{width:'22%',align:'right'},{width:'16%',align:'right'}];
+    var moRows = d.monthlyRows.map(function(row){
+      return [row.mm, fmtMTPos(row.inc), fmtMTPos(row.exp), fmtMTNet(row.net), fmtMTNet(row.cum)];
+    });
+    var moFoot = ['合計', fmtMTPos(mTotInc), fmtMTPos(mTotExp), fmtMTNet(mTotNet), ''];
+    monthlyBalanceHtml =
+      '<h2>每月收支結餘</h2>'+
+      table(['月份','收入','支出','當月結餘','累積結餘'], moRows, moFoot, 'monthly-table', MO_COLS);
+  }
+
   // ── assemble ──
   return '<!DOCTYPE html><html lang="zh-Hant"><head>'+
     '<meta charset="UTF-8">'+
     '<meta name="viewport" content="width=device-width,initial-scale=1">'+
-    '<title>高雄市清心網球協會　'+year+'年度財務報表</title>'+
+    '<title>高雄市清心網球協會　'+d.reportTitle+'</title>'+
     '<style>'+css+'</style>'+
     '</head><body>'+
     '<div class="no-print print-bar">'+
-      '<span>'+year+' 年度財務報表　高雄市清心網球協會</span>'+
+      '<span>'+d.reportTitle+'　高雄市清心網球協會</span>'+
       '<button id="printBtn" type="button">列印 / 儲存 PDF</button>'+
     '</div>'+
-    // Page 1
+    // Page 1 — overview + monthly balance
     '<div class="page">'+
       '<header>'+
         '<div class="report-org">高雄市清心網球協會</div>'+
-        '<div class="report-title">'+year+' 年度財務報表</div>'+
+        '<div class="report-title">'+d.reportTitle+'</div>'+
       '</header>'+
       overviewHtml+
+      monthlyBalanceHtml+
     '</div>'+
     // Page 2+ detail
     '<div class="page page-break">'+
-      '<div class="page-header-compact">高雄市清心網球協會｜'+year+' 年度財務報表</div>'+
+      '<div class="page-header-compact">高雄市清心網球協會｜'+d.reportTitle+'</div>'+
       '<h2>收入 / 支出明細</h2>'+
       '<div class="section">'+detailHtml+'</div>'+
     '</div>'+
     // Last page audit
     '<div class="page page-break">'+
-      '<div class="page-header-compact">高雄市清心網球協會｜'+year+' 年度財務報表</div>'+
+      '<div class="page-header-compact">高雄市清心網球協會｜'+d.reportTitle+'</div>'+
       auditHtml+
     '</div>'+
     '<script>'+
@@ -6195,10 +6429,15 @@ function exportFinanceCSV(){
   if(!isAdminLike()){ showToast('僅管理員可匯出'); return; }
 
   var EXCL = {void:1, cancelled:1, deleted:1, archived:1};
+  var _csvMonth = _finMonth;  // capture current filter
   var yearRecs = financeRecords.filter(function(r){
-    return (r.year || parseInt(r.date.slice(0,4),10)) === _finYear;
+    var ry = r.year || parseInt(r.date.slice(0,4),10);
+    if(ry !== _finYear) return false;
+    if(_csvMonth > 0 && parseInt((r.date||'').slice(5,7),10) !== _csvMonth) return false;
+    return true;
   });
-  if(!yearRecs.length){ showToast(_finYear+' 年沒有資料可匯出'); return; }
+  var _csvTitle = _finYear+'年'+(_csvMonth>0?_csvMonth+'月':'度')+'財務報表';
+  if(!yearRecs.length){ showToast(_finYear+(_csvMonth>0?'年'+_csvMonth+'月':'年')+' 沒有資料可匯出'); return; }
 
   var byDate = function(a,b){ return a.date.localeCompare(b.date); };
 
@@ -6263,7 +6502,7 @@ function exportFinanceCSV(){
   var L = [];
 
   // ── 一、年度財務總覽 ─────────────────────────────────────────────────
-  L.push('一、'+_finYear+' 年度財務總覽');
+  L.push('一、高雄市清心網球協會　'+_csvTitle);
   L.push(row(['項目','金額']));
   L.push(row(['總收入',        fmtAmt(incTotal)]));
   L.push(row(['　年費收入',    fmtAmt(annualT)]));
@@ -6407,7 +6646,9 @@ function exportFinanceCSV(){
   // ── Build & Download ─────────────────────────────────────────────────
   var csv      = '﻿' + L.join('\r\n');  // UTF-8 BOM for Numbers/Excel
   var blob     = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-  var filename = 'chingxin-finance-'+_finYear+'.csv';
+  var filename = _csvMonth > 0
+    ? 'chingxin-finance-'+_finYear+'-'+String(_csvMonth).padStart(2,'0')+'.csv'
+    : 'chingxin-finance-'+_finYear+'.csv';
 
   var _csvIsIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
   var _csvIsLine = /Line\//i.test(navigator.userAgent);
