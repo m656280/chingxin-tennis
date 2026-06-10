@@ -6056,56 +6056,63 @@ function _getYearMonthPairs(startYear, startMonth, endYear, endMonth){
   return pairs;
 }
 
+/* ── Finance: 匯出範圍判斷（年月序號比較）────────────────────────────────────
+   以年月序號 (year*12 + month) 比較，跨年正確且無 leading-zero 字串問題。
+   ⚠ 年/月一律以 r.date 為準（source of truth），r.year/r.month 僅在 date 無法
+   解析時備援。原因：submitFinanceRecord 把 r.year 寫成「記錄當下作用中的帳本
+   年度 (_finYear)」，並非該筆記錄真正所屬年份（例：2025-12 的記錄被存成
+   year:2026），若優先採用 r.year 會把跨年記錄判到錯誤年份而漏掉。
+   ─────────────────────────────────────────────────────────────────────────── */
+function _inExportRange(r, startYear, startMonth, endYear, endMonth){
+  var ry = parseInt((r.date||'').slice(0,4), 10) || r.year;
+  var rm = parseInt((r.date||'').slice(5,7), 10) || r.month;
+  if(!ry || !rm || isNaN(ry) || isNaN(rm)) return false;
+  var recordYM = ry*12 + rm;
+  var startYM  = startYear*12 + startMonth;
+  var endYM    = endYear*12 + endMonth;
+  return recordYM >= startYM && recordYM <= endYM;
+}
+
 /* ── Finance: 資料準備（CSV 與 PDF 共用）────────────────────────────────────
    使用呼叫當下的全域 financeRecords / usersCache / _finExportName()。
    兩種呼叫方式：
-     legacy: (targetYear:number, targetMonths?: number|array)  → 單一年份報表
-     range : ({pairs:[{year,month}…], title:string})           → 跨年月範圍報表
+     legacy: (targetYear:number[, month:number])                          → 全年或單月（standalone report page 用）
+     range : ({range:{startYear,startMonth,endYear,endMonth}, title})      → 跨年月範圍報表
+   篩選一律走 _inExportRange（年月序號比較、date 為準），不依賴 r.year。
    ─────────────────────────────────────────────────────────────────────────── */
 function _prepFinancePDFData(arg1, arg2){
-  var _pairs, reportTitle, anchorYear, _months;
-  if(arg1 && typeof arg1 === 'object' && Array.isArray(arg1.pairs)){
-    // ── range mode ──
-    _pairs      = arg1.pairs.slice();
+  var startYear, startMonth, endYear, endMonth, reportTitle;
+  if(arg1 && typeof arg1 === 'object' && arg1.range){
+    // ── range mode：{range:{startYear,startMonth,endYear,endMonth}, title} ──
+    startYear  = arg1.range.startYear;  startMonth = arg1.range.startMonth;
+    endYear    = arg1.range.endYear;    endMonth   = arg1.range.endMonth;
     reportTitle = arg1.title || '';
-    anchorYear  = _pairs.length ? _pairs[_pairs.length-1].year : new Date().getFullYear();
-    _months     = _pairs.map(function(p){ return p.month; });
   } else {
-    // ── legacy mode: (targetYear, targetMonths) ──
+    // ── legacy mode：(targetYear[, month]) → 全年或單月（standalone report page 用）──
     var targetYear = arg1;
-    var sel = [];  // empty = all months
-    if(arg2 && typeof arg2 === 'number' && arg2 > 0){
-      sel = [arg2];
-    } else if(Array.isArray(arg2) && arg2.length > 0){
-      sel = arg2.slice().sort(function(a,b){return a-b;});
+    var m = (arg2 && typeof arg2 === 'number' && arg2 > 0) ? arg2 : 0;
+    startYear = endYear = targetYear;
+    if(m){
+      startMonth = endMonth = m;
+      reportTitle = String(targetYear)+'年'+m+'月財務報表';
+    } else {
+      startMonth = 1; endMonth = 12;
+      reportTitle = String(targetYear)+'年度財務報表';
     }
-    var monthsForPairs = sel.length ? sel : [1,2,3,4,5,6,7,8,9,10,11,12];
-    _pairs     = monthsForPairs.map(function(m){ return {year:targetYear, month:m}; });
-    anchorYear = targetYear;
-    _months    = sel;  // keep legacy semantics for title; [] = all
-    reportTitle = (function(){
-      if(!sel.length) return String(targetYear)+'年度財務報表';
-      if(sel.length === 1) return String(targetYear)+'年'+sel[0]+'月財務報表';
-      var allSeq = sel.every(function(m,i){ return i===0||m===sel[i-1]+1; });
-      var label = allSeq
-        ? sel[0]+'月～'+sel[sel.length-1]+'月'
-        : sel.join('、')+'月';
-      return String(targetYear)+'年 '+label+' 財務報表';
-    })();
   }
-
-  // pair lookup sets：年月精確比對 / 年份集合（繳費稽核用）
-  var pairSet = {}, pairYears = {};
-  _pairs.forEach(function(p){ pairSet[p.year+'-'+p.month] = true; pairYears[p.year] = true; });
-  function _inRange(r){
-    var ry = r.year || parseInt((r.date||'0000').slice(0,4),10);
-    var rm = parseInt((r.date||'0000').slice(5,7),10);
-    return pairSet[ry+'-'+rm] === true;
+  // 正規化：start 不得大於 end（防呆）
+  if(startYear*12+startMonth > endYear*12+endMonth){
+    var ty=startYear; startYear=endYear; endYear=ty;
+    var tm=startMonth; startMonth=endMonth; endMonth=tm;
   }
+  var _monthCount = (endYear*12+endMonth) - (startYear*12+startMonth) + 1;
+  var anchorYear  = endYear;
 
   var EXCL    = {void:1, cancelled:1, deleted:1, archived:1};
   var allRecs  = financeRecords;
-  var yearRecs = allRecs.filter(_inRange);
+  var yearRecs = allRecs.filter(function(r){
+    return _inExportRange(r, startYear, startMonth, endYear, endMonth);
+  });
 
   var byDate = function(a,b){ return a.date.localeCompare(b.date); };
   function effAmt(r){ return (r.status==='refund')?-r.amount:r.amount; }
@@ -6134,8 +6141,8 @@ function _prepFinancePDFData(arg1, arg2){
   allRecs.forEach(function(r){
     if((r.status||'active')!=='active') return;
     if(r.type!=='annual'&&r.type!=='monthly') return;
-    var ry = r.year || parseInt((r.date||'0000').slice(0,4),10) || 0;
-    if(!pairYears[ry]) return;
+    var ry = parseInt((r.date||'').slice(0,4),10) || r.year || 0;
+    if(ry < startYear || ry > endYear) return;   // 年份序號範圍（date 為準）
     var mid = r.memberId||''; if(!mid) return;
     (paidMap[mid]=paidMap[mid]||[]).push({type:r.type,date:r.date||'',amount:r.amount||0});
   });
@@ -6177,8 +6184,8 @@ function _prepFinancePDFData(arg1, arg2){
     shouldPayLen:shouldPay.length, paidCnt:paidCnt,
     unpaidMs:unpaidMs, paidRate:paidRate, anomaly:anomaly,
     monthlyRows:monthlyRows,
-    month: _months.length === 1 ? _months[0] : 0,  // legacy compat: single month → number
-    months: _months,  // drives monthly-balance visibility (length !== 1)
+    month: _monthCount === 1 ? startMonth : 0,  // legacy compat: single month → number
+    months: new Array(_monthCount),  // length drives monthly-balance visibility (!== 1)
     reportTitle: reportTitle,
     fmtN:fmtN, effAmt:effAmt,
     hasRecords: yearRecs.length > 0,
@@ -6260,17 +6267,22 @@ function _setExportRange(){
   if(em) _exportEndMonth   = parseInt(em.value, 10);
 }
 
-function _exportRangeTitle(pairs){
-  var first = pairs[0], last = pairs[pairs.length-1];
-  return first.year+'年'+first.month+'月～'+last.year+'年'+last.month+'月財務報表';
+function _normExportRange(){
+  var sy=_exportStartYear, sm=_exportStartMonth, ey=_exportEndYear, em=_exportEndMonth;
+  if(sy*12+sm > ey*12+em){ var ty=sy;sy=ey;ey=ty; var tm=sm;sm=em;em=tm; }  // 防呆對調
+  return {startYear:sy, startMonth:sm, endYear:ey, endMonth:em};
+}
+
+function _exportRangeTitle(rg){
+  return rg.startYear+'年'+rg.startMonth+'月～'+rg.endYear+'年'+rg.endMonth+'月財務報表';
 }
 
 function _doExportPDF(){
   _closeFinExportModal();
-  var pairs = _getYearMonthPairs(_exportStartYear, _exportStartMonth, _exportEndYear, _exportEndMonth);
-  var title = _exportRangeTitle(pairs);
+  var rg = _normExportRange();
+  var title = _exportRangeTitle(rg);
   if(!financeRecords.length){ showToast('沒有資料可匯出'); return; }
-  var d = _prepFinancePDFData({pairs:pairs, title:title});
+  var d = _prepFinancePDFData({range:rg, title:title});
   if(!d.hasRecords){
     showToast(title.replace('財務報表','') + ' 沒有資料可匯出'); return;
   }
@@ -6292,8 +6304,7 @@ function _doExportPDF(){
 
 function _doExportCSV(){
   _closeFinExportModal();
-  var pairs = _getYearMonthPairs(_exportStartYear, _exportStartMonth, _exportEndYear, _exportEndMonth);
-  _runExportCSV(pairs);
+  _runExportCSV(_normExportRange());
 }
 
 /* ── Finance: Export PDF — 舊版 standalone report page 路由（保留以防外部連結）──
@@ -6652,25 +6663,21 @@ function _closePDFSheet(){
 }
 
 /* ── Finance: Export CSV ── */
-function _runExportCSV(pairs){
-  // pairs: [{year,month},…] 跨年月範圍（由 _getYearMonthPairs 產生）
+function _runExportCSV(rg){
+  // rg: {startYear,startMonth,endYear,endMonth} 跨年月範圍
   if(!isAdminLike()){ showToast('僅管理員可匯出'); return; }
 
-  if(!pairs || !pairs.length){
+  if(!rg){
     var _ny = new Date().getFullYear();
-    pairs = _getYearMonthPairs(_ny, 1, _ny, 12);
+    rg = {startYear:_ny, startMonth:1, endYear:_ny, endMonth:12};
   }
-  var _first = pairs[0], _last = pairs[pairs.length-1];
-  var _pairSet = {}, _pairYears = {};
-  pairs.forEach(function(p){ _pairSet[p.year+'-'+p.month] = true; _pairYears[p.year] = true; });
+  var _sy = rg.startYear, _sm = rg.startMonth, _ey = rg.endYear, _em = rg.endMonth;
 
   var EXCL = {void:1, cancelled:1, deleted:1, archived:1};
   var yearRecs = financeRecords.filter(function(r){
-    var ry = r.year || parseInt((r.date||'0000').slice(0,4),10);
-    var rm = parseInt((r.date||'0000').slice(5,7),10);
-    return _pairSet[ry+'-'+rm] === true;
+    return _inExportRange(r, _sy, _sm, _ey, _em);
   });
-  var _csvTitle = _first.year+'年'+_first.month+'月～'+_last.year+'年'+_last.month+'月財務報表';
+  var _csvTitle = _sy+'年'+_sm+'月～'+_ey+'年'+_em+'月財務報表';
   if(!yearRecs.length){ showToast(_csvTitle+' 沒有資料可匯出'); return; }
 
   var byDate = function(a,b){ return a.date.localeCompare(b.date); };
@@ -6797,15 +6804,15 @@ function _runExportCSV(pairs){
   // 目的：查誰沒繳、誰資料異常。已繳明細已在三～八，不重複列出。
   // 已繳定義：當年度有 active 的 annual/monthly finance record
 
-  var _yrStr = _first.year+'年'+_first.month+'月～'+_last.year+'年'+_last.month+'月';
+  var _yrStr = _sy+'年'+_sm+'月～'+_ey+'年'+_em+'月';
 
   // 建 paidMap：memberId → [{type, date, amount, msType}]（範圍涵蓋年份內的有效繳費）
   var _paidMap = {};
   financeRecords.forEach(function(r){
     if((r.status||'active')!=='active') return;
     if(r.type!=='annual'&&r.type!=='monthly') return;
-    var recYear = r.year || parseInt((r.date||'').slice(0,4),10) || 0;
-    if(!_pairYears[recYear]) return;
+    var recYear = parseInt((r.date||'').slice(0,4),10) || r.year || 0;
+    if(recYear < _sy || recYear > _ey) return;   // 年份序號範圍（date 為準）
     var mid = r.memberId || '';
     if(!mid) return;
     if(!_paidMap[mid]) _paidMap[mid] = [];
@@ -6880,8 +6887,8 @@ function _runExportCSV(pairs){
   var csv      = '﻿' + L.join('\r\n');  // UTF-8 BOM for Numbers/Excel
   var blob     = new Blob([csv], {type:'text/csv;charset=utf-8;'});
   var filename = (function(){
-    function ym(p){ return p.year+String(p.month).padStart(2,'0'); }
-    return 'chingxin-finance-'+ym(_first)+'-'+ym(_last)+'.csv';
+    function ym(y,m){ return y+String(m).padStart(2,'0'); }
+    return 'chingxin-finance-'+ym(_sy,_sm)+'-'+ym(_ey,_em)+'.csv';
   })();
 
   var _csvIsIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
