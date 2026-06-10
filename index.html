@@ -5766,20 +5766,6 @@ function _donutSVG(segs, size, hole){
   return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'" xmlns="http://www.w3.org/2000/svg">'+paths+'</svg>';
 }
 
-/* ── Finance: dynamic year list ──
-   Returns ascending union of years present in financeRecords (using the same
-   `year || date[0:4]` rule as the ledger filters) plus the current year.
-   No hard-coded base year. */
-function _finRecordYears(){
-  var set = {};
-  (financeRecords||[]).forEach(function(r){
-    var y = r.year || parseInt((r.date||'').slice(0,4),10);
-    if(y && !isNaN(y)) set[y] = true;
-  });
-  set[new Date().getFullYear()] = true;
-  return Object.keys(set).map(Number).sort(function(a,b){ return a-b; });
-}
-
 /* ── Finance: Year Dropdown ── */
 function toggleFinYearDropdown(evt){
   evt && evt.stopPropagation();
@@ -5788,8 +5774,9 @@ function toggleFinYearDropdown(evt){
   if(dd.style.display !== 'none' && dd.style.display !== ''){
     closeFinYearDropdown(); return;
   }
-  // dynamic year list from financeRecords (union current year)
-  const years = _finRecordYears();
+  // fixed year range 2025–2036
+  const years = [];
+  for(var fy = 2025; fy <= 2036; fy++){ years.push(fy); }
   dd.innerHTML = years.map(function(y){
     return '<button class="finYearDropItem'+(y===_finYear?' active':'')+'" onclick="switchFinYear('+y+')">'
       + y + (y===_finYear ? ' ✓' : '') + '</button>';
@@ -6211,14 +6198,14 @@ function _closeFinExportModal(){
 }
 
 function _renderFinExportModal(){
-  // ── Year buttons (dynamic from financeRecords, union current year) ──
+  // ── Year buttons (2025–2036) ──
   var yearRow = document.getElementById('finExportYearRow');
   if(yearRow){
     var yHtml = '';
-    _finRecordYears().forEach(function(y){
+    for(var y = 2025; y <= 2036; y++){
       yHtml += '<button class="finExportYearBtn'+(y===_exportModalYear?' active':'')+
                '" onclick="_setExportYear('+y+')">'+y+'</button>';
-    });
+    }
     yearRow.innerHTML = yHtml;
   }
   // ── Month chips ──
@@ -7067,17 +7054,12 @@ function _finPopulateYearSelect(selectedYear){
   if(!sel) return;
   var cur = new Date().getFullYear();
   var defaultYear = selectedYear ? parseInt(selectedYear,10) : cur;
-  // union: existing record years ∪ forward window (current … current+20),
-  // so admins can backfill past years and prepay future annual memberships.
-  var set = {};
-  _finRecordYears().forEach(function(y){ set[y] = true; });
-  for(var y = cur; y <= cur + 20; y++){ set[y] = true; }
-  if(defaultYear) set[defaultYear] = true;
-  var years = Object.keys(set).map(Number).sort(function(a,b){ return a-b; });
-  var html = years.map(function(y){
+  // fixed year range 2025–2036
+  var html = '';
+  for(var y = 2025; y <= 2036; y++){
     var sel_ = (y === defaultYear) ? ' selected' : '';
-    return '<option value="'+y+'"'+sel_+'>'+y+' 年度</option>';
-  }).join('');
+    html += '<option value="'+y+'"'+sel_+'>'+y+' 年度</option>';
+  }
   sel.innerHTML = html;
 }
 
