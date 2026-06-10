@@ -1884,6 +1884,20 @@ button {
       <label class="formLabel">會籍年度</label>
       <select class="formSelect" id="finFormYear"></select>
     </div>
+    <div class="formRow" id="finFormPeriodRow" style="display:none">
+      <label class="formLabel">繳費期數（月）</label>
+      <select class="formSelect" id="finFormPeriod">
+        <option value="1">1 個月</option>
+        <option value="2">2 個月</option>
+        <option value="3">3 個月</option>
+        <option value="4">4 個月</option>
+        <option value="5">5 個月</option>
+        <option value="6">6 個月</option>
+        <option value="7">7 個月</option>
+        <option value="8">8 個月</option>
+        <option value="9">9 個月</option>
+      </select>
+    </div>
     <div class="formRow">
       <label class="formLabel">會員</label>
       <select class="formSelect" id="finFormMember">
@@ -5202,6 +5216,14 @@ function setAdminRole(userId, makeAdmin){
 /* ── Finance: Render ── */
 const FIN_TYPE_LABEL = {annual:'年費',monthly:'月費',donate:'抖內',expense:'支出'};
 const FIN_TYPE_CLASS = {annual:'fin-annual',monthly:'fin-monthly',donate:'fin-donate',expense:'fin-expense'};
+function _finPeriodLabel(r){
+  var base = FIN_TYPE_LABEL[r.type] || r.type;
+  if(r.type === 'monthly'){
+    var p = parseInt(r.periodMonths, 10) || 1;
+    if(p > 1) base += '（'+p+'個月）';
+  }
+  return base;
+}
 const FIN_MONTH_LABELS = ['全部月份','1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
 
 /* ── Dev/Test Override ── */
@@ -5583,7 +5605,7 @@ function _renderFinDetail(source, isAdmin, fmt){
       + '</div>'
       + '<div class="finRecordRight">'
         + '<div class="financeRecordAmt'+(isOut?' out':'')+'">'+fmt(r.amount)+'</div>'
-        + '<span class="finTypeBadge '+FIN_TYPE_CLASS[r.type]+'">'+FIN_TYPE_LABEL[r.type]+'</span>'
+        + '<span class="finTypeBadge '+FIN_TYPE_CLASS[r.type]+'">'+_finPeriodLabel(r)+'</span>'
         + delIcon
       + '</div>'
     + '</div>';
@@ -6431,7 +6453,9 @@ function _buildFinancePDFHtml(d){
   function incSection(title, prefix, recs, total){
     if(!recs.length) return '';
     var rows = recs.map(function(r,i){
-      return [serial(prefix,i), r.date, _finExportName(r), d.fmtN(d.effAmt(r)), r.createdByName||'—'];
+      var _pm = parseInt(r.periodMonths,10)||1;
+      var _nm = _finExportName(r) + (_pm > 1 ? ' · '+_pm+'個月' : '');
+      return [serial(prefix,i), r.date, _nm, d.fmtN(d.effAmt(r)), r.createdByName||'—'];
     });
     var foot = ['','','筆數：'+recs.length,'合計：'+d.fmtN(total),''];
     return '<div class="section"><h3>'+esc(title)+'</h3>'+
@@ -7029,9 +7053,10 @@ function _expFallbackCopy(text){
 }
 
 /* ── Finance: 會籍到期日計算 ── */
-function _calcMembershipExpiry(membershipType, dateStr, membershipYear){
+function _calcMembershipExpiry(membershipType, dateStr, membershipYear, periodMonths){
   // dateStr: YYYY-MM-DD（收款日期，monthly 用來推算到期日）
   // membershipYear: number（年費專用，決定會籍到期年度）
+  // periodMonths: number（月費專用，繳費期數，預設 1）
   // return: YYYY/MM/DD（與 expireDate 格式一致）
   if(!dateStr||!membershipType) return '';
   var parts=dateStr.split('-');
@@ -7042,8 +7067,9 @@ function _calcMembershipExpiry(membershipType, dateStr, membershipYear){
     var yr = (membershipYear && parseInt(membershipYear,10)) || y;
     return yr+'/12/31';
   } else if(membershipType==='monthly'){
-    mo+=1;
-    if(mo>12){ mo=1; y+=1; }
+    var pm = (periodMonths && parseInt(periodMonths,10) > 0) ? parseInt(periodMonths,10) : 1;
+    mo += pm;
+    while(mo > 12){ mo -= 12; y += 1; }
     return y+'/'+String(mo).padStart(2,'0')+'/'+String(d).padStart(2,'0');
   }
   return '';
@@ -7067,9 +7093,11 @@ function _finPopulateMemberSelect(selectedId){
 
 /* ── Finance: Year Row Toggle ── */
 function _finToggleYearRow(){
-  var type = document.getElementById('finFormType').value;
-  var row  = document.getElementById('finFormYearRow');
-  if(row) row.style.display = (type === 'annual') ? '' : 'none';
+  var type      = document.getElementById('finFormType').value;
+  var yearRow   = document.getElementById('finFormYearRow');
+  var periodRow = document.getElementById('finFormPeriodRow');
+  if(yearRow)   yearRow.style.display   = (type === 'annual')  ? '' : 'none';
+  if(periodRow) periodRow.style.display = (type === 'monthly') ? '' : 'none';
 }
 function _finPopulateYearSelect(selectedYear){
   var sel = document.getElementById('finFormYear');
@@ -7138,8 +7166,9 @@ function submitFinanceRecord(){
   if(!amount || amount <= 0){ showToast('請輸入金額'); return; }
 
   if(_finEditId){
-    var _mYearE = (type==='annual') ? (parseInt((document.getElementById('finFormYear')||{}).value||'0',10)||null) : null;
-    submitEditFinanceRecord(type, member, date, amount, note, _mYearE);
+    var _mYearE   = (type==='annual')  ? (parseInt((document.getElementById('finFormYear')||{}).value||'0',10)||null) : null;
+    var _mPeriodE = (type==='monthly') ? (parseInt((document.getElementById('finFormPeriod')||{}).value||'1',10)||1)  : null;
+    submitEditFinanceRecord(type, member, date, amount, note, _mYearE, _mPeriodE);
   } else {
     if(!db){ showToast('無法連線，請稍後再試'); return; }
     const creatorName = currentUser ? (currentUser.displayName || currentUser.name || '') : '';
@@ -7150,8 +7179,9 @@ function submitFinanceRecord(){
     var _mRealName    = _mObj ? (_mObj.realName || '') : '';
     // 會籍計算（annual / monthly 才產生）
     var _msType   = (type==='annual'||type==='monthly') ? type : '';
-    var _mYear    = (_msType==='annual') ? (parseInt((document.getElementById('finFormYear')||{}).value||'0',10)||null) : null;
-    var _msExpiry = _calcMembershipExpiry(_msType, date, _mYear);
+    var _mYear    = (_msType==='annual')  ? (parseInt((document.getElementById('finFormYear')||{}).value||'0',10)||null)  : null;
+    var _mPeriod  = (_msType==='monthly') ? (parseInt((document.getElementById('finFormPeriod')||{}).value||'1',10)||1)   : null;
+    var _msExpiry = _calcMembershipExpiry(_msType, date, _mYear, _mPeriod);
     const rec = {
       type:              type,
       memberId:          member || '',
@@ -7165,6 +7195,7 @@ function submitFinanceRecord(){
       membershipType:    _msType,
       membershipYear:    _mYear,
       membershipExpiry:  _msExpiry,
+      periodMonths:      _mPeriod || null,
       createdByUid:      creatorUid,
       createdByName:     creatorName,
       createdAt:         TS(),
@@ -7200,7 +7231,7 @@ function submitFinanceRecord(){
   }
 }
 
-function submitEditFinanceRecord(type, member, date, amount, note, membershipYear){
+function submitEditFinanceRecord(type, member, date, amount, note, membershipYear, periodMonths){
   if(!db){ showToast('無法連線，請稍後再試'); return; }
   // member = userId (option value); look up display info directly
   var _mObj2 = member ? usersCache[member] : null;
@@ -7208,8 +7239,9 @@ function submitEditFinanceRecord(type, member, date, amount, note, membershipYea
   var _mRealName2    = _mObj2 ? (_mObj2.realName || '') : '';
   // 會籍計算
   var _msType2   = (type==='annual'||type==='monthly') ? type : '';
-  var _mYear2    = (_msType2==='annual') ? (membershipYear||null) : null;
-  var _msExpiry2 = _calcMembershipExpiry(_msType2, date, _mYear2);
+  var _mYear2    = (_msType2==='annual')  ? (membershipYear||null) : null;
+  var _mPeriod2  = (_msType2==='monthly') ? (parseInt(periodMonths,10)||1) : null;
+  var _msExpiry2 = _calcMembershipExpiry(_msType2, date, _mYear2, _mPeriod2);
   if(!isAdminLike()){ showToast('僅管理員可編輯紀錄'); return; }
   var _origRec = financeRecords.find(function(r){ return r.id===_finEditId; });
   // 二次防護：void / deleted / archived 不得透過 edit 通道修改
@@ -7232,6 +7264,7 @@ function submitEditFinanceRecord(type, member, date, amount, note, membershipYea
     membershipType:    _msType2,
     membershipYear:    _mYear2,
     membershipExpiry:  _msExpiry2,
+    periodMonths:      _mPeriod2 || null,
     updatedAt:         TS(),
     updatedByUid:      _updaterUid,
     updatedByName:     _updaterName,
@@ -7259,6 +7292,7 @@ function submitEditFinanceRecord(type, member, date, amount, note, membershipYea
         rec.memberRealName=_mRealName2; rec.memberNameSnapshot=_mRealName2||_mDisplayName2; rec.memberId=member||'';
         rec.date=date; rec.amount=amount; rec.note=note||'';
         rec.membershipType=_msType2; rec.membershipYear=_mYear2; rec.membershipExpiry=_msExpiry2;
+        rec.periodMonths=_mPeriod2||null;
         rec.updatedAt=upd.updatedAt; rec.updatedByName=_updaterName; rec.updatedByUid=_updaterUid;
         if(_wasVoid) rec.status = 'active';
       }
@@ -7293,7 +7327,7 @@ function openFinanceDetail(id){
       +'</div>';
   }
 
-  var html = detailRow('類型', TYPE_LABEL[rec.type]||rec.type||'');
+  var html = detailRow('類型', _finPeriodLabel(rec));
   // live lookup — 優先 usersCache，fallback 到快照
   var _rdCu = rec.memberId ? (usersCache[rec.memberId] || null) : null;
   var _rdN  = (_rdCu ? (_rdCu.realName || _rdCu.displayName || '') : '')
@@ -7343,6 +7377,8 @@ function editFinanceRecord(id){
   document.getElementById('finFormNote').value   = rec.note   || '';
   _finPopulateMemberSelect(rec.memberId || '');
   _finPopulateYearSelect(rec.membershipYear || null);
+  var _editPeriodSel = document.getElementById('finFormPeriod');
+  if(_editPeriodSel) _editPeriodSel.value = String(parseInt(rec.periodMonths,10)||1);
   _finToggleYearRow();
   // 若此紀錄已作廢，顯示警告
   var recIsVoid = (rec.status || 'active') === 'void';
