@@ -276,3 +276,26 @@ firebase deploy --only hosting:chingxin-tennis
 - 不要求使用者判斷 Git 狀態或 Firebase 設定
 - 若沙盒無法執行 git / firebase，Claude 說明限制並直接提供使用者端指令，不要求使用者排查
 - 若遇到 worktree 錯誤、CLI 缺失等環境問題，在 Report 段落說明，使用者只看到可執行的最終指令
+
+---
+
+## Deployment Shortcut
+
+```bash
+./release.sh "commit message"
+```
+
+等同於：
+
+```bash
+git add .
+git commit -m "commit message"
+git push
+firebase deploy --only hosting
+```
+
+若未傳入 commit message，預設為 `chore: update`。
+
+```bash
+./release.sh   # → git commit -m "chore: update"
+```

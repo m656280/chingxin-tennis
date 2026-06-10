@@ -6253,9 +6253,19 @@ function _doExportPDF(){
     showToast(d.reportTitle.replace('財務報表','') + '沒有資料可匯出'); return;
   }
   var html = _buildFinancePDFHtml(d);
-  var w = window.open('', '_blank');
-  if(w){ w.document.open('text/html','replace'); w.document.write(html); w.document.close(); }
-  else { showToast('請允許彈出視窗後重試'); }
+  // LINE WebView 與 iOS WKWebView 封鎖 window.open (popup)。
+  // 改為在當頁以 document.write 接管，讓使用者列印／截圖後可按返回回到 app。
+  var _pdfIsLine = /Line\//i.test(navigator.userAgent);
+  var _pdfIsIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  if(_pdfIsLine || _pdfIsIOS){
+    document.open('text/html', 'replace');
+    document.write(html);
+    document.close();
+  } else {
+    var w = window.open('', '_blank');
+    if(w){ w.document.open('text/html','replace'); w.document.write(html); w.document.close(); }
+    else { showToast('請允許彈出視窗後重試'); }
+  }
 }
 
 function _doExportCSV(){
@@ -6573,6 +6583,9 @@ function _buildFinancePDFHtml(d){
     '<style>'+css+'</style>'+
     '</head><body>'+
     '<div class="no-print print-bar">'+
+      '<button id="backBtn" type="button" onclick="history.back()" '+
+        'style="background:none;border:1px solid #ccc;border-radius:6px;padding:6px 14px;'+
+        'font-size:13px;cursor:pointer;color:#555;">← 返回財務頁</button>'+
       '<span>'+d.reportTitle+'　高雄市清心網球協會</span>'+
       '<button id="printBtn" type="button">列印 / 儲存 PDF</button>'+
     '</div>'+
