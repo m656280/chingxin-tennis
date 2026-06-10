@@ -6447,7 +6447,7 @@ function _buildFinancePDFHtml(d){
     '@media screen {',
     '  body { font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei","Heiti TC",sans-serif; font-size:10px; color:#1a1a1a; margin:0; line-height:1.4; background:#ddd; }',
     '  .print-bar { display:flex; align-items:center; justify-content:space-between; gap:10px; background:#1a1a2e; color:#fff; padding:10px 16px; }',
-    '  .print-bar button { background:#4a7c4e; color:#fff; border:none; padding:8px 24px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; }',
+    '  .print-bar button { background:#4a7c4e; color:#fff; border:none; padding:8px 24px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; touch-action:manipulation; }',
     '  .print-bar button:hover { background:#3a6a3e; }',
     '  .print-bar span { font-size:12px; opacity:.7; }',
     '  .page { background:#fff; max-width:186mm; margin:8mm auto; padding:14mm 12mm; box-shadow:0 2px 8px rgba(0,0,0,0.18); box-sizing:border-box; }',
@@ -6617,11 +6617,13 @@ function _buildFinancePDFHtml(d){
     '<style>'+css+'</style>'+
     '</head><body>'+
     '<div class="no-print print-bar">'+
-      '<button id="backBtn" type="button" onclick="history.back()" '+
+      '<button id="backBtn" type="button" '+
+        'onclick="location.href=location.origin+location.pathname" '+
         'style="background:none;border:1px solid #ccc;border-radius:6px;padding:6px 14px;'+
-        'font-size:13px;cursor:pointer;color:#555;">← 返回財務頁</button>'+
+        'font-size:13px;cursor:pointer;touch-action:manipulation;color:#555;">← 返回財務頁</button>'+
       '<span>'+d.reportTitle+'　高雄市清心網球協會</span>'+
-      '<button id="printBtn" type="button">列印 / 儲存 PDF</button>'+
+      '<button id="printBtn" type="button" onclick="window.print()" '+
+        'style="touch-action:manipulation;">列印 / 儲存 PDF</button>'+
     '</div>'+
     // Page 1 — overview + monthly balance
     '<div class="page">'+
