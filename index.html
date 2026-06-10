@@ -2718,7 +2718,7 @@ let notificationsCache = []; // user's personal notifications (booking cancelled
 let _notifUnsubscribe  = null; // Firestore onSnapshot unsubscribe fn for notifications
 let financeRecords = [];      // local array; Firestore layer can be added later
 let _finSearchQuery = '';     // finance search filter state
-let _finYear = 2026;    // active year ledger (fixed range 2026–2036)
+let _finYear = new Date().getFullYear();    // active year ledger (defaults to current year)
 let _finMonth = 0;      // 0 = all months, 1–12 = specific month
 let _finEditId = null; // null = add mode; string = edit mode
 let _bkEditId  = null; // null = add mode; string = edit booking id
@@ -5766,6 +5766,20 @@ function _donutSVG(segs, size, hole){
   return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'" xmlns="http://www.w3.org/2000/svg">'+paths+'</svg>';
 }
 
+/* ── Finance: dynamic year list ──
+   Returns ascending union of years present in financeRecords (using the same
+   `year || date[0:4]` rule as the ledger filters) plus the current year.
+   No hard-coded base year. */
+function _finRecordYears(){
+  var set = {};
+  (financeRecords||[]).forEach(function(r){
+    var y = r.year || parseInt((r.date||'').slice(0,4),10);
+    if(y && !isNaN(y)) set[y] = true;
+  });
+  set[new Date().getFullYear()] = true;
+  return Object.keys(set).map(Number).sort(function(a,b){ return a-b; });
+}
+
 /* ── Finance: Year Dropdown ── */
 function toggleFinYearDropdown(evt){
   evt && evt.stopPropagation();
@@ -5774,8 +5788,8 @@ function toggleFinYearDropdown(evt){
   if(dd.style.display !== 'none' && dd.style.display !== ''){
     closeFinYearDropdown(); return;
   }
-  // fixed year range 2026–2036
-  const years = [2026,2027,2028,2029,2030,2031,2032,2033,2034,2035,2036];
+  // dynamic year list from financeRecords (union current year)
+  const years = _finRecordYears();
   dd.innerHTML = years.map(function(y){
     return '<button class="finYearDropItem'+(y===_finYear?' active':'')+'" onclick="switchFinYear('+y+')">'
       + y + (y===_finYear ? ' ✓' : '') + '</button>';
@@ -6166,7 +6180,7 @@ function _prepFinancePDFData(targetYear, targetMonths){
    Both PDF and CSV buttons open this modal so admins can freely select
    year + one or more months before exporting.
    ─────────────────────────────────────────────────────────────────────────── */
-var _exportModalYear = 2026;
+var _exportModalYear = new Date().getFullYear();  // reassigned to _finYear on open
 var _exportModalMonths = [];  // [] = all months; [3,5,7] = multi-month
 
 function exportFinancePDF(){
@@ -6197,14 +6211,14 @@ function _closeFinExportModal(){
 }
 
 function _renderFinExportModal(){
-  // ── Year buttons (2026–2036) ──
+  // ── Year buttons (dynamic from financeRecords, union current year) ──
   var yearRow = document.getElementById('finExportYearRow');
   if(yearRow){
     var yHtml = '';
-    for(var y = 2026; y <= 2036; y++){
+    _finRecordYears().forEach(function(y){
       yHtml += '<button class="finExportYearBtn'+(y===_exportModalYear?' active':'')+
                '" onclick="_setExportYear('+y+')">'+y+'</button>';
-    }
+    });
     yearRow.innerHTML = yHtml;
   }
   // ── Month chips ──
@@ -7052,12 +7066,18 @@ function _finPopulateYearSelect(selectedYear){
   var sel = document.getElementById('finFormYear');
   if(!sel) return;
   var cur = new Date().getFullYear();
-  var defaultYear = selectedYear ? parseInt(selectedYear,10) : (cur >= 2026 && cur <= 2046 ? cur : 2026);
-  var html = '';
-  for(var y = 2026; y <= 2046; y++){
+  var defaultYear = selectedYear ? parseInt(selectedYear,10) : cur;
+  // union: existing record years ∪ forward window (current … current+20),
+  // so admins can backfill past years and prepay future annual memberships.
+  var set = {};
+  _finRecordYears().forEach(function(y){ set[y] = true; });
+  for(var y = cur; y <= cur + 20; y++){ set[y] = true; }
+  if(defaultYear) set[defaultYear] = true;
+  var years = Object.keys(set).map(Number).sort(function(a,b){ return a-b; });
+  var html = years.map(function(y){
     var sel_ = (y === defaultYear) ? ' selected' : '';
-    html += '<option value="'+y+'"'+sel_+'>'+y+' 年度</option>';
-  }
+    return '<option value="'+y+'"'+sel_+'>'+y+' 年度</option>';
+  }).join('');
   sel.innerHTML = html;
 }
 

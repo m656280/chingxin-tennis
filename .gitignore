@@ -37,5 +37,8 @@ functions/.env
 .DS_Store
 Thumbs.db
 
+# Claude Code (ephemeral worktrees / local state)
+.claude/
+
 # Vite
 *.local
