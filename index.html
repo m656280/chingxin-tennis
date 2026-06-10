@@ -1357,6 +1357,77 @@ button {
   opacity:0; transition:all 220ms ease; pointer-events:none; white-space:nowrap;
 }
 .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+/* ── Finance Export Range Modal ── */
+.finExportBackdrop {
+  position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:2100;
+  opacity:0; pointer-events:none; transition:opacity 200ms ease;
+}
+.finExportBackdrop.open { opacity:1; pointer-events:auto; }
+.finExportModal {
+  position:fixed; bottom:0; left:50%;
+  transform:translateX(-50%) translateY(100%);
+  width:100%; max-width:420px; background:var(--color-surface);
+  border-radius:20px 20px 0 0; z-index:2101;
+  padding:0 20px calc(28px + env(safe-area-inset-bottom,0px));
+  transition:transform 280ms cubic-bezier(0.32,0.72,0,1);
+}
+.finExportModal.open { transform:translateX(-50%) translateY(0); }
+.finExportModalHandle { width:36px; height:4px; background:var(--color-border); border-radius:2px; margin:12px auto 18px; }
+.finExportModalTitle {
+  font-size:15px; font-weight:600; color:var(--color-text-primary);
+  text-align:center; margin-bottom:20px; letter-spacing:0.02em;
+}
+.finExportSection { margin-bottom:18px; }
+.finExportSectionLabel {
+  font-size:10.5px; letter-spacing:0.09em; color:var(--color-text-muted);
+  text-transform:uppercase; margin-bottom:9px;
+}
+.finExportYearRow { display:flex; gap:7px; flex-wrap:wrap; }
+.finExportYearBtn {
+  padding:6px 16px; border-radius:99px; font-size:13px;
+  border:1px solid var(--color-border); color:var(--color-text-secondary);
+  cursor:pointer; background:transparent; transition:all 150ms ease;
+  font-family:var(--font-body);
+}
+.finExportYearBtn.active {
+  background:var(--color-text-primary); color:var(--color-bg);
+  border-color:var(--color-text-primary);
+}
+.finExportMonthGrid {
+  display:grid; grid-template-columns:repeat(4,1fr); gap:7px;
+}
+.finExportMonthChip {
+  padding:9px 0; border-radius:8px; font-size:12.5px; text-align:center;
+  border:1px solid var(--color-border); color:var(--color-text-secondary);
+  cursor:pointer; background:transparent; transition:all 150ms ease;
+  font-family:var(--font-body);
+}
+.finExportMonthChip.full-row {
+  grid-column:1 / -1; border-radius:99px; padding:8px; font-size:13px;
+}
+.finExportMonthChip.active {
+  background:var(--color-text-primary); color:var(--color-bg);
+  border-color:var(--color-text-primary);
+}
+.finExportActionRow { display:flex; gap:10px; margin-top:20px; }
+.finExportBtnPDF {
+  flex:1; padding:12px; border-radius:10px;
+  border:1px solid var(--color-text-primary); background:transparent;
+  color:var(--color-text-primary); font-size:14px; font-weight:500;
+  cursor:pointer; font-family:var(--font-body);
+}
+.finExportBtnCSV {
+  flex:1; padding:12px; border-radius:10px; border:none;
+  background:var(--color-text-primary); color:var(--color-bg);
+  font-size:14px; font-weight:500; cursor:pointer; font-family:var(--font-body);
+}
+.finExportBtnCancel {
+  width:100%; padding:11px; border-radius:10px; margin-top:10px;
+  border:1px solid var(--color-border); background:transparent;
+  color:var(--color-text-muted); font-size:13.5px;
+  cursor:pointer; font-family:var(--font-body);
+}
 </style>
 </head>
 <body>
@@ -1519,6 +1590,26 @@ button {
       oninput="filterFinance(this.value)"
       autocomplete="off" autocorrect="off" spellcheck="false">
     <div id="financeContent"></div>
+  </div>
+
+  <!-- ── Finance Export Range Modal ── -->
+  <div class="finExportBackdrop" id="finExportBackdrop" onclick="_closeFinExportModal()"></div>
+  <div class="finExportModal" id="finExportModal">
+    <div class="finExportModalHandle"></div>
+    <div class="finExportModalTitle">選擇匯出範圍</div>
+    <div class="finExportSection">
+      <div class="finExportSectionLabel">年份</div>
+      <div class="finExportYearRow" id="finExportYearRow"></div>
+    </div>
+    <div class="finExportSection">
+      <div class="finExportSectionLabel">月份</div>
+      <div class="finExportMonthGrid" id="finExportMonthGrid"></div>
+    </div>
+    <div class="finExportActionRow">
+      <button class="finExportBtnPDF" onclick="_doExportPDF()">匯出 PDF</button>
+      <button class="finExportBtnCSV" onclick="_doExportCSV()">匯出 CSV</button>
+    </div>
+    <button class="finExportBtnCancel" onclick="_closeFinExportModal()">取消</button>
   </div>
 
   <!-- ── Finance Year / Month Dropdowns ── -->
@@ -5961,16 +6052,25 @@ function _finExportName(r){
 /* ── Finance: 資料準備（CSV 與 PDF 共用）────────────────────────────────────
    使用呼叫當下的全域 financeRecords / usersCache / _finExportName()。
    ─────────────────────────────────────────────────────────────────────────── */
-function _prepFinancePDFData(targetYear, targetMonth){
-  // targetMonth: 0 or falsy = all months, 1–12 = specific month
+function _prepFinancePDFData(targetYear, targetMonths){
+  // targetMonths: undefined/null/0 = all months,
+  //               number (1–12)    = single month (legacy compat),
+  //               array            = multi-month (e.g. [3,5,7])
+  var _months = [];  // empty = all months
+  if(targetMonths && typeof targetMonths === 'number' && targetMonths > 0){
+    _months = [targetMonths];
+  } else if(Array.isArray(targetMonths) && targetMonths.length > 0){
+    _months = targetMonths.slice().sort(function(a,b){return a-b;});
+  }
+
   var EXCL    = {void:1, cancelled:1, deleted:1, archived:1};
   var allRecs  = financeRecords;
   var yearRecs = allRecs.filter(function(r){
     var ry = r.year || parseInt((r.date||'0000').slice(0,4),10);
     if(ry !== targetYear) return false;
-    if(targetMonth){
+    if(_months.length){
       var mm = parseInt((r.date||'0000').slice(5,7),10);
-      if(mm !== targetMonth) return false;
+      if(_months.indexOf(mm) < 0) return false;
     }
     return true;
   });
@@ -6045,36 +6145,127 @@ function _prepFinancePDFData(targetYear, targetMonth){
     shouldPayLen:shouldPay.length, paidCnt:paidCnt,
     unpaidMs:unpaidMs, paidRate:paidRate, anomaly:anomaly,
     monthlyRows:monthlyRows,
-    month: targetMonth || 0,
-    reportTitle: String(targetYear)+'年'+(targetMonth ? targetMonth+'月' : '度')+'財務報表',
+    month: _months.length === 1 ? _months[0] : 0,  // legacy compat: single month → number
+    months: _months,  // new: full array ([] = all months)
+    reportTitle: (function(){
+      if(!_months.length) return String(targetYear)+'年度財務報表';
+      if(_months.length === 1) return String(targetYear)+'年'+_months[0]+'月財務報表';
+      // multi-month: detect contiguous range or list
+      var allSeq = _months.every(function(m,i){ return i===0||m===_months[i-1]+1; });
+      var label = allSeq
+        ? _months[0]+'月～'+_months[_months.length-1]+'月'
+        : _months.join('、')+'月';
+      return String(targetYear)+'年 '+label+' 財務報表';
+    })(),
     fmtN:fmtN, effAmt:effAmt,
     hasRecords: yearRecs.length > 0,
   };
 }
 
-/* ── Finance: Export PDF — 導向正式路由，完全不使用 blob: URL ───────────────
-   路徑：/report/finance/{year}
-   Firebase Hosting 的 "source":"**" rewrite 讓此路徑回傳 index.html，
-   路由攔截器接手後直接從 Firestore 讀資料並渲染報表。
-   LINE WebView / iOS / Android 全部適用。
+/* ── Finance: Export Range Modal ─────────────────────────────────────────────
+   Both PDF and CSV buttons open this modal so admins can freely select
+   year + one or more months before exporting.
    ─────────────────────────────────────────────────────────────────────────── */
+var _exportModalYear = 2026;
+var _exportModalMonths = [];  // [] = all months; [3,5,7] = multi-month
+
 function exportFinancePDF(){
+  // Entry point from PDF button — open modal
   if(!isAdminLike()){ showToast('僅管理員可匯出'); return; }
-  if(!financeRecords.length){ showToast(_finYear+' 年沒有資料可匯出'); return; }
-  if(_finMonth > 0){
-    // 月份篩選：直接在本地產生 PDF，開新視窗渲染
-    var d = _prepFinancePDFData(_finYear, _finMonth);
-    if(!d.hasRecords){
-      showToast(_finYear+'年'+_finMonth+'月沒有資料可匯出'); return;
-    }
-    var html = _buildFinancePDFHtml(d);
-    var w = window.open('', '_blank');
-    if(w){ w.document.open('text/html','replace'); w.document.write(html); w.document.close(); }
-    else { showToast('請允許彈出視窗後重試'); }
-    return;
-  }
-  window.location.href = '/report/finance/' + _finYear;
+  openFinExportModal();
 }
+
+function exportFinanceCSV(){
+  // Entry point from CSV button — open modal
+  if(!isAdminLike()){ showToast('僅管理員可匯出'); return; }
+  openFinExportModal();
+}
+
+function openFinExportModal(){
+  _exportModalYear = _finYear;
+  _exportModalMonths = _finMonth > 0 ? [_finMonth] : [];
+  _renderFinExportModal();
+  document.getElementById('finExportBackdrop').classList.add('open');
+  setTimeout(function(){ document.getElementById('finExportModal').classList.add('open'); }, 10);
+}
+
+function _closeFinExportModal(){
+  var modal   = document.getElementById('finExportModal');
+  var backdrop = document.getElementById('finExportBackdrop');
+  if(modal)   modal.classList.remove('open');
+  if(backdrop) backdrop.classList.remove('open');
+}
+
+function _renderFinExportModal(){
+  // ── Year buttons (2026–2036) ──
+  var yearRow = document.getElementById('finExportYearRow');
+  if(yearRow){
+    var yHtml = '';
+    for(var y = 2026; y <= 2036; y++){
+      yHtml += '<button class="finExportYearBtn'+(y===_exportModalYear?' active':'')+
+               '" onclick="_setExportYear('+y+')">'+y+'</button>';
+    }
+    yearRow.innerHTML = yHtml;
+  }
+  // ── Month chips ──
+  var grid = document.getElementById('finExportMonthGrid');
+  if(grid){
+    var allActive = _exportModalMonths.length === 0;
+    var chips = '<button class="finExportMonthChip full-row'+(allActive?' active':'')+
+                '" onclick="_toggleExportAllMonths()">全部月份</button>';
+    for(var m = 1; m <= 12; m++){
+      var mActive = !allActive && _exportModalMonths.indexOf(m) >= 0;
+      chips += '<button class="finExportMonthChip'+(mActive?' active':'')+
+               '" onclick="_toggleExportMonth('+m+')">'+m+'月</button>';
+    }
+    grid.innerHTML = chips;
+  }
+}
+
+function _setExportYear(y){
+  _exportModalYear = y;
+  _renderFinExportModal();
+}
+
+function _toggleExportAllMonths(){
+  _exportModalMonths = [];
+  _renderFinExportModal();
+}
+
+function _toggleExportMonth(m){
+  var idx = _exportModalMonths.indexOf(m);
+  if(idx >= 0){
+    _exportModalMonths.splice(idx, 1);
+  } else {
+    _exportModalMonths.push(m);
+    _exportModalMonths.sort(function(a,b){ return a-b; });
+  }
+  _renderFinExportModal();
+}
+
+function _doExportPDF(){
+  _closeFinExportModal();
+  var year   = _exportModalYear;
+  var months = _exportModalMonths.slice();
+  if(!financeRecords.length){ showToast(year+' 年沒有資料可匯出'); return; }
+  var d = _prepFinancePDFData(year, months);
+  if(!d.hasRecords){
+    showToast(d.reportTitle.replace('財務報表','') + '沒有資料可匯出'); return;
+  }
+  var html = _buildFinancePDFHtml(d);
+  var w = window.open('', '_blank');
+  if(w){ w.document.open('text/html','replace'); w.document.write(html); w.document.close(); }
+  else { showToast('請允許彈出視窗後重試'); }
+}
+
+function _doExportCSV(){
+  _closeFinExportModal();
+  _runExportCSV(_exportModalYear, _exportModalMonths.slice());
+}
+
+/* ── Finance: Export PDF — 舊版 standalone report page 路由（保留以防外部連結）──
+   /report/finance/{year} 仍可直接用 URL 存取全年報表，不受 modal 影響。
+   ─────────────────────────────────────────────────────────────────────────── */
 
 /* ── Finance: Standalone report page — called by route interceptor ───────────
    直接從 Firestore 讀資料（不依賴 auth 狀態），接管整頁渲染。
@@ -6356,9 +6547,9 @@ function _buildFinancePDFHtml(d){
       ? table(['姓名','異常原因'], anomalyRows, null)
       : '<p class="audit-ok">✓ 無異常</p>');
 
-  // ── monthly balance HTML for PDF（月份篩選時不顯示）──
+  // ── monthly balance HTML for PDF（單一月份時不顯示，全年或多月時顯示）──
   var monthlyBalanceHtml = '';
-  if(d.monthlyRows && d.monthlyRows.length && !d.month){
+  if(d.monthlyRows && d.monthlyRows.length && d.months.length !== 1){
     function fmtMTPos(n){ return 'NT$ '+n.toLocaleString(); }
     function fmtMTNet(n){ return (n<0?'−':'')+'NT$ '+Math.abs(n).toLocaleString(); }
     var mTotInc = d.monthlyRows.reduce(function(a,r){return a+r.inc;},0);
@@ -6425,19 +6616,33 @@ function _closePDFSheet(){
 }
 
 /* ── Finance: Export CSV ── */
-function exportFinanceCSV(){
+function _runExportCSV(year, months){
+  // months: [] = all months, [3,5,7] = specific months
   if(!isAdminLike()){ showToast('僅管理員可匯出'); return; }
 
+  var _csvMonths = (Array.isArray(months) && months.length) ? months : [];
   var EXCL = {void:1, cancelled:1, deleted:1, archived:1};
-  var _csvMonth = _finMonth;  // capture current filter
   var yearRecs = financeRecords.filter(function(r){
     var ry = r.year || parseInt(r.date.slice(0,4),10);
-    if(ry !== _finYear) return false;
-    if(_csvMonth > 0 && parseInt((r.date||'').slice(5,7),10) !== _csvMonth) return false;
+    if(ry !== year) return false;
+    if(_csvMonths.length){
+      var mm = parseInt((r.date||'').slice(5,7),10);
+      if(_csvMonths.indexOf(mm) < 0) return false;
+    }
     return true;
   });
-  var _csvTitle = _finYear+'年'+(_csvMonth>0?_csvMonth+'月':'度')+'財務報表';
-  if(!yearRecs.length){ showToast(_finYear+(_csvMonth>0?'年'+_csvMonth+'月':'年')+' 沒有資料可匯出'); return; }
+  // Build title matching _prepFinancePDFData logic
+  var _csvTitle = (function(){
+    if(!_csvMonths.length) return year+'年度財務報表';
+    if(_csvMonths.length === 1) return year+'年'+_csvMonths[0]+'月財務報表';
+    var allSeq = _csvMonths.every(function(m,i){ return i===0||m===_csvMonths[i-1]+1; });
+    var label = allSeq
+      ? _csvMonths[0]+'月～'+_csvMonths[_csvMonths.length-1]+'月'
+      : _csvMonths.join('、')+'月';
+    return year+'年 '+label+' 財務報表';
+  })();
+  if(!yearRecs.length){ showToast(_csvTitle+' 沒有資料可匯出'); return; }
+  var _finYear = year;  // local alias so downstream references work
 
   var byDate = function(a,b){ return a.date.localeCompare(b.date); };
 
@@ -6563,7 +6768,7 @@ function exportFinanceCSV(){
   // 目的：查誰沒繳、誰資料異常。已繳明細已在三～八，不重複列出。
   // 已繳定義：當年度有 active 的 annual/monthly finance record
 
-  var _yr    = _finYear;
+  var _yr    = year;
   var _yrStr = String(_yr);
 
   // 建 paidMap：memberId → [{type, date, amount, msType}]（當年有效繳費）
@@ -6646,9 +6851,11 @@ function exportFinanceCSV(){
   // ── Build & Download ─────────────────────────────────────────────────
   var csv      = '﻿' + L.join('\r\n');  // UTF-8 BOM for Numbers/Excel
   var blob     = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-  var filename = _csvMonth > 0
-    ? 'chingxin-finance-'+_finYear+'-'+String(_csvMonth).padStart(2,'0')+'.csv'
-    : 'chingxin-finance-'+_finYear+'.csv';
+  var filename = (function(){
+    if(!_csvMonths.length) return 'chingxin-finance-'+year+'.csv';
+    if(_csvMonths.length === 1) return 'chingxin-finance-'+year+'-'+String(_csvMonths[0]).padStart(2,'0')+'.csv';
+    return 'chingxin-finance-'+year+'-m'+_csvMonths.join('-')+'.csv';
+  })();
 
   var _csvIsIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
   var _csvIsLine = /Line\//i.test(navigator.userAgent);
