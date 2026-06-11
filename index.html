@@ -1942,8 +1942,8 @@ button {
       <input class="formInput" id="mmRealName" type="text" placeholder="必填，用於財務與名冊">
     </div>
     <div class="formRow">
-      <label class="formLabel">電話（選填）</label>
-      <input class="formInput" id="mmPhone" type="tel" placeholder="">
+      <label class="formLabel">暱稱（選填）</label>
+      <input class="formInput" id="mmDisplayName" type="text" placeholder="未填則與正式姓名相同">
     </div>
     <div class="formRow">
       <label class="formLabel">角色</label>
@@ -8406,7 +8406,7 @@ function openManualMemberSheet(){
   if(!isAdminLike()){ showToast('僅管理員可新增手動會員'); return; }
   // Reset form
   document.getElementById('mmRealName').value = '';
-  document.getElementById('mmPhone').value = '';
+  document.getElementById('mmDisplayName').value = '';
   document.getElementById('mmRole').value = 'member';
   document.getElementById('mmMsType').value = '';
   document.getElementById('mmNtrp').value = '';
@@ -8444,7 +8444,7 @@ function submitManualMember(){
   }
   if(err){ err.style.display='none'; err.textContent=''; }
 
-  var phone        = (document.getElementById('mmPhone').value   || '').trim();
+  var displayName  = (document.getElementById('mmDisplayName').value || '').trim() || realName;
   var role         = document.getElementById('mmRole').value   || 'member';
   var msType       = document.getElementById('mmMsType').value || '';
   var ntrp         = document.getElementById('mmNtrp').value   || '';
@@ -8455,9 +8455,8 @@ function submitManualMember(){
   var memberData = {
     uid:              '',          // 建立後由回呼更新
     realName:         realName,
-    displayName:      realName,    // 手動會員用 realName 代替 LINE 暱稱
+    displayName:      displayName, // 未填則與正式姓名相同
     photoURL:         '',
-    phone:            phone,
     role:             role,
     membershipType:   msType,
     status:           'approved',  // 管理員建立，直接 approved
