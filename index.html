@@ -1416,8 +1416,7 @@ button {
 .finExportRadioRow input[type=radio] {
   accent-color:var(--color-text-primary); width:17px; height:17px; cursor:pointer;
 }
-/* 起訖年月區塊（指定期間展開） */
-.finExportRangeBlock { margin-top:8px; padding-left:27px; }
+/* 起訖年月 */
 .finExportDateRow { display:flex; gap:8px; }
 .finExportDateSel { flex:1; min-width:0; }
 .finExportRangeSepRow {
@@ -1594,27 +1593,14 @@ button {
     <div class="finExportModalHandle"></div>
     <div class="finExportModalTitle">匯出範圍</div>
     <div class="finExportSection">
-      <!-- 全部期間 -->
-      <label class="finExportRadioRow">
-        <input type="radio" name="finExportScope" id="finExportScopeAll" value="all" checked onchange="_onExportScopeChange()">
-        <span>全部期間</span>
-      </label>
-      <!-- 指定期間 -->
-      <label class="finExportRadioRow">
-        <input type="radio" name="finExportScope" id="finExportScopeRange" value="range" onchange="_onExportScopeChange()">
-        <span>指定期間</span>
-      </label>
-      <!-- 起訖年月（指定期間展開） -->
-      <div id="finExportRangeBlock" class="finExportRangeBlock" style="display:none">
-        <div class="finExportDateRow">
-          <select class="finExportSelect finExportDateSel" id="finExportStartYearSel" onchange="_onExportRangeChange()"></select>
-          <select class="finExportSelect finExportDateSel" id="finExportStartMonthSel" onchange="_onExportRangeChange()"></select>
-        </div>
-        <div class="finExportRangeSepRow">～</div>
-        <div class="finExportDateRow">
-          <select class="finExportSelect finExportDateSel" id="finExportEndYearSel" onchange="_onExportRangeChange()"></select>
-          <select class="finExportSelect finExportDateSel" id="finExportEndMonthSel" onchange="_onExportRangeChange()"></select>
-        </div>
+      <div class="finExportDateRow">
+        <select class="finExportSelect finExportDateSel" id="finExportStartYearSel" onchange="_onExportRangeChange()"></select>
+        <select class="finExportSelect finExportDateSel" id="finExportStartMonthSel" onchange="_onExportRangeChange()"></select>
+      </div>
+      <div class="finExportRangeSepRow">～</div>
+      <div class="finExportDateRow">
+        <select class="finExportSelect finExportDateSel" id="finExportEndYearSel" onchange="_onExportRangeChange()"></select>
+        <select class="finExportSelect finExportDateSel" id="finExportEndMonthSel" onchange="_onExportRangeChange()"></select>
       </div>
     </div>
     <div class="finExportActionRow">
@@ -6238,11 +6224,9 @@ function _prepFinancePDFData(arg1, arg2){
 }
 
 /* ── Finance: Export Range Modal ─────────────────────────────────────────────
-   PDF 與 CSV 共用此 modal。
-   scope = 'all'   → 全部期間（不限日期，passthrough 2000/01 ～ 2099/12）
-   scope = 'range' → 指定期間（startYear/startMonth ～ endYear/endMonth，支援跨年）
+   PDF 與 CSV 共用此 modal。直接顯示起訖年月（無 radio），支援跨年。
+   年份固定 2025–2036。
    ─────────────────────────────────────────────────────────────────────────── */
-var _exportScopeMode   = 'all';
 var _exportStartYear   = new Date().getFullYear();
 var _exportStartMonth  = 1;
 var _exportEndYear     = new Date().getFullYear();
@@ -6260,11 +6244,14 @@ function exportFinanceCSV(){
 
 function openFinExportModal(){
   var now = new Date();
-  _exportScopeMode  = 'all';
-  _exportStartYear  = _finYear;           // 預設帶入頁面年份
+  var curY = now.getFullYear();
+  var curM = now.getMonth() + 1;
+  // 開始：頁面年份 + 1月
+  _exportStartYear  = _finYear;
   _exportStartMonth = 1;
+  // 結束：頁面年份 + 當月（若頁面是今年）；否則 + 12月
   _exportEndYear    = _finYear;
-  _exportEndMonth   = now.getMonth() + 1; // 預設到當月
+  _exportEndMonth   = (_finYear === curY) ? curM : 12;
   _renderFinExportModal();
   document.getElementById('finExportBackdrop').classList.add('open');
   setTimeout(function(){ document.getElementById('finExportModal').classList.add('open'); }, 10);
@@ -6278,11 +6265,9 @@ function _closeFinExportModal(){
 }
 
 function _renderFinExportModal(){
-  var curY = new Date().getFullYear();
-
   function _yearOpts(selected){
     var h = '';
-    for(var y = 2024; y <= curY + 2; y++){
+    for(var y = 2025; y <= 2036; y++){
       h += '<option value="'+y+'"'+(y===selected?' selected':'')+'>'+y+' 年</option>';
     }
     return h;
@@ -6294,14 +6279,6 @@ function _renderFinExportModal(){
     }
     return h;
   }
-
-  // radio
-  var ra = document.getElementById('finExportScopeAll');
-  var rr = document.getElementById('finExportScopeRange');
-  if(ra) ra.checked = (_exportScopeMode === 'all');
-  if(rr) rr.checked = (_exportScopeMode === 'range');
-
-  // 4 個 select
   var sy = document.getElementById('finExportStartYearSel');
   var sm = document.getElementById('finExportStartMonthSel');
   var ey = document.getElementById('finExportEndYearSel');
@@ -6310,17 +6287,6 @@ function _renderFinExportModal(){
   if(sm) sm.innerHTML = _monthOpts(_exportStartMonth);
   if(ey) ey.innerHTML = _yearOpts(_exportEndYear);
   if(em) em.innerHTML = _monthOpts(_exportEndMonth);
-
-  // 指定期間區塊顯示
-  var rb = document.getElementById('finExportRangeBlock');
-  if(rb) rb.style.display = (_exportScopeMode === 'range') ? '' : 'none';
-}
-
-function _onExportScopeChange(){
-  var ra = document.getElementById('finExportScopeAll');
-  _exportScopeMode = (ra && ra.checked) ? 'all' : 'range';
-  var rb = document.getElementById('finExportRangeBlock');
-  if(rb) rb.style.display = (_exportScopeMode === 'range') ? '' : 'none';
 }
 
 function _onExportRangeChange(){
@@ -6339,11 +6305,9 @@ function _setExportRange(){}
 function _onExportMonthChange(){}
 function _onExportMonthRangeChange(){}
 function _onExportYearChange(){}
+function _onExportScopeChange(){}
 
 function _normExportRange(){
-  if(_exportScopeMode === 'all'){
-    return {startYear:2000, startMonth:1, endYear:2099, endMonth:12};
-  }
   return {
     startYear:  _exportStartYear,
     startMonth: _exportStartMonth,
@@ -6354,11 +6318,9 @@ function _normExportRange(){
 
 /* 驗證：開始年月不可晚於結束年月；回傳 true 代表通過 */
 function _validateExportRange(rg){
-  if(_exportScopeMode === 'range'){
-    if(rg.startYear * 12 + rg.startMonth > rg.endYear * 12 + rg.endMonth){
-      showToast('開始月份不可晚於結束月份');
-      return false;
-    }
+  if(rg.startYear * 12 + rg.startMonth > rg.endYear * 12 + rg.endMonth){
+    showToast('開始月份不可晚於結束月份');
+    return false;
   }
   return true;
 }
