@@ -6067,6 +6067,12 @@ function _finExportName(r){
   return name || '—';
 }
 
+/* 備註欄 helper：優先順序 description > note > remark > memo > paymentNote
+   同時補上月費多期月數（若 > 1）供明細欄使用 */
+function _finExportNote(r){
+  return r.description || r.note || r.remark || r.memo || r.paymentNote || '';
+}
+
 /* ── Finance: (year,month) pair 產生器（跨年月範圍）──────────────────────────
    由 (startYear,startMonth) 到 (endYear,endMonth) 逐月遞增，回傳 [{year,month}]。
    若 end < start 會自動對調，保證升序。
@@ -6494,27 +6500,28 @@ function _buildFinancePDFHtml(d){
   }
 
   // ── income detail column specs ──
-  // A4 portrait 186mm 可用 — 5 欄，無備註欄，金額 clip:false
-  // 欄寬加總 = 100%：流水號10+日期18+會員28+金額20+登記人24
+  // A4 portrait 186mm 可用 — 6 欄：流水號9+日期14+會員18+備註22+金額18+登記人19 = 100%
   var INC_COLS = [
-    {width:'10%', clip:false},               // 流水號 A001
-    {width:'18%', clip:false},               // 日期 2026-01-15
-    {width:'28%', clip:true},                // 會員名
-    {width:'20%', align:'right', clip:false}, // 金額 NT$ 3,600 — 絕不截斷
-    {width:'24%', clip:true},                // 登記人
+    {width:'9%',  clip:false},               // 流水號 A001
+    {width:'14%', clip:false},               // 日期 2026-01-15
+    {width:'18%', clip:true},                // 會員名
+    {width:'22%', clip:true},                // 項目/備註
+    {width:'18%', align:'right', clip:false}, // 金額 — 絕不截斷
+    {width:'19%', clip:true},                // 登記人
   ];
 
-  // ── income section helper（5欄，備註已移除，A4 portrait 不超寬）──
+  // ── income section helper（6欄，含項目/備註）──
   function incSection(title, prefix, recs, total){
     if(!recs.length) return '';
     var rows = recs.map(function(r,i){
       var _pm = parseInt(r.periodMonths,10)||1;
       var _nm = _finExportName(r) + (_pm > 1 ? ' · '+_pm+'個月' : '');
-      return [serial(prefix,i), r.date, _nm, d.fmtN(d.effAmt(r)), r.createdByName||'—'];
+      var _nt = _finExportNote(r);
+      return [serial(prefix,i), r.date, _nm, _nt, d.fmtN(d.effAmt(r)), r.createdByName||'—'];
     });
-    var foot = ['','','筆數：'+recs.length,'合計：'+d.fmtN(total),''];
+    var foot = ['','','筆數：'+recs.length,'','合計：'+d.fmtN(total),''];
     return '<div class="section"><h3>'+esc(title)+'</h3>'+
-      table(['流水號','日期','會員','金額','登記人'], rows, foot, 'inc-table', INC_COLS)+
+      table(['流水號','日期','會員','項目/備註','金額','登記人'], rows, foot, 'inc-table', INC_COLS)+
       '</div>';
   }
 
@@ -6631,16 +6638,16 @@ function _buildFinancePDFHtml(d){
   // expense
   if(d.expRecs.length){
     var expRows  = d.expRecs.map(function(r,i){
-      return [serial('E',i), r.date, r.note||_finExportName(r), d.fmtN(r.amount), r.createdByName||'—'];
+      return [serial('E',i), r.date, _finExportNote(r)||_finExportName(r), d.fmtN(r.amount), r.createdByName||'—'];
     });
     var expFoot  = ['','','筆數：'+d.expRecs.length,'合計：'+d.fmtN(d.expTotal),''];
-    detailHtml  += '<h3>支出明細（E 系列）</h3>'+table(['流水號','日期','項目/描述','金額','登記人'], expRows, expFoot);
+    detailHtml  += '<h3>支出明細（E 系列）</h3>'+table(['流水號','日期','項目/備註','金額','登記人'], expRows, expFoot);
   }
 
   // void
   if(d.voidRecs.length){
     var voidRows = d.voidRecs.map(function(r){
-      return [r.date, _finExportName(r), FIN_TYPE_LABEL[r.type]||r.type, d.fmtN(r.amount), r.note||'—', '已作廢'];
+      return [r.date, _finExportName(r), FIN_TYPE_LABEL[r.type]||r.type, d.fmtN(r.amount), _finExportNote(r)||'—', '已作廢'];
     });
     detailHtml += '<h3>作廢紀錄（稽核參考，不列入加總）</h3>'+table(['日期','會員/項目','類型','金額','備註','狀態'],voidRows,null);
   }
@@ -6812,9 +6819,9 @@ function _runExportCSV(rg){
       lines.push('');
       return lines;
     }
-    lines.push(row(['流水號','日期','會員','金額','備註','登記人']));
+    lines.push(row(['流水號','日期','會員','金額','項目/備註','登記人']));
     recs.forEach(function(r, i){
-      lines.push(row([serial(prefix,i), r.date, _finExportName(r), effAmt(r), r.note||'', r.createdByName||'']));
+      lines.push(row([serial(prefix,i), r.date, _finExportName(r), effAmt(r), _finExportNote(r), r.createdByName||'']));
     });
     lines.push(row(['','筆數：'+recs.length,'','小計：'+fmtAmt(sumRecs(recs)),'','']));
     lines.push('');
@@ -6862,12 +6869,11 @@ function _runExportCSV(rg){
   if(!expRecs.length){
     L.push('（本年度無支出紀錄）');
   } else {
-    L.push(row(['流水號','日期','項目/描述','金額','備註','登記人']));
+    L.push(row(['流水號','日期','項目/備註','金額','登記人']));
     expRecs.forEach(function(r, i){
-      var expItem = r.note || _finExportName(r);
-      L.push(row([serial('E',i), r.date, expItem, r.amount, r.note||'', r.createdByName||'']));
+      L.push(row([serial('E',i), r.date, _finExportNote(r)||_finExportName(r), r.amount, r.createdByName||'']));
     });
-    L.push(row(['','筆數：'+expRecs.length,'','小計：'+fmtAmt(expTotal),'','']));
+    L.push(row(['','筆數：'+expRecs.length,'','小計：'+fmtAmt(expTotal),'']));
   }
   L.push('');
 
@@ -6876,7 +6882,7 @@ function _runExportCSV(rg){
   L.push(row(['日期','會員/項目','類型','金額','備註','登記人','狀態']));
   if(voidRecs.length){
     voidRecs.forEach(function(r){
-      L.push(row([r.date, _finExportName(r), FIN_TYPE_LABEL[r.type]||r.type, r.amount, r.note||'', r.createdByName||'', '已作廢']));
+      L.push(row([r.date, _finExportName(r), FIN_TYPE_LABEL[r.type]||r.type, r.amount, _finExportNote(r), r.createdByName||'', '已作廢']));
     });
   } else { L.push('（本年度無作廢紀錄）'); }
   L.push('');
