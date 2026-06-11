@@ -5547,12 +5547,13 @@ function _renderFinDetail(source, isAdmin, fmt){
   var q = _finSearchQuery.toLowerCase().trim();
   var filtered = q
     ? source.filter(function(r){
-        // 姓名只搜 live usersCache（已改名即時反映，不搜快照）
+        // 只搜會員姓名：優先 live usersCache，fallback 到寫入快照（memberId 存在但已從 cache 移除時）
         var _scu   = r.memberId ? (usersCache[r.memberId] || null) : null;
-        var _sName = _scu ? (_scu.realName || _scu.displayName || '') : '';
-        return _sName.toLowerCase().includes(q)
-            || (r.note||'').toLowerCase().includes(q)
-            || (r.createdByName||'').toLowerCase().includes(q);
+        var _sName = _scu
+          ? (_scu.realName || _scu.displayName || '')
+          : (r.memberRealName || r.memberNameSnapshot || r.memberDisplayName || '');
+        return _sName.toLowerCase().includes(q);
+        // 備註 / 登記人不列入搜尋，避免搜尋會員姓名時出現不相關紀錄
       })
     : source;
   var html = '<div class="screenSection">明細'+(q?'（'+filtered.length+' 筆）':'')+'</div>';
