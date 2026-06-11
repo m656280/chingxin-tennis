@@ -1920,7 +1920,7 @@ button {
     </div>
     <div class="formRow">
       <label class="formLabel">會員</label>
-      <select class="formSelect" id="finFormMember">
+      <select class="formSelect" id="finFormMember" onchange="_finMemberSelectChange(this)">
         <option value="">— 選擇會員 / 備註用 —</option>
       </select>
     </div>
@@ -5005,17 +5005,100 @@ function setMemberRole(userId, newRole){
     .catch(function(e){console.error('setMemberRole error:',e);showToast('操作失敗，請稍後再試');});
 }
 
+/* ── Duplicate Member Detection ──────────────────────────────────────────────
+   _strSimilarity(a, b)        : Jaro-Winkler similarity [0, 1]
+   _findSimilarMembers(name)   : returns array of {uid, name, sim} > threshold
+   _showDupMemberWarn(...)     : renders warning modal with two action buttons
+   ─────────────────────────────────────────────────────────────────────────── */
+var _DUP_THRESHOLD = 0.75;
+
+function _strSimilarity(a, b){
+  if(a === b) return 1.0;
+  if(!a || !b) return 0.0;
+  var la = a.length, lb = b.length;
+  var matchDist = Math.max(0, Math.floor(Math.max(la, lb) / 2) - 1);
+  var aM = [], bM = [];
+  for(var z=0;z<la;z++) aM.push(false);
+  for(var z=0;z<lb;z++) bM.push(false);
+  var matches = 0;
+  for(var i=0;i<la;i++){
+    var s = Math.max(0, i - matchDist);
+    var e = Math.min(i + matchDist + 1, lb);
+    for(var j=s;j<e;j++){
+      if(bM[j] || a[i]!==b[j]) continue;
+      aM[i]=bM[j]=true; matches++; break;
+    }
+  }
+  if(!matches) return 0.0;
+  var trans=0, k=0;
+  for(var i=0;i<la;i++){
+    if(!aM[i]) continue;
+    while(!bM[k]) k++;
+    if(a[i]!==b[k]) trans++;
+    k++;
+  }
+  var jaro=(matches/la + matches/lb + (matches-trans/2)/matches)/3;
+  var prefix=0;
+  for(var i=0;i<Math.min(4,Math.min(la,lb));i++){
+    if(a[i]===b[i]) prefix++; else break;
+  }
+  return jaro + prefix*0.1*(1-jaro);
+}
+
+function _findSimilarMembers(name, excludeId){
+  if(!name || name.length < 2) return [];
+  var results = [];
+  Object.values(usersCache).forEach(function(m){
+    var uid = m.userId || m.uid || '';
+    if(excludeId && uid === excludeId) return;
+    if(m.status==='deleted'||m.status==='blocked'||m.role==='blocked') return;
+    var mName = (m.realName || m.displayName || '').trim();
+    if(!mName || mName === name) return;
+    var sim = _strSimilarity(name, mName);
+    if(sim >= _DUP_THRESHOLD) results.push({uid:uid, name:mName, sim:sim, member:m});
+  });
+  results.sort(function(a,b){return b.sim-a.sim;});
+  return results;
+}
+
+function _showDupMemberWarn(bodyHtml, btn1Label, btn1Fn, btn2Label, btn2Fn){
+  var modal = document.getElementById('dupMemberWarnModal');
+  var bodyEl = document.getElementById('dupMemberWarnBody');
+  var b1 = document.getElementById('dupMemberBtn1');
+  var b2 = document.getElementById('dupMemberBtn2');
+  if(!modal||!bodyEl||!b1||!b2) return;
+  bodyEl.innerHTML = bodyHtml;
+  b1.textContent = btn1Label;
+  b2.textContent = btn2Label;
+  function _close(){ modal.style.display='none'; }
+  b1.onclick = function(){ _close(); if(btn1Fn) btn1Fn(); };
+  b2.onclick = function(){ _close(); if(btn2Fn) btn2Fn(); };
+  modal.style.display = 'flex';
+}
+
+/* ── Finance: Member select change ── */
+function _finMemberSelectChange(sel){
+  var uid = sel.value;
+  if(!uid) return;
+  var m = usersCache[uid];
+  if(!m) return;
+  var name = (m.realName || m.displayName || '').trim();
+  if(!name) return;
+  var similar = _findSimilarMembers(name, uid);
+  if(!similar.length) return;
+  var top = similar[0];
+  _showDupMemberWarn(
+    '您選擇的 <b>'+_esc(name)+'</b> 與系統中的 <b>'+_esc(top.name)+'</b> 姓名相似<br><br>請確認是否選到正確的會員',
+    '切換為「'+top.name+'」',
+    function(){ var s=document.getElementById('finFormMember'); if(s) s.value=top.uid; },
+    '保留「'+name+'」（我選對了）',
+    null
+  );
+}
+
 /* ── Edit Member realName (admin/owner only) ── */
-function editMemberRealName(userId){
+function _doUpdateMemberRealName(userId, input){
   if(!db){ showToast('無法連線，請稍後再試'); return; }
-  var operator = _currentRole();
-  if(!isAdminLike()){ showToast('僅管理員可編輯'); return; }
-  var target = usersCache[userId];
-  if(!target){ showToast('找不到此會員'); return; }
-  var current = target.realName || '';
-  var input = prompt('請輸入「'+(_mName(target)||userId)+'」的正式姓名：', current);
-  if(input === null) return;   // cancelled
-  input = input.trim();
   db.collection('members').doc(userId).update({ realName: input, updatedAt: TS() })
     .then(function(){
       if(usersCache[userId]) usersCache[userId].realName = input;
@@ -5024,6 +5107,31 @@ function editMemberRealName(userId){
       renderManage();
     })
     .catch(function(e){ console.error('editMemberRealName error:', e); showToast('更新失敗，請稍後再試'); });
+}
+
+function editMemberRealName(userId){
+  if(!db){ showToast('無法連線，請稍後再試'); return; }
+  if(!isAdminLike()){ showToast('僅管理員可編輯'); return; }
+  var target = usersCache[userId];
+  if(!target){ showToast('找不到此會員'); return; }
+  var current = target.realName || '';
+  var input = prompt('請輸入「'+(_mName(target)||userId)+'」的正式姓名：', current);
+  if(input === null) return;   // cancelled
+  input = input.trim();
+  if(!input){ showToast('姓名不可空白'); return; }
+  var similar = _findSimilarMembers(input, userId);
+  if(similar.length){
+    var top = similar[0];
+    _showDupMemberWarn(
+      '您輸入：<b>'+_esc(input)+'</b><br>系統已有：<b>'+_esc(top.name)+'</b>',
+      '取消更新',
+      null,
+      '確認更新（忽略警告）',
+      function(){ _doUpdateMemberRealName(userId, input); }
+    );
+    return;
+  }
+  _doUpdateMemberRealName(userId, input);
 }
 
 /* ── Announcements: Load ── */
@@ -8618,6 +8726,31 @@ function closeManualMemberSheet(){
   document.getElementById('sheetBackdrop').classList.remove('open');
 }
 
+function _doCreateManualMember(memberData, realName){
+  var err = document.getElementById('mmError');
+  var btn = document.getElementById('mmSubmitBtn');
+  if(btn){ btn.disabled=true; btn.textContent='建立中…'; }
+  if(!db){
+    if(err){ err.textContent='資料庫連線失敗'; err.style.display='block'; }
+    if(btn){ btn.disabled=false; btn.textContent='建立會員'; }
+    return;
+  }
+  db.collection('members').add(memberData)
+    .then(function(docRef){
+      return docRef.update({ uid: docRef.id, updatedAt: memberData.updatedAt });
+    })
+    .then(function(){
+      showToast('手動會員「' + realName + '」已建立');
+      closeManualMemberSheet();
+    })
+    .catch(function(e){
+      var msg = e.message || String(e);
+      console.error('[submitManualMember]', msg);
+      if(err){ err.textContent='建立失敗：' + msg; err.style.display='block'; }
+      if(btn){ btn.disabled=false; btn.textContent='建立會員'; }
+    });
+}
+
 function submitManualMember(){
   if(!isAdminLike()){ showToast('僅管理員可新增手動會員'); return; }
   var realName = (document.getElementById('mmRealName').value || '').trim();
@@ -8637,13 +8770,13 @@ function submitManualMember(){
   var creatorUid   = currentUser ? (currentUser.uid || currentUser.userId || '') : '';
 
   var memberData = {
-    uid:              '',          // 建立後由回呼更新
+    uid:              '',
     realName:         realName,
-    displayName:      displayName, // 未填則與正式姓名相同
+    displayName:      displayName,
     photoURL:         '',
     role:             role,
     membershipType:   msType,
-    status:           'approved',  // 管理員建立，直接 approved
+    status:           'approved',
     memberSource:     'manual',
     approved:         true,
     ntrp:             ntrp,
@@ -8655,30 +8788,21 @@ function submitManualMember(){
     lastLoginAt:      null,
   };
 
-  var btn = document.getElementById('mmSubmitBtn');
-  if(btn){ btn.disabled=true; btn.textContent='建立中…'; }
-
-  if(!db){
-    if(err){ err.textContent='資料庫連線失敗'; err.style.display='block'; }
-    if(btn){ btn.disabled=false; btn.textContent='建立會員'; }
+  // Similarity check before creating
+  var similar = _findSimilarMembers(realName, null);
+  if(similar.length){
+    var top = similar[0];
+    _showDupMemberWarn(
+      '您輸入：<b>'+_esc(realName)+'</b><br>系統已有：<b>'+_esc(top.name)+'</b><br><br>這兩位可能是同一人，請確認後再決定',
+      '使用既有會員（關閉）',
+      function(){ closeManualMemberSheet(); },
+      '確認建立新會員',
+      function(){ _doCreateManualMember(memberData, realName); }
+    );
     return;
   }
 
-  db.collection('members').add(memberData)
-    .then(function(docRef){
-      // 回寫 uid = docId（與 LINE 會員保持一致的慣例）
-      return docRef.update({ uid: docRef.id, updatedAt: now });
-    })
-    .then(function(){
-      showToast('手動會員「' + realName + '」已建立');
-      closeManualMemberSheet();
-    })
-    .catch(function(e){
-      var msg = e.message || String(e);
-      console.error('[submitManualMember]', msg);
-      if(err){ err.textContent='建立失敗：' + msg; err.style.display='block'; }
-      if(btn){ btn.disabled=false; btn.textContent='建立會員'; }
-    });
+  _doCreateManualMember(memberData, realName);
 }
 
 
@@ -10316,5 +10440,18 @@ function render(){
     </div>
   </div>
 </div>
+
+<!-- ── Duplicate Member Warning Modal ── -->
+<div id="dupMemberWarnModal" style="display:none;position:fixed;inset:0;z-index:9900;background:rgba(0,0,0,0.55);align-items:center;justify-content:center;padding:20px 16px">
+  <div style="background:var(--color-surface);border-radius:16px;padding:24px 20px;max-width:340px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.25)">
+    <div style="font-size:17px;font-weight:600;margin-bottom:10px">⚠️ 疑似重複會員</div>
+    <div id="dupMemberWarnBody" style="font-size:13.5px;color:var(--color-text-muted);line-height:1.65;margin-bottom:20px"></div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button id="dupMemberBtn1" style="padding:11px;border-radius:10px;border:none;background:var(--color-primary,#4a7c59);color:#fff;font-size:14px;font-weight:500;cursor:pointer;letter-spacing:0.02em"></button>
+      <button id="dupMemberBtn2" style="padding:11px;border-radius:10px;border:1px solid var(--color-border);background:transparent;font-size:14px;cursor:pointer;color:var(--color-text);letter-spacing:0.02em"></button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
