@@ -1888,6 +1888,7 @@ button {
       <select class="formSelect" id="finFormType" onchange="_finToggleYearRow()">
         <option value="annual">年費</option>
         <option value="monthly">月費</option>
+        <option value="day_pass">臨打</option>
         <option value="donate">抖內</option>
         <option value="expense">支出</option>
       </select>
@@ -2740,10 +2741,11 @@ let _finChartMode = 'income'; // 'income' | 'expense' | 'member'
 
 /* ── Finance Chart Colors (club palette, low-saturation) ── */
 const FIN_CHART_COLORS = {
-  annual:  '#6b8a6b',  // moss green
-  monthly: '#3d5a80',  // slate
-  donate:  '#c9a96e',  // gold
-  expense: '#b85c4a',  // terracotta
+  annual:   '#6b8a6b',  // moss green
+  monthly:  '#3d5a80',  // slate
+  day_pass: '#5b8fa8',  // sky blue
+  donate:   '#c9a96e',  // gold
+  expense:  '#b85c4a',  // terracotta
 };
 const FIN_MEMBER_PALETTE = ['#6b8a6b','#3d5a80','#c9a96e','#9b8b7a','#8a9e8a','#7d8fa8','#b8a090','#a09b8a'];
 var _nowTickInterval = null; // court: live nowLine ticker
@@ -5226,7 +5228,7 @@ function setAdminRole(userId, makeAdmin){
 }
 
 /* ── Finance: Render ── */
-const FIN_TYPE_LABEL = {annual:'年費',monthly:'月費',donate:'抖內',expense:'支出'};
+const FIN_TYPE_LABEL = {annual:'年費',monthly:'月費',day_pass:'臨打',donate:'抖內',expense:'支出'};
 const FIN_TYPE_CLASS = {annual:'fin-annual',monthly:'fin-monthly',donate:'fin-donate',expense:'fin-expense'};
 function _finPeriodLabel(r){
   var base = FIN_TYPE_LABEL[r.type] || r.type;
@@ -5306,12 +5308,13 @@ function renderFinance(){
       return a + r.amount;
     }, 0);
   };
-  const annual  = sumT('annual');
-  const monthly = sumT('monthly');
-  const donate  = sumT('donate');
-  const expense = sumT('expense');
-  const income  = annual + monthly + donate;
-  const balance = income - expense;
+  const annual   = sumT('annual');
+  const monthly  = sumT('monthly');
+  const dayPass  = sumT('day_pass');
+  const donate   = sumT('donate');
+  const expense  = sumT('expense');
+  const income   = annual + monthly + dayPass + donate;
+  const balance  = income - expense;
   const fmt = function(n){ return 'NT$ '+(n).toLocaleString(); };
 
   // Year picker row（月份篩選保留邏輯，但 UI 移至匯出 modal）
@@ -5332,18 +5335,18 @@ function renderFinance(){
   html += '</div>';
 
   if(_finViewTab === 'overview'){
-    html += _renderFinOverview(source, balance, annual, monthly, donate, expense, income, fmt);
+    html += _renderFinOverview(source, balance, annual, monthly, dayPass, donate, expense, income, fmt);
   } else if(_finViewTab === 'detail'){
     html += _renderFinDetail(source, isAdmin, fmt);
   } else {
-    html += _renderFinChart(source, income, expense, annual, monthly, donate, fmt);
+    html += _renderFinChart(source, income, expense, annual, monthly, dayPass, donate, fmt);
   }
 
   el.innerHTML = html;
 }
 
 /* ── Finance: Overview tab ── */
-function _renderFinOverview(source, balance, annual, monthly, donate, expense, income, fmt){
+function _renderFinOverview(source, balance, annual, monthly, dayPass, donate, expense, income, fmt){
   var html = '';
   html += '<div class="financeBalanceCard">';
   html += '<div class="financeBalanceLabel">結餘</div>';
@@ -5352,6 +5355,7 @@ function _renderFinOverview(source, balance, annual, monthly, donate, expense, i
   html += '<div class="financeStats">';
   html += _statCard('年費','annual',annual,false);
   html += _statCard('月費','monthly',monthly,false);
+  html += _statCard('臨打','day_pass',dayPass,false);
   html += _statCard('抖內','donate',donate,false);
   html += _statCard('支出','expense',expense,true);
   html += '</div>';
@@ -5555,13 +5559,21 @@ function _renderFinDetail(source, isAdmin, fmt){
   var q = _finSearchQuery.toLowerCase().trim();
   var filtered = q
     ? source.filter(function(r){
-        // 只搜會員姓名：優先 live usersCache，fallback 到寫入快照（memberId 存在但已從 cache 移除時）
+        // 搜尋邏輯：會員姓名（優先 live cache，fallback 寫入快照）
         var _scu   = r.memberId ? (usersCache[r.memberId] || null) : null;
         var _sName = _scu
           ? (_scu.realName || _scu.displayName || '')
           : (r.memberRealName || r.memberNameSnapshot || r.memberDisplayName || '');
-        return _sName.toLowerCase().includes(q);
-        // 備註 / 登記人不列入搜尋，避免搜尋會員姓名時出現不相關紀錄
+        if(_sName.toLowerCase().includes(q)) return true;
+        // 類型標籤（可搜「臨打」等中文類型名稱）
+        var _typeLabel = (FIN_TYPE_LABEL[r.type] || r.type || '').toLowerCase();
+        if(_typeLabel.includes(q)) return true;
+        // 臨打等無會員記錄：備註欄也納入搜尋（供搜尋臨打者姓名）
+        if(r.type === 'day_pass' && !r.memberId){
+          var _note = (r.description || r.note || r.remark || '').toLowerCase();
+          if(_note.includes(q)) return true;
+        }
+        return false;
       })
     : source;
   var html = '<div class="screenSection">明細'+(q?'（'+filtered.length+' 筆）':'')+'</div>';
@@ -5624,7 +5636,7 @@ function _renderFinDetail(source, isAdmin, fmt){
 }
 
 /* ── Finance: Chart tab (router) ── */
-function _renderFinChart(source, income, expense, annual, monthly, donate, fmt){
+function _renderFinChart(source, income, expense, annual, monthly, dayPass, donate, fmt){
   var modes = [{key:'income',label:'收入類別'},{key:'expense',label:'支出類別'}];
   // reset stale 'member' mode if user had it selected before
   if(_finChartMode === 'member') _finChartMode = 'income';
@@ -5634,17 +5646,18 @@ function _renderFinChart(source, income, expense, annual, monthly, donate, fmt){
     html += '<button class="finChartModeBtn'+(a?' active':'')+'" onclick="_finChartMode=\''+m.key+'\';renderFinance()">'+m.label+'</button>';
   });
   html += '</div>';
-  if(_finChartMode==='income')  html += _finChartIncome(source, income, annual, monthly, donate, fmt);
+  if(_finChartMode==='income')  html += _finChartIncome(source, income, annual, monthly, dayPass, donate, fmt);
   else                          html += _finChartExpense(source, expense, fmt);
   return html;
 }
 
 /* ── Finance: Income donut ── */
-function _finChartIncome(source, income, annual, monthly, donate, fmt){
+function _finChartIncome(source, income, annual, monthly, dayPass, donate, fmt){
   var segs = [
-    {value:annual,  color:FIN_CHART_COLORS.annual,  label:'年費'},
-    {value:monthly, color:FIN_CHART_COLORS.monthly, label:'月費'},
-    {value:donate,  color:FIN_CHART_COLORS.donate,  label:'抖內'},
+    {value:annual,   color:FIN_CHART_COLORS.annual,    label:'年費'},
+    {value:monthly,  color:FIN_CHART_COLORS.monthly,   label:'月費'},
+    {value:dayPass,  color:FIN_CHART_COLORS.day_pass,  label:'臨打'},
+    {value:donate,   color:FIN_CHART_COLORS.donate,    label:'抖內'},
   ].filter(function(s){return s.value>0;});
   if(!segs.length) return '<div class="emptyState" style="padding:32px 0">本年度尚無收入紀錄</div>';
   var html = '<div class="finChartDonutWrap">';
@@ -6161,16 +6174,17 @@ function _prepFinancePDFData(arg1, arg2){
   var voidRecs   = yearRecs.filter(function(r){ return (r.status||'active')==='void'; }).sort(byDate);
   var annualRecs = incRecs.filter(function(r){ return r.type==='annual'; }).sort(byDate);
   var monthlyRecs= incRecs.filter(function(r){ return r.type==='monthly'; }).sort(byDate);
-  var coachRecs  = incRecs.filter(function(r){ return r.type==='coaching_fee'||r.type==='coach_fee'||r.type==='coaching'; }).sort(byDate);
-  var donateRecs = incRecs.filter(function(r){ return r.type==='donate'; }).sort(byDate);
-  var otherRecs  = incRecs.filter(function(r){
-    return r.type!=='annual'&&r.type!=='monthly'&&r.type!=='coaching_fee'&&r.type!=='coach_fee'&&r.type!=='coaching'&&r.type!=='donate';
+  var coachRecs    = incRecs.filter(function(r){ return r.type==='coaching_fee'||r.type==='coach_fee'||r.type==='coaching'; }).sort(byDate);
+  var dayPassRecs  = incRecs.filter(function(r){ return r.type==='day_pass'; }).sort(byDate);
+  var donateRecs   = incRecs.filter(function(r){ return r.type==='donate'; }).sort(byDate);
+  var otherRecs    = incRecs.filter(function(r){
+    return r.type!=='annual'&&r.type!=='monthly'&&r.type!=='day_pass'&&r.type!=='coaching_fee'&&r.type!=='coach_fee'&&r.type!=='coaching'&&r.type!=='donate';
   }).sort(byDate);
 
-  var annualT = sumRecs(annualRecs), monthlyT = sumRecs(monthlyRecs);
-  var coachT  = sumRecs(coachRecs),  donateT  = sumRecs(donateRecs);
-  var otherT  = sumRecs(otherRecs);
-  var incTotal= annualT+monthlyT+coachT+donateT+otherT;
+  var annualT   = sumRecs(annualRecs), monthlyT = sumRecs(monthlyRecs);
+  var coachT    = sumRecs(coachRecs),  dayPassT = sumRecs(dayPassRecs);
+  var donateT   = sumRecs(donateRecs), otherT   = sumRecs(otherRecs);
+  var incTotal  = annualT+monthlyT+coachT+dayPassT+donateT+otherT;
   var expTotal= expRecs.reduce(function(a,r){ return a+r.amount; },0);
   var balance = incTotal - expTotal;
 
@@ -6217,10 +6231,10 @@ function _prepFinancePDFData(arg1, arg2){
   return {
     year:anchorYear, yrStr:String(anchorYear),
     incTotal:incTotal, annualT:annualT, monthlyT:monthlyT,
-    coachT:coachT, donateT:donateT, otherT:otherT,
+    coachT:coachT, dayPassT:dayPassT, donateT:donateT, otherT:otherT,
     expTotal:expTotal, balance:balance,
     annualRecs:annualRecs, monthlyRecs:monthlyRecs,
-    coachRecs:coachRecs, donateRecs:donateRecs,
+    coachRecs:coachRecs, dayPassRecs:dayPassRecs, donateRecs:donateRecs,
     otherRecs:otherRecs, expRecs:expRecs, voidRecs:voidRecs,
     shouldPayLen:shouldPay.length, paidCnt:paidCnt,
     unpaidMs:unpaidMs, paidRate:paidRate, anomaly:anomaly,
@@ -6619,25 +6633,27 @@ function _buildFinancePDFHtml(d){
     table(
       ['類型','筆數','金額'],
       [
-        ['年費',   d.annualRecs.length,  d.fmtN(d.annualT)],
-        ['月費',   d.monthlyRecs.length, d.fmtN(d.monthlyT)],
-        ['教練費', d.coachRecs.length,   d.fmtN(d.coachT)],
-        ['捐款',   d.donateRecs.length,  d.fmtN(d.donateT)],
-        ['其他收入',d.otherRecs.length,  d.fmtN(d.otherT)],
-        ['支出',   d.expRecs.length,     d.fmtN(d.expTotal)],
+        ['年費',   d.annualRecs.length,   d.fmtN(d.annualT)],
+        ['月費',   d.monthlyRecs.length,  d.fmtN(d.monthlyT)],
+        ['臨打',   d.dayPassRecs.length,  d.fmtN(d.dayPassT)],
+        ['教練費', d.coachRecs.length,    d.fmtN(d.coachT)],
+        ['捐款',   d.donateRecs.length,   d.fmtN(d.donateT)],
+        ['其他收入',d.otherRecs.length,   d.fmtN(d.otherT)],
+        ['支出',   d.expRecs.length,      d.fmtN(d.expTotal)],
       ],
       ['收入合計',
-       d.annualRecs.length+d.monthlyRecs.length+d.coachRecs.length+d.donateRecs.length+d.otherRecs.length,
+       d.annualRecs.length+d.monthlyRecs.length+d.dayPassRecs.length+d.coachRecs.length+d.donateRecs.length+d.otherRecs.length,
        d.fmtN(d.incTotal)]
     );
 
   // ── detail sections ──
   var detailHtml =
-    incSection('年費明細（A 系列）',   'A', d.annualRecs,  d.annualT) +
-    incSection('月費明細（M 系列）',   'M', d.monthlyRecs, d.monthlyT)+
-    incSection('教練費明細（C 系列）', 'C', d.coachRecs,   d.coachT)  +
-    incSection('捐款明細（D 系列）',   'D', d.donateRecs,  d.donateT) +
-    incSection('其他收入明細（O 系列）','O', d.otherRecs,  d.otherT);
+    incSection('年費明細（A 系列）',   'A', d.annualRecs,   d.annualT)  +
+    incSection('月費明細（M 系列）',   'M', d.monthlyRecs,  d.monthlyT) +
+    incSection('臨打明細（P 系列）',   'P', d.dayPassRecs,  d.dayPassT) +
+    incSection('教練費明細（C 系列）', 'C', d.coachRecs,    d.coachT)   +
+    incSection('捐款明細（D 系列）',   'D', d.donateRecs,   d.donateT)  +
+    incSection('其他收入明細（O 系列）','O', d.otherRecs,   d.otherT);
 
   // expense
   if(d.expRecs.length){
@@ -6783,21 +6799,23 @@ function _runExportCSV(rg){
   // 顯式排序：確保流水號與繳費日期一對一對應，不因 cache 順序而異動
   var annualRecs  = incRecs.filter(function(r){ return r.type==='annual'; }).sort(byDate);
   var monthlyRecs = incRecs.filter(function(r){ return r.type==='monthly'; }).sort(byDate);
-  var coachRecs   = incRecs.filter(function(r){ return r.type==='coaching_fee'||r.type==='coach_fee'||r.type==='coaching'; }).sort(byDate);
-  var donateRecs  = incRecs.filter(function(r){ return r.type==='donate'; }).sort(byDate);
-  var otherRecs   = incRecs.filter(function(r){
-    return r.type!=='annual'&&r.type!=='monthly'&&r.type!=='coaching_fee'&&r.type!=='coach_fee'&&r.type!=='coaching'&&r.type!=='donate';
+  var coachRecs    = incRecs.filter(function(r){ return r.type==='coaching_fee'||r.type==='coach_fee'||r.type==='coaching'; }).sort(byDate);
+  var dayPassRecs  = incRecs.filter(function(r){ return r.type==='day_pass'; }).sort(byDate);
+  var donateRecs   = incRecs.filter(function(r){ return r.type==='donate'; }).sort(byDate);
+  var otherRecs    = incRecs.filter(function(r){
+    return r.type!=='annual'&&r.type!=='monthly'&&r.type!=='day_pass'&&r.type!=='coaching_fee'&&r.type!=='coach_fee'&&r.type!=='coaching'&&r.type!=='donate';
   }).sort(byDate);
 
   // ── Amounts ─────────────────────────────────────────────────────────
   function effAmt(r){ return (r.status==='refund')?-r.amount:r.amount; }
   function sumRecs(recs){ return recs.reduce(function(a,r){ return a+effAmt(r); },0); }
-  var annualT  = sumRecs(annualRecs);
-  var monthlyT = sumRecs(monthlyRecs);
-  var coachT   = sumRecs(coachRecs);
-  var donateT  = sumRecs(donateRecs);
-  var otherT   = sumRecs(otherRecs);
-  var incTotal = annualT + monthlyT + coachT + donateT + otherT;
+  var annualT   = sumRecs(annualRecs);
+  var monthlyT  = sumRecs(monthlyRecs);
+  var coachT    = sumRecs(coachRecs);
+  var dayPassT  = sumRecs(dayPassRecs);
+  var donateT   = sumRecs(donateRecs);
+  var otherT    = sumRecs(otherRecs);
+  var incTotal  = annualT + monthlyT + coachT + dayPassT + donateT + otherT;
   var expTotal = expRecs.reduce(function(a,r){ return a+r.amount; },0);
   var balance  = incTotal - expTotal;
 
@@ -6840,6 +6858,7 @@ function _runExportCSV(rg){
   L.push(row(['總收入',        fmtAmt(incTotal)]));
   L.push(row(['　年費收入',    fmtAmt(annualT)]));
   L.push(row(['　月費收入',    fmtAmt(monthlyT)]));
+  L.push(row(['　臨打收入',    fmtAmt(dayPassT)]));
   L.push(row(['　教練費收入',  fmtAmt(coachT)]));
   L.push(row(['　捐款收入',    fmtAmt(donateT)]));
   L.push(row(['　其他收入',    fmtAmt(otherT)]));
@@ -6850,26 +6869,28 @@ function _runExportCSV(rg){
   // ── 二、收入統計表 ────────────────────────────────────────────────────
   L.push('二、收入統計表');
   L.push(row(['類型','筆數','金額']));
-  L.push(row(['年費',   annualRecs.length,  fmtAmt(annualT)]));
-  L.push(row(['月費',   monthlyRecs.length, fmtAmt(monthlyT)]));
-  L.push(row(['教練費', coachRecs.length,   fmtAmt(coachT)]));
-  L.push(row(['捐款',   donateRecs.length,  fmtAmt(donateT)]));
-  L.push(row(['其他收入',otherRecs.length,  fmtAmt(otherT)]));
-  L.push(row(['支出',   expRecs.length,     fmtAmt(expTotal)]));
+  L.push(row(['年費',    annualRecs.length,   fmtAmt(annualT)]));
+  L.push(row(['月費',    monthlyRecs.length,  fmtAmt(monthlyT)]));
+  L.push(row(['臨打',    dayPassRecs.length,  fmtAmt(dayPassT)]));
+  L.push(row(['教練費',  coachRecs.length,    fmtAmt(coachT)]));
+  L.push(row(['捐款',    donateRecs.length,   fmtAmt(donateT)]));
+  L.push(row(['其他收入',otherRecs.length,    fmtAmt(otherT)]));
+  L.push(row(['支出',    expRecs.length,      fmtAmt(expTotal)]));
   L.push(row(['───','────','────────']));
-  L.push(row(['收入合計', annualRecs.length+monthlyRecs.length+coachRecs.length+donateRecs.length+otherRecs.length, fmtAmt(incTotal)]));
+  L.push(row(['收入合計', annualRecs.length+monthlyRecs.length+dayPassRecs.length+coachRecs.length+donateRecs.length+otherRecs.length, fmtAmt(incTotal)]));
   L.push(row(['結餘','', fmtAmt(balance)]));
   L.push('');
 
-  // ── 三～七、各類收入分區明細 ────────────────────────────────────────────
-  incSection('三', '年費明細',     'A', annualRecs) .forEach(function(l){ L.push(l); });
-  incSection('四', '月費明細',     'M', monthlyRecs).forEach(function(l){ L.push(l); });
-  incSection('五', '教練費明細',   'C', coachRecs)  .forEach(function(l){ L.push(l); });
-  incSection('六', '捐款明細',     'D', donateRecs) .forEach(function(l){ L.push(l); });
-  incSection('七', '其他收入明細', 'O', otherRecs)  .forEach(function(l){ L.push(l); });
+  // ── 三～八、各類收入分區明細 ────────────────────────────────────────────
+  incSection('三', '年費明細',     'A', annualRecs)  .forEach(function(l){ L.push(l); });
+  incSection('四', '月費明細',     'M', monthlyRecs) .forEach(function(l){ L.push(l); });
+  incSection('五', '臨打明細',     'P', dayPassRecs) .forEach(function(l){ L.push(l); });
+  incSection('六', '教練費明細',   'C', coachRecs)   .forEach(function(l){ L.push(l); });
+  incSection('七', '捐款明細',     'D', donateRecs)  .forEach(function(l){ L.push(l); });
+  incSection('八', '其他收入明細', 'O', otherRecs)   .forEach(function(l){ L.push(l); });
 
-  // ── 八、支出明細 ─────────────────────────────────────────────────────
-  L.push('八、支出明細');
+  // ── 九、支出明細 ─────────────────────────────────────────────────────
+  L.push('九、支出明細');
   if(!expRecs.length){
     L.push('（本年度無支出紀錄）');
   } else {
@@ -6881,8 +6902,8 @@ function _runExportCSV(rg){
   }
   L.push('');
 
-  // ── 九、作廢紀錄（稽核參考） ──────────────────────────────────────────
-  L.push('九、作廢紀錄（稽核參考，不列入加總）');
+  // ── 十、作廢紀錄（稽核參考） ──────────────────────────────────────────
+  L.push('十、作廢紀錄（稽核參考，不列入加總）');
   L.push(row(['日期','會員/項目','類型','金額','備註','登記人','狀態']));
   if(voidRecs.length){
     voidRecs.forEach(function(r){
@@ -6891,8 +6912,8 @@ function _runExportCSV(rg){
   } else { L.push('（本年度無作廢紀錄）'); }
   L.push('');
 
-  // ── 十、會員繳費稽核表 ────────────────────────────────────────────────────
-  // 目的：查誰沒繳、誰資料異常。已繳明細已在三～八，不重複列出。
+  // ── 十一、會員繳費稽核表 ────────────────────────────────────────────────────
+  // 目的：查誰沒繳、誰資料異常。已繳明細已在三～九，不重複列出。
   // 已繳定義：當年度有 active 的 annual/monthly finance record
 
   var _yrStr = _sy+'年'+_sm+'月～'+_ey+'年'+_em+'月';
@@ -6941,7 +6962,7 @@ function _runExportCSV(rg){
     }
   });
 
-  L.push('十、'+_yrStr+' 會員繳費稽核表');
+  L.push('十一、'+_yrStr+' 會員繳費稽核表');
   L.push('（已繳明細見三～八區，此區僅列未繳名單與資料異常）');
   L.push('');
 
@@ -7388,7 +7409,7 @@ function openFinanceDetail(id){
   var rec = financeRecords.find(function(r){ return r.id===id; });
   if(!rec){ showToast('找不到紀錄'); return; }
 
-  var TYPE_LABEL = {annual:'年費', monthly:'月費', donate:'抖內', expense:'支出'};
+  var TYPE_LABEL = {annual:'年費', monthly:'月費', day_pass:'臨打', donate:'抖內', expense:'支出'};
   var STATUS_LABEL = {active:'有效', void:'已作廢', refund:'已退費', deleted:'已刪除', archived:'已封存'};
   var recSt = rec.status || 'active';
   var canEdit = isAdminLike() && recSt !== 'void' && recSt !== 'deleted' && recSt !== 'archived';
