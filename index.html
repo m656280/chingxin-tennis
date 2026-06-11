@@ -1408,14 +1408,6 @@ button {
   color:var(--color-text-muted); font-size:13.5px;
   cursor:pointer; font-family:var(--font-body);
 }
-.finExportYearPickRow {
-  text-align:center; margin-bottom:18px;
-}
-.finExportYearSel {
-  width:auto; min-width:120px; font-size:17px !important;
-  font-weight:600 !important; padding:9px 16px !important;
-  letter-spacing:0.04em; border-radius:10px !important;
-}
 .finExportRadioRow {
   display:flex; align-items:center; gap:10px;
   padding:10px 4px; cursor:pointer; font-size:15px;
@@ -1424,10 +1416,14 @@ button {
 .finExportRadioRow input[type=radio] {
   accent-color:var(--color-text-primary); width:17px; height:17px; cursor:pointer;
 }
-.finExportMonthRow { margin-top:8px; padding-left:27px; }
-.finExportRangeSelRow { display:flex; align-items:center; gap:8px; }
-.finExportRangeSel { flex:1; min-width:0; }
-.finExportRangeSep { font-size:14px; color:var(--color-text-muted); white-space:nowrap; flex-shrink:0; }
+/* 起訖年月區塊（指定期間展開） */
+.finExportRangeBlock { margin-top:8px; padding-left:27px; }
+.finExportDateRow { display:flex; gap:8px; }
+.finExportDateSel { flex:1; min-width:0; }
+.finExportRangeSepRow {
+  text-align:center; padding:4px 0;
+  font-size:14px; color:var(--color-text-muted);
+}
 </style>
 </head>
 <body>
@@ -1597,23 +1593,27 @@ button {
   <div class="finExportModal" id="finExportModal">
     <div class="finExportModalHandle"></div>
     <div class="finExportModalTitle">匯出範圍</div>
-    <div class="finExportYearPickRow">
-      <select class="finExportSelect finExportYearSel" id="finExportYearSel" onchange="_onExportYearChange()"></select>
-    </div>
     <div class="finExportSection">
+      <!-- 全部期間 -->
       <label class="finExportRadioRow">
-        <input type="radio" name="finExportScope" id="finExportScopeYear" value="year" checked onchange="_onExportScopeChange()">
-        <span>全年度</span>
+        <input type="radio" name="finExportScope" id="finExportScopeAll" value="all" checked onchange="_onExportScopeChange()">
+        <span>全部期間</span>
       </label>
+      <!-- 指定期間 -->
       <label class="finExportRadioRow">
-        <input type="radio" name="finExportScope" id="finExportScopeMonth" value="month" onchange="_onExportScopeChange()">
-        <span>指定月份範圍</span>
+        <input type="radio" name="finExportScope" id="finExportScopeRange" value="range" onchange="_onExportScopeChange()">
+        <span>指定期間</span>
       </label>
-      <div id="finExportMonthRow" class="finExportMonthRow" style="display:none">
-        <div class="finExportRangeSelRow">
-          <select class="finExportSelect finExportRangeSel" id="finExportStartMonthSel" onchange="_onExportMonthRangeChange()"></select>
-          <span class="finExportRangeSep">～</span>
-          <select class="finExportSelect finExportRangeSel" id="finExportEndMonthSel" onchange="_onExportMonthRangeChange()"></select>
+      <!-- 起訖年月（指定期間展開） -->
+      <div id="finExportRangeBlock" class="finExportRangeBlock" style="display:none">
+        <div class="finExportDateRow">
+          <select class="finExportSelect finExportDateSel" id="finExportStartYearSel" onchange="_onExportRangeChange()"></select>
+          <select class="finExportSelect finExportDateSel" id="finExportStartMonthSel" onchange="_onExportRangeChange()"></select>
+        </div>
+        <div class="finExportRangeSepRow">～</div>
+        <div class="finExportDateRow">
+          <select class="finExportSelect finExportDateSel" id="finExportEndYearSel" onchange="_onExportRangeChange()"></select>
+          <select class="finExportSelect finExportDateSel" id="finExportEndMonthSel" onchange="_onExportRangeChange()"></select>
         </div>
       </div>
     </div>
@@ -6239,14 +6239,14 @@ function _prepFinancePDFData(arg1, arg2){
 
 /* ── Finance: Export Range Modal ─────────────────────────────────────────────
    PDF 與 CSV 共用此 modal。
-   _exportYear  → modal 內獨立選擇的年份（預設帶入目前頁面年份 _finYear）
-   scope = 'year'  → 全年度（1～12 月）
-   scope = 'month' → 指定月份範圍（起始月份～結束月份，皆為同一年）
+   scope = 'all'   → 全部期間（不限日期，passthrough 2000/01 ～ 2099/12）
+   scope = 'range' → 指定期間（startYear/startMonth ～ endYear/endMonth，支援跨年）
    ─────────────────────────────────────────────────────────────────────────── */
-var _exportYear        = new Date().getFullYear(); // modal 內選擇的年份，獨立於 _finYear
-var _exportScopeMode   = 'year'; // 'year' | 'month'
-var _exportStartMonth  = new Date().getMonth() + 1; // 1–12
-var _exportEndMonth    = new Date().getMonth() + 1; // 1–12
+var _exportScopeMode   = 'all';
+var _exportStartYear   = new Date().getFullYear();
+var _exportStartMonth  = 1;
+var _exportEndYear     = new Date().getFullYear();
+var _exportEndMonth    = new Date().getMonth() + 1;
 
 function exportFinancePDF(){
   if(!isAdminLike()){ showToast('僅管理員可匯出'); return; }
@@ -6259,11 +6259,12 @@ function exportFinanceCSV(){
 }
 
 function openFinExportModal(){
-  var nowMonth = new Date().getMonth() + 1;
-  _exportYear       = _finYear;   // 預設帶入目前頁面年份
-  _exportScopeMode  = 'year';
-  _exportStartMonth = nowMonth;
-  _exportEndMonth   = nowMonth;
+  var now = new Date();
+  _exportScopeMode  = 'all';
+  _exportStartYear  = _finYear;           // 預設帶入頁面年份
+  _exportStartMonth = 1;
+  _exportEndYear    = _finYear;
+  _exportEndMonth   = now.getMonth() + 1; // 預設到當月
   _renderFinExportModal();
   document.getElementById('finExportBackdrop').classList.add('open');
   setTimeout(function(){ document.getElementById('finExportModal').classList.add('open'); }, 10);
@@ -6277,18 +6278,15 @@ function _closeFinExportModal(){
 }
 
 function _renderFinExportModal(){
-  // 年份 select（獨立於頁面 _finYear）
-  var ys = document.getElementById('finExportYearSel');
-  if(ys){
-    var _yh = '';
-    var _curY = new Date().getFullYear();
-    for(var _y = 2024; _y <= _curY + 2; _y++){
-      _yh += '<option value="'+_y+'"'+(_y===_exportYear?' selected':'')+'>'+_y+' 年</option>';
-    }
-    ys.innerHTML = _yh;
-  }
+  var curY = new Date().getFullYear();
 
-  // 起始 / 結束月份下拉
+  function _yearOpts(selected){
+    var h = '';
+    for(var y = 2024; y <= curY + 2; y++){
+      h += '<option value="'+y+'"'+(y===selected?' selected':'')+'>'+y+' 年</option>';
+    }
+    return h;
+  }
   function _monthOpts(selected){
     var h = '';
     for(var m = 1; m <= 12; m++){
@@ -6296,87 +6294,106 @@ function _renderFinExportModal(){
     }
     return h;
   }
-  var ss = document.getElementById('finExportStartMonthSel');
-  var es = document.getElementById('finExportEndMonthSel');
-  if(ss) ss.innerHTML = _monthOpts(_exportStartMonth);
-  if(es) es.innerHTML = _monthOpts(_exportEndMonth);
 
   // radio
-  var ry = document.getElementById('finExportScopeYear');
-  var rm = document.getElementById('finExportScopeMonth');
-  if(ry) ry.checked = (_exportScopeMode === 'year');
-  if(rm) rm.checked = (_exportScopeMode === 'month');
+  var ra = document.getElementById('finExportScopeAll');
+  var rr = document.getElementById('finExportScopeRange');
+  if(ra) ra.checked = (_exportScopeMode === 'all');
+  if(rr) rr.checked = (_exportScopeMode === 'range');
 
-  // 月份 row 顯示
-  var mr = document.getElementById('finExportMonthRow');
-  if(mr) mr.style.display = (_exportScopeMode === 'month') ? '' : 'none';
+  // 4 個 select
+  var sy = document.getElementById('finExportStartYearSel');
+  var sm = document.getElementById('finExportStartMonthSel');
+  var ey = document.getElementById('finExportEndYearSel');
+  var em = document.getElementById('finExportEndMonthSel');
+  if(sy) sy.innerHTML = _yearOpts(_exportStartYear);
+  if(sm) sm.innerHTML = _monthOpts(_exportStartMonth);
+  if(ey) ey.innerHTML = _yearOpts(_exportEndYear);
+  if(em) em.innerHTML = _monthOpts(_exportEndMonth);
+
+  // 指定期間區塊顯示
+  var rb = document.getElementById('finExportRangeBlock');
+  if(rb) rb.style.display = (_exportScopeMode === 'range') ? '' : 'none';
 }
 
 function _onExportScopeChange(){
-  var ry = document.getElementById('finExportScopeYear');
-  _exportScopeMode = (ry && ry.checked) ? 'year' : 'month';
-  var mr = document.getElementById('finExportMonthRow');
-  if(mr) mr.style.display = (_exportScopeMode === 'month') ? '' : 'none';
+  var ra = document.getElementById('finExportScopeAll');
+  _exportScopeMode = (ra && ra.checked) ? 'all' : 'range';
+  var rb = document.getElementById('finExportRangeBlock');
+  if(rb) rb.style.display = (_exportScopeMode === 'range') ? '' : 'none';
 }
 
-function _onExportYearChange(){
-  var ys = document.getElementById('finExportYearSel');
-  if(ys) _exportYear = parseInt(ys.value, 10);
-}
-
-function _onExportMonthRangeChange(){
-  var ss = document.getElementById('finExportStartMonthSel');
-  var es = document.getElementById('finExportEndMonthSel');
-  if(ss) _exportStartMonth = parseInt(ss.value, 10);
-  if(es) _exportEndMonth   = parseInt(es.value, 10);
+function _onExportRangeChange(){
+  var sy = document.getElementById('finExportStartYearSel');
+  var sm = document.getElementById('finExportStartMonthSel');
+  var ey = document.getElementById('finExportEndYearSel');
+  var em = document.getElementById('finExportEndMonthSel');
+  if(sy) _exportStartYear  = parseInt(sy.value, 10);
+  if(sm) _exportStartMonth = parseInt(sm.value, 10);
+  if(ey) _exportEndYear    = parseInt(ey.value, 10);
+  if(em) _exportEndMonth   = parseInt(em.value, 10);
 }
 
 // 舊版呼叫相容（保留防報錯）
 function _setExportRange(){}
 function _onExportMonthChange(){}
+function _onExportMonthRangeChange(){}
+function _onExportYearChange(){}
 
 function _normExportRange(){
-  // 使用 modal 內獨立選擇的 _exportYear，不依賴頁面 _finYear
-  if(_exportScopeMode === 'month'){
-    return {startYear:_exportYear, startMonth:_exportStartMonth, endYear:_exportYear, endMonth:_exportEndMonth};
+  if(_exportScopeMode === 'all'){
+    return {startYear:2000, startMonth:1, endYear:2099, endMonth:12};
   }
-  return {startYear:_exportYear, startMonth:1, endYear:_exportYear, endMonth:12};
+  return {
+    startYear:  _exportStartYear,
+    startMonth: _exportStartMonth,
+    endYear:    _exportEndYear,
+    endMonth:   _exportEndMonth
+  };
 }
 
-/* 驗證起始月份 ≤ 結束月份（同年範圍）；回傳 true 代表通過 */
+/* 驗證：開始年月不可晚於結束年月；回傳 true 代表通過 */
 function _validateExportRange(rg){
-  if(_exportScopeMode === 'month' && rg.startMonth > rg.endMonth){
-    showToast('起始月份不可晚於結束月份');
-    return false;
+  if(_exportScopeMode === 'range'){
+    if(rg.startYear * 12 + rg.startMonth > rg.endYear * 12 + rg.endMonth){
+      showToast('開始月份不可晚於結束月份');
+      return false;
+    }
   }
   return true;
 }
 
 function _exportRangeTitle(rg){
-  // 全年度
+  var p = function(n){ return String(n).padStart(2,'0'); };
+  // 全部期間（通配）
+  if(rg.startYear === 2000 && rg.endYear === 2099){
+    return '全部期間財務報表';
+  }
+  // 同年全年度
   if(rg.startYear === rg.endYear && rg.startMonth === 1 && rg.endMonth === 12){
     return rg.startYear + ' 年全年度財務報表';
   }
-  // 單月
+  // 同年同月（單月）
   if(rg.startYear === rg.endYear && rg.startMonth === rg.endMonth){
     return rg.startYear + ' 年 ' + rg.startMonth + ' 月財務報表';
   }
-  // 月份範圍
-  return rg.startYear + ' 年 ' + rg.startMonth + ' 月～' + rg.endMonth + ' 月財務報表';
+  // 跨年或多月範圍
+  return rg.startYear+'/'+p(rg.startMonth)+' ～ '+rg.endYear+'/'+p(rg.endMonth)+' 財務報表';
 }
 
-/* PDF 匯出檔名（含月份範圍）*/
+/* 匯出檔名 — CSV 同一套，在 _runExportCSV 裡另算 */
 function _exportPDFFilename(rg){
   var p = function(n){ return String(n).padStart(2,'0'); };
-  if(rg.startMonth === 1 && rg.endMonth === 12){
+  if(rg.startYear === 2000) return '清心網球財務_全部期間.pdf';
+  if(rg.startYear === rg.endYear && rg.startMonth === 1 && rg.endMonth === 12){
     return '清心網球財務_'+rg.startYear+'.pdf';
   }
-  return '清心網球財務_'+rg.startYear+'_'+p(rg.startMonth)+'-'+p(rg.endMonth)+'.pdf';
+  return '清心網球財務_'+rg.startYear+p(rg.startMonth)+'-'+rg.endYear+p(rg.endMonth)+'.pdf';
 }
 
 function _doExportPDF(){
   var rg = _normExportRange();
-  if(!_validateExportRange(rg)) return;   // 不關 modal，讓使用者修正
+  if(!_validateExportRange(rg)) return;
   _closeFinExportModal();
   var title = _exportRangeTitle(rg);
   if(!financeRecords.length){ showToast('沒有資料可匯出'); return; }
@@ -6385,8 +6402,6 @@ function _doExportPDF(){
     showToast(title.replace('財務報表','') + ' 沒有資料可匯出'); return;
   }
   var html = _buildFinancePDFHtml(d);
-  // LINE WebView 與 iOS WKWebView 封鎖 window.open (popup)。
-  // 改為在當頁以 document.write 接管，讓使用者列印／截圖後可按返回回到 app。
   var _pdfIsLine = /Line\//i.test(navigator.userAgent);
   var _pdfIsIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
   if(_pdfIsLine || _pdfIsIOS){
@@ -6402,7 +6417,7 @@ function _doExportPDF(){
 
 function _doExportCSV(){
   var rg = _normExportRange();
-  if(!_validateExportRange(rg)) return;   // 不關 modal，讓使用者修正
+  if(!_validateExportRange(rg)) return;
   _closeFinExportModal();
   _runExportCSV(rg);
 }
@@ -6992,10 +7007,12 @@ function _runExportCSV(rg){
   var blob     = new Blob([csv], {type:'text/csv;charset=utf-8;'});
   var filename = (function(){
     var p = function(n){ return String(n).padStart(2,'0'); };
-    if(_sm === 1 && _em === 12 && _sy === _ey){
-      return '清心網球財務_'+_sy+'.csv';
-    }
-    return '清心網球財務_'+_sy+'_'+p(_sm)+'-'+p(_em)+'.csv';
+    // 全部期間（通配）
+    if(_sy === 2000 && _ey === 2099) return '清心網球財務_全部期間.csv';
+    // 全年度
+    if(_sy === _ey && _sm === 1 && _em === 12) return '清心網球財務_'+_sy+'.csv';
+    // 跨年或月份範圍
+    return '清心網球財務_'+_sy+p(_sm)+'-'+_ey+p(_em)+'.csv';
   })();
 
   var _csvIsIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
