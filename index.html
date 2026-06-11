@@ -6178,8 +6178,12 @@ function _prepFinancePDFData(arg1, arg2){
   allRecs.forEach(function(r){
     if((r.status||'active')!=='active') return;
     if(r.type!=='annual'&&r.type!=='monthly') return;
-    var ry = parseInt((r.date||'').slice(0,4),10) || r.year || 0;
-    if(ry < startYear || ry > endYear) return;   // 年份序號範圍（date 為準）
+    // 年費優先用 membershipYear（會籍年度），涵蓋 2025/12 預收 2026 年費的過渡情境；
+    // 月費或無 membershipYear 則 fallback 到付款日年份。
+    var ry = (r.type==='annual' && r.membershipYear)
+      ? parseInt(r.membershipYear, 10)
+      : (parseInt((r.date||'').slice(0,4),10) || r.year || 0);
+    if(ry < startYear || ry > endYear) return;
     var mid = r.memberId||''; if(!mid) return;
     (paidMap[mid]=paidMap[mid]||[]).push({type:r.type,date:r.date||'',amount:r.amount||0});
   });
@@ -6898,8 +6902,12 @@ function _runExportCSV(rg){
   financeRecords.forEach(function(r){
     if((r.status||'active')!=='active') return;
     if(r.type!=='annual'&&r.type!=='monthly') return;
-    var recYear = parseInt((r.date||'').slice(0,4),10) || r.year || 0;
-    if(recYear < _sy || recYear > _ey) return;   // 年份序號範圍（date 為準）
+    // 年費優先用 membershipYear（會籍年度），涵蓋 2025/12 預收 2026 年費的過渡情境；
+    // 月費或無 membershipYear 則 fallback 到付款日年份。
+    var recYear = (r.type==='annual' && r.membershipYear)
+      ? parseInt(r.membershipYear, 10)
+      : (parseInt((r.date||'').slice(0,4),10) || r.year || 0);
+    if(recYear < _sy || recYear > _ey) return;
     var mid = r.memberId || '';
     if(!mid) return;
     if(!_paidMap[mid]) _paidMap[mid] = [];
