@@ -7295,15 +7295,35 @@ function submitFinanceRecord(){
   // ── 月費帳期（billingYear / billingMonth）──
   var _billingYear  = null;
   var _billingMonth = null;
+
+  // ── 防重複：年費（memberId + membershipYear）──
+  if(type === 'annual' && member){
+    var _annualYear = parseInt((document.getElementById('finFormYear')||{}).value||'0',10) || null;
+    if(_annualYear){
+      var _annualDup = financeRecords.some(function(r){
+        return r.type === 'annual'
+            && r.memberId === member
+            && (r.membershipYear === _annualYear || parseInt(r.membershipYear,10) === _annualYear)
+            && (r.status || 'active') !== 'void'
+            && r.id !== (_finEditId || '');
+      });
+      if(_annualDup){
+        var _aN = (usersCache[member]||{}).realName || (usersCache[member]||{}).displayName || member;
+        showToast(_aN+' '+_annualYear+' 年費已存在，請勿重複建立');
+        return;
+      }
+    }
+  }
+
+  // ── 防重複：月費（memberId + billingYear + billingMonth）──
   if(type === 'monthly'){
     _billingYear  = parseInt((document.getElementById('finFormBillingYear') ||{}).value||'0',10) || null;
     _billingMonth = parseInt((document.getElementById('finFormBillingMonth')||{}).value||'0',10) || null;
     if(!_billingYear || !_billingMonth){
       showToast('請選擇帳期年月'); return;
     }
-    // ── 防重複：同一會員同一帳期只能有一筆 active 月費 ──
     if(member){
-      var _dup = financeRecords.some(function(r){
+      var _monDup = financeRecords.some(function(r){
         return r.type === 'monthly'
             && r.memberId === member
             && r.billingYear  === _billingYear
@@ -7311,7 +7331,7 @@ function submitFinanceRecord(){
             && (r.status || 'active') !== 'void'
             && r.id !== (_finEditId || '');
       });
-      if(_dup){
+      if(_monDup){
         var _mN = (usersCache[member]||{}).realName || (usersCache[member]||{}).displayName || member;
         showToast(_mN+' '+_billingYear+'/'+String(_billingMonth).padStart(2,'0')+' 月費已存在，請勿重複建立');
         return;
