@@ -1911,6 +1911,13 @@ button {
         <option value="9">9 個月</option>
       </select>
     </div>
+    <div class="formRow" id="finFormBillingRow" style="display:none">
+      <label class="formLabel">帳期（月費歸屬）</label>
+      <div style="display:flex;gap:8px">
+        <select class="formSelect" id="finFormBillingYear" style="flex:1"></select>
+        <select class="formSelect" id="finFormBillingMonth" style="flex:1"></select>
+      </div>
+    </div>
     <div class="formRow">
       <label class="formLabel">會員</label>
       <select class="formSelect" id="finFormMember">
@@ -7188,12 +7195,36 @@ function _finPopulateMemberSelect(selectedId){
 
 /* ── Finance: Year Row Toggle ── */
 function _finToggleYearRow(){
-  var type      = document.getElementById('finFormType').value;
-  var yearRow   = document.getElementById('finFormYearRow');
-  var periodRow = document.getElementById('finFormPeriodRow');
-  if(yearRow)   yearRow.style.display   = (type === 'annual')  ? '' : 'none';
-  if(periodRow) periodRow.style.display = (type === 'monthly') ? '' : 'none';
+  var type       = document.getElementById('finFormType').value;
+  var yearRow    = document.getElementById('finFormYearRow');
+  var periodRow  = document.getElementById('finFormPeriodRow');
+  var billingRow = document.getElementById('finFormBillingRow');
+  if(yearRow)    yearRow.style.display    = (type === 'annual')  ? '' : 'none';
+  if(periodRow)  periodRow.style.display  = (type === 'monthly') ? '' : 'none';
+  if(billingRow) billingRow.style.display = (type === 'monthly') ? '' : 'none';
 }
+/* ── Finance: 帳期（月費歸屬）選擇器 ─────────────────────────────────────────
+   billingYear / billingMonth：月費「歸屬」年月，用於防重複和未來統計。
+   與 date（實際收款日）分開，允許 12 月預收下年度月費。 */
+function _finPopulateBillingSelects(selYear, selMonth){
+  var yearSel  = document.getElementById('finFormBillingYear');
+  var monthSel = document.getElementById('finFormBillingMonth');
+  if(!yearSel || !monthSel) return;
+  var curY = new Date().getFullYear();
+  var defY = selYear  ? parseInt(selYear,10)  : curY;
+  var defM = selMonth ? parseInt(selMonth,10) : (new Date().getMonth() + 1);
+  var yHtml = '';
+  for(var y = 2025; y <= 2036; y++){
+    yHtml += '<option value="'+y+'"'+(y===defY?' selected':'')+'>'+y+' 年</option>';
+  }
+  var mHtml = '';
+  for(var m = 1; m <= 12; m++){
+    mHtml += '<option value="'+m+'"'+(m===defM?' selected':'')+'>'+String(m).padStart(2,'0')+' 月</option>';
+  }
+  yearSel.innerHTML  = yHtml;
+  monthSel.innerHTML = mHtml;
+}
+
 function _finPopulateYearSelect(selectedYear){
   var sel = document.getElementById('finFormYear');
   if(!sel) return;
@@ -7234,8 +7265,9 @@ function openFinanceForm(){
   document.getElementById('finFormDate').value = formatDate(today);
   document.getElementById('finFormAmount').value = '';
   document.getElementById('finFormNote').value = '';
-  _finPopulateYearSelect(null);   // 預設當年度
-  _finToggleYearRow();            // annual → 顯示 year row
+  _finPopulateYearSelect(null);      // 預設當年度
+  _finPopulateBillingSelects(null, null);  // 帳期預設當月
+  _finToggleYearRow();               // annual → 顯示 year row
   document.getElementById('sheetBackdrop').classList.add('open');
   document.getElementById('financeFormSheet').classList.add('open');
 }
@@ -7260,10 +7292,37 @@ function submitFinanceRecord(){
   if(!date){ showToast('請選擇日期'); return; }
   if(!amount || amount <= 0){ showToast('請輸入金額'); return; }
 
+  // ── 月費帳期（billingYear / billingMonth）──
+  var _billingYear  = null;
+  var _billingMonth = null;
+  if(type === 'monthly'){
+    _billingYear  = parseInt((document.getElementById('finFormBillingYear') ||{}).value||'0',10) || null;
+    _billingMonth = parseInt((document.getElementById('finFormBillingMonth')||{}).value||'0',10) || null;
+    if(!_billingYear || !_billingMonth){
+      showToast('請選擇帳期年月'); return;
+    }
+    // ── 防重複：同一會員同一帳期只能有一筆 active 月費 ──
+    if(member){
+      var _dup = financeRecords.some(function(r){
+        return r.type === 'monthly'
+            && r.memberId === member
+            && r.billingYear  === _billingYear
+            && r.billingMonth === _billingMonth
+            && (r.status || 'active') !== 'void'
+            && r.id !== (_finEditId || '');
+      });
+      if(_dup){
+        var _mN = (usersCache[member]||{}).realName || (usersCache[member]||{}).displayName || member;
+        showToast(_mN+' '+_billingYear+'/'+String(_billingMonth).padStart(2,'0')+' 月費已存在，請勿重複建立');
+        return;
+      }
+    }
+  }
+
   if(_finEditId){
     var _mYearE   = (type==='annual')  ? (parseInt((document.getElementById('finFormYear')||{}).value||'0',10)||null) : null;
     var _mPeriodE = (type==='monthly') ? (parseInt((document.getElementById('finFormPeriod')||{}).value||'1',10)||1)  : null;
-    submitEditFinanceRecord(type, member, date, amount, note, _mYearE, _mPeriodE);
+    submitEditFinanceRecord(type, member, date, amount, note, _mYearE, _mPeriodE, _billingYear, _billingMonth);
   } else {
     if(!db){ showToast('無法連線，請稍後再試'); return; }
     const creatorName = currentUser ? (currentUser.displayName || currentUser.name || '') : '';
@@ -7291,6 +7350,8 @@ function submitFinanceRecord(){
       membershipYear:    _mYear,
       membershipExpiry:  _msExpiry,
       periodMonths:      _mPeriod || null,
+      billingYear:       _billingYear,   // 月費帳期年（防重複、統計用）
+      billingMonth:      _billingMonth,  // 月費帳期月
       createdByUid:      creatorUid,
       createdByName:     creatorName,
       createdAt:         TS(),
@@ -7326,7 +7387,7 @@ function submitFinanceRecord(){
   }
 }
 
-function submitEditFinanceRecord(type, member, date, amount, note, membershipYear, periodMonths){
+function submitEditFinanceRecord(type, member, date, amount, note, membershipYear, periodMonths, billingYear, billingMonth){
   if(!db){ showToast('無法連線，請稍後再試'); return; }
   // member = userId (option value); look up display info directly
   var _mObj2 = member ? usersCache[member] : null;
@@ -7360,6 +7421,8 @@ function submitEditFinanceRecord(type, member, date, amount, note, membershipYea
     membershipYear:    _mYear2,
     membershipExpiry:  _msExpiry2,
     periodMonths:      _mPeriod2 || null,
+    billingYear:       (type === 'monthly' && billingYear)  ? billingYear  : null,
+    billingMonth:      (type === 'monthly' && billingMonth) ? billingMonth : null,
     updatedAt:         TS(),
     updatedByUid:      _updaterUid,
     updatedByName:     _updaterName,
@@ -7432,6 +7495,8 @@ function openFinanceDetail(id){
   html += detailRow('金額', rec.amount != null ? 'NT$ '+Number(rec.amount).toLocaleString() : '');
   if(rec.note) html += detailRow('備註', rec.note);
   if(rec.membershipYear) html += detailRow('會籍年度', String(rec.membershipYear));
+  if(rec.billingYear && rec.billingMonth)
+    html += detailRow('帳期', rec.billingYear+'/'+String(rec.billingMonth).padStart(2,'0'));
   if(rec.membershipExpiry) html += detailRow('到期日', rec.membershipExpiry);
   html += detailRow('狀態', STATUS_LABEL[recSt]||recSt);
   html += detailRow('登記人', rec.createdByName||'');
@@ -7472,6 +7537,10 @@ function editFinanceRecord(id){
   document.getElementById('finFormNote').value   = rec.note   || '';
   _finPopulateMemberSelect(rec.memberId || '');
   _finPopulateYearSelect(rec.membershipYear || null);
+  // 帳期：優先用 billingYear/billingMonth，舊紀錄無此欄位則 fallback 到收款日年月
+  var _bY = rec.billingYear  || parseInt((rec.date||'').slice(0,4),10) || null;
+  var _bM = rec.billingMonth || parseInt((rec.date||'').slice(5,7),10) || null;
+  _finPopulateBillingSelects(_bY, _bM);
   var _editPeriodSel = document.getElementById('finFormPeriod');
   if(_editPeriodSel) _editPeriodSel.value = String(parseInt(rec.periodMonths,10)||1);
   _finToggleYearRow();
