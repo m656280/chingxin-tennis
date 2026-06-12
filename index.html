@@ -6921,27 +6921,28 @@ function _buildFinancePDFHtml(d){
   }
 
   // ── income detail column specs ──
-  // A4 portrait 190mm 可用 — 5 欄：流水號10+日期15+會員30+備註30+金額15 = 100%
+  // A4 portrait 190mm — 6 欄：流水號8+日期10+會員24+備註30+金額14+登記人14 = 100%
   var INC_COLS = [
-    {width:'10%', clip:false},               // 流水號 A001
-    {width:'15%', clip:false},               // 日期 12/31
-    {width:'30%', clip:false},               // 會員名 — 完整顯示
-    {width:'30%', clip:false},               // 項目/備註 — 完整顯示
-    {width:'15%', align:'right', clip:false}, // 金額 — 絕不截斷
+    {width:'8%',  clip:false},               // 流水號
+    {width:'10%', clip:false},               // 日期 12/31
+    {width:'24%', clip:false},               // 會員名
+    {width:'30%', clip:false},               // 項目/備註
+    {width:'14%', align:'right', clip:false}, // 金額
+    {width:'14%', clip:true},               // 登記人 — 超長時省略
   ];
 
-  // ── income section helper（5欄，無登記人）──
+  // ── income section helper（6欄，含登記人）──
   function incSection(title, prefix, recs, total){
     if(!recs.length) return '';
     var rows = recs.map(function(r,i){
       var _pm = parseInt(r.periodMonths,10)||1;
       var _nm = _finExportName(r) + (_pm > 1 ? ' · '+_pm+'個月' : '');
       var _nt = _finExportNote(r);
-      return [serial(prefix,i), fmtDate(r.date), _nm, _nt, d.fmtN(d.effAmt(r))];
+      return [serial(prefix,i), fmtDate(r.date), _nm, _nt, d.fmtN(d.effAmt(r)), r.createdByName||'—'];
     });
-    var foot = ['','','筆數：'+recs.length,'','合計：'+d.fmtN(total)];
-    return '<div class="section"><h3>'+esc(title)+'</h3>'+
-      table(['流水號','日期','會員','項目/備註','金額'], rows, foot, 'inc-table', INC_COLS)+
+    var foot = ['','','筆數：'+recs.length,'','合計：'+d.fmtN(total),''];
+    return '<div class="detail-section"><h3>'+esc(title)+'</h3>'+
+      table(['流水號','日期','會員','項目/備註','金額','登記人'], rows, foot, 'inc-table', INC_COLS)+
       '</div>';
   }
 
@@ -6956,24 +6957,24 @@ function _buildFinancePDFHtml(d){
     '  .print-bar button { background:#4a7c4e; color:#fff; border:none; padding:8px 24px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; touch-action:manipulation; }',
     '  .print-bar button:hover { background:#3a6a3e; }',
     '  .print-bar span { font-size:12px; opacity:.7; }',
-    '  .page { background:#fff; max-width:190mm; margin:8mm auto; padding:12mm 10mm; box-shadow:0 2px 8px rgba(0,0,0,0.18); box-sizing:border-box; }',
+    '  .print-page { background:#fff; max-width:190mm; margin:8mm auto; padding:12mm 10mm; box-shadow:0 2px 8px rgba(0,0,0,0.18); box-sizing:border-box; }',
     '  .page-header-compact { display:none; }',
     '}',
     /* === Print-only === */
     '@media print {',
     '  @page { size:A4 portrait; margin:10mm; }',
+    '  html, body { width:210mm; margin:0; padding:0; zoom:1 !important; transform:none !important; font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei","Heiti TC",sans-serif; font-size:10px; color:#000; background:#fff; line-height:1.3; }',
     '  * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }',
-    '  body { font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei","Heiti TC",sans-serif; font-size:9px; color:#000; margin:0; padding:0; background:#fff; line-height:1.3; }',
     '  .print-bar, #lineHint { display:none !important; }',
-    '  .page { background:#fff; box-shadow:none; padding:0; margin:0; max-width:none; width:100%; }',
-    '  .page-break { page-break-before:always; break-before:page; }',
-    '  .section { page-break-inside:avoid; break-inside:avoid; }',
+    '  .print-page { width:190mm; margin:0 auto; padding:0; box-shadow:none; background:#fff; page-break-after:always; break-after:page; box-sizing:border-box; }',
+    '  .print-page:last-of-type { page-break-after:auto; break-after:auto; }',
     '  .page-header-compact { display:block !important; }',
+    '  .detail-section { page-break-inside:auto; break-inside:auto; }',
+    '  .detail-section h3 { page-break-after:avoid; break-after:avoid; }',
+    '  h2 { page-break-after:avoid; break-after:avoid; }',
+    '  table { width:100% !important; table-layout:fixed !important; border-collapse:collapse !important; page-break-inside:auto; }',
     '  thead { display:table-header-group; }',
     '  tr { page-break-inside:avoid; break-inside:avoid; }',
-    '  h2 { page-break-after:avoid; break-after:avoid; }',
-    '  h3 { page-break-after:avoid; break-after:avoid; }',
-    '  table { table-layout:fixed !important; width:100% !important; border-collapse:collapse !important; overflow:hidden; }',
     '  th, td { font-size:10px !important; padding:2px 4px !important; white-space:normal; overflow:visible; word-break:break-word; }',
     '  .td-right { text-align:right !important; }',
     '  .td-clip { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }',
@@ -7057,19 +7058,20 @@ function _buildFinancePDFHtml(d){
     incSection('捐款明細（D 系列）',   'D', d.donateRecs,   d.donateT)  +
     incSection('其他收入明細（O 系列）','O', d.otherRecs,   d.otherT);
 
-  // expense
+  // expense — 5 欄：流水號8+日期10+備註54+金額14+登記人14 = 100%
   var EXP_COLS = [
+    {width:'8%',  clip:false},
     {width:'10%', clip:false},
-    {width:'15%', clip:false},
-    {width:'60%', clip:false},
-    {width:'15%', align:'right', clip:false},
+    {width:'54%', clip:false},
+    {width:'14%', align:'right', clip:false},
+    {width:'14%', clip:true},
   ];
   if(d.expRecs.length){
     var expRows  = d.expRecs.map(function(r,i){
-      return [serial('E',i), fmtDate(r.date), _finExportNote(r)||_finExportName(r), d.fmtN(r.amount)];
+      return [serial('E',i), fmtDate(r.date), _finExportNote(r)||_finExportName(r), d.fmtN(r.amount), r.createdByName||'—'];
     });
-    var expFoot  = ['','','筆數：'+d.expRecs.length,'合計：'+d.fmtN(d.expTotal)];
-    detailHtml  += '<div class="section"><h3>支出明細（E 系列）</h3>'+table(['流水號','日期','項目/備註','金額'], expRows, expFoot, 'inc-table', EXP_COLS)+'</div>';
+    var expFoot  = ['','','筆數：'+d.expRecs.length,'合計：'+d.fmtN(d.expTotal),''];
+    detailHtml  += '<div class="detail-section"><h3>支出明細（E 系列）</h3>'+table(['流水號','日期','項目/備註','金額','登記人'], expRows, expFoot, 'inc-table', EXP_COLS)+'</div>';
   }
 
   // void
@@ -7129,9 +7131,6 @@ function _buildFinancePDFHtml(d){
     '<meta name="viewport" content="width=device-width,initial-scale=1">'+
     '<title>高雄市清心網球協會　'+d.reportTitle+'</title>'+
     '<style>'+css+'</style>'+
-    // html2canvas + jsPDF — loaded async, checked before use
-    '<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></'+'script>'+
-    '<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></'+'script>'+
     '</head><body>'+
     '<div class="no-print print-bar">'+
       '<button type="button" '+
@@ -7145,10 +7144,10 @@ function _buildFinancePDFHtml(d){
         'style="background:#1a6fad;color:#fff;border:none;padding:10px 24px;border-radius:8px;'+
         'font-size:14px;font-weight:700;cursor:pointer;touch-action:manipulation;flex-shrink:0;'+
         'box-shadow:0 2px 6px rgba(0,0,0,0.3);-webkit-tap-highlight-color:transparent;">'+
-        '📤 分享 PDF</button>'+
+        '📄 列印 / 存 PDF</button>'+
     '</div>'+
     // Page 1 — overview + monthly balance
-    '<div class="page">'+
+    '<div class="print-page">'+
       '<header>'+
         '<div class="report-org">高雄市清心網球協會</div>'+
         '<div class="report-title">'+d.reportTitle+'</div>'+
@@ -7156,80 +7155,27 @@ function _buildFinancePDFHtml(d){
       overviewHtml+
       monthlyBalanceHtml+
     '</div>'+
-    // Page 2+ detail
-    '<div class="page page-break">'+
+    // Page 2+ detail — each detail-section flows naturally, thead repeats per page
+    '<div class="print-page">'+
       '<div class="page-header-compact">高雄市清心網球協會｜'+d.reportTitle+'</div>'+
       '<h2>收入 / 支出明細</h2>'+
       detailHtml+
     '</div>'+
-    // Last page audit
-    '<div class="page page-break">'+
+    // Audit page
+    '<div class="print-page">'+
       '<div class="page-header-compact">高雄市清心網球協會｜'+d.reportTitle+'</div>'+
       auditHtml+
     '</div>'+
     '<script>'+
-      // Generate PDF from .page divs using html2canvas + jsPDF, then share as file
-      'async function _doSharePDF(){'+
-        'var btn=document.getElementById("shareBtn");'+
-        'var orig=btn.innerHTML;'+
-        'btn.innerHTML="⏳ 產生中…";btn.disabled=true;'+
-        'try{'+
-          // Guard: libraries must be loaded
-          'if(!window.html2canvas||!window.jspdf){'+
-            'alert("PDF 庫尚未載入，請稍後再試");'+
-            'btn.innerHTML=orig;btn.disabled=false;return;'+
-          '}'+
-          'var pages=Array.from(document.querySelectorAll(".page"));'+
-          'var doc=new window.jspdf.jsPDF({orientation:"p",unit:"mm",format:"a4"});'+
-          'var W=210,H=297;'+
-          // Capture each page div as image
-          'for(var i=0;i<pages.length;i++){'+
-            'var canvas=await html2canvas(pages[i],{'+
-              'scale:2,useCORS:true,logging:false,backgroundColor:"#ffffff",'+
-              'windowWidth:820,'+  // portrait-width rendering (~A4 portrait at 96dpi)
-              'onclone:function(clonedDoc,el){'+
-                // Force A4-portrait width, strip visual chrome in clone
-                'el.style.cssText+="box-shadow:none!important;margin:0!important;'+
-                  'width:756px!important;max-width:none!important;'+
-                  'padding:36px 28px!important;";'+
-              '}'+
-            '});'+
-            // Split canvas into A4-height slices — no scale-down compression
-            'var pxPerMm=canvas.width/W;'+
-            'var pageHpx=Math.round(H*pxPerMm);'+
-            'var slices=Math.ceil(canvas.height/pageHpx);'+
-            'for(var s=0;s<slices;s++){'+
-              'var startY=s*pageHpx;'+
-              'var sliceH=Math.min(pageHpx,canvas.height-startY);'+
-              'var sc=document.createElement("canvas");'+
-              'sc.width=canvas.width;sc.height=sliceH;'+
-              'var ctx=sc.getContext("2d");'+
-              'ctx.fillStyle="#ffffff";ctx.fillRect(0,0,sc.width,sc.height);'+
-              'ctx.drawImage(canvas,0,-startY);'+
-              'var img=sc.toDataURL("image/jpeg",0.92);'+
-              'var hmm=sliceH/pxPerMm;'+
-              'if(i>0||s>0)doc.addPage([W,H],"l");'+
-              'doc.addImage(img,"JPEG",0,0,W,hmm);'+
-            '}'+
-          '}'+
-          // Build File object
-          'var blob=doc.output("blob");'+
-          'var fname=(document.title||"財務報表").replace(/[\\s　]+/g,"_")+".pdf";'+
-          'var file=new File([blob],fname,{type:"application/pdf"});'+
-          // Try file share → fallback download
-          'if(navigator.canShare&&navigator.canShare({files:[file]})){'+
-            'await navigator.share({files:[file],title:document.title,text:"財務報表 PDF"});'+
-          '}else{'+
-            // Download fallback (desktop Chrome, LINE WebView, etc.)
-            'var u=URL.createObjectURL(blob);'+
-            'var a=document.createElement("a");'+
-            'a.href=u;a.download=fname;document.body.appendChild(a);a.click();'+
-            'setTimeout(function(){URL.revokeObjectURL(u);a.remove();},2000);'+
-          '}'+
-        '}catch(e){'+
-          'if(!e||e.name!=="AbortError")alert("PDF 產生失敗："+(e&&e.message||String(e)));'+
+      // Use browser native print — CSS @media print handles layout, pagination, thead repeat
+      'function _doSharePDF(){'+
+        // LINE WebView: window.print() silently fails — detect and guide user
+        'var ua=navigator.userAgent||"";'+
+        'if(/Line\\/[0-9]/i.test(ua)){'+
+          'alert("LINE 內建瀏覽器不支援列印。\\n請點右上角選單 → 在瀏覽器開啟，再點「列印 / 存 PDF」。");'+
+          'return;'+
         '}'+
-        'btn.innerHTML=orig;btn.disabled=false;'+
+        'window.print();'+
       '}'+
     '</'+'script>'+
     '</body></html>';
