@@ -4,6 +4,24 @@
 
 ---
 
+## ⚠️ Agent 強制規則：Deploy 前必須驗證
+
+**任何 Agent 修改程式後，禁止直接 commit / push / deploy。**
+
+必須依序完成 [`docs/DEPLOY_CHECKLIST.md`](docs/DEPLOY_CHECKLIST.md) 中的五項驗證：
+
+1. **Syntax Check** — JS/HTML/CSS 語法正確，特別檢查字串引號與反斜線 escape
+2. **Console Error Check** — Console 無紅色錯誤
+3. **Mobile Render Check** — 場地、預約、管理、財務、我的頁面可正常渲染
+4. **Critical Flow Check** — 日期列、時間軸、預約資料、管理與財務頁不空白
+5. **驗證全通過後**，才允許 commit / push / deploy
+
+若任何一項失敗：先回報錯誤原因，修復後重新驗證。
+
+詳細規則與已知 Gotcha 見 → [`docs/DEPLOY_CHECKLIST.md`](docs/DEPLOY_CHECKLIST.md)
+
+---
+
 ## 階段
 
 **Phase 1: Auth & Roles Skeleton** ← 目前階段
