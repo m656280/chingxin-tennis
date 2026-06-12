@@ -6920,14 +6920,14 @@ function _buildFinancePDFHtml(d){
   }
 
   // ── income detail column specs ──
-  // A4 portrait 186mm 可用 — 6 欄：流水號9+日期14+會員18+備註22+金額18+登記人19 = 100%
+  // A4 landscape 277mm 可用 — 6 欄：流水號8+日期12+會員25+備註25+金額15+登記人15 = 100%
   var INC_COLS = [
-    {width:'9%',  clip:false},               // 流水號 A001
-    {width:'14%', clip:false},               // 日期 2026-01-15
-    {width:'18%', clip:true},                // 會員名
-    {width:'22%', clip:true},                // 項目/備註
-    {width:'18%', align:'right', clip:false}, // 金額 — 絕不截斷
-    {width:'19%', clip:true},                // 登記人
+    {width:'8%',  clip:false},               // 流水號 A001
+    {width:'12%', clip:false},               // 日期 2026-01-15
+    {width:'25%', clip:false},               // 會員名 — 完整顯示
+    {width:'25%', clip:false},               // 項目/備註 — 完整顯示
+    {width:'15%', align:'right', clip:false}, // 金額 — 絕不截斷
+    {width:'15%', clip:false},               // 登記人 — 完整顯示
   ];
 
   // ── income section helper（6欄，含項目/備註）──
@@ -6946,7 +6946,7 @@ function _buildFinancePDFHtml(d){
   }
 
   // ── CSS ──
-  // A4 portrait 186mm 可用 (210mm - 12mm×2)
+  // A4 landscape 277mm 可用 (297mm - 10mm×2)
   // Screen: .page 白卡片；Print: flat doc，@page 完全掌控版面
   var css = [
     /* === Screen-only wrapper === */
@@ -6956,12 +6956,12 @@ function _buildFinancePDFHtml(d){
     '  .print-bar button { background:#4a7c4e; color:#fff; border:none; padding:8px 24px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; touch-action:manipulation; }',
     '  .print-bar button:hover { background:#3a6a3e; }',
     '  .print-bar span { font-size:12px; opacity:.7; }',
-    '  .page { background:#fff; max-width:186mm; margin:8mm auto; padding:14mm 12mm; box-shadow:0 2px 8px rgba(0,0,0,0.18); box-sizing:border-box; }',
+    '  .page { background:#fff; max-width:277mm; margin:8mm auto; padding:12mm 10mm; box-shadow:0 2px 8px rgba(0,0,0,0.18); box-sizing:border-box; }',
     '  .page-header-compact { display:none; }',
     '}',
     /* === Print-only === */
     '@media print {',
-    '  @page { size:A4 portrait; margin:12mm; }',
+    '  @page { size:A4 landscape; margin:10mm; }',
     '  * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }',
     '  body { font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei","Heiti TC",sans-serif; font-size:9px; color:#000; margin:0; padding:0; background:#fff; line-height:1.3; }',
     '  .print-bar { display:none !important; }',
@@ -6974,9 +6974,9 @@ function _buildFinancePDFHtml(d){
     '  h2 { page-break-after:avoid; break-after:avoid; }',
     '  h3 { page-break-after:avoid; break-after:avoid; }',
     '  table { table-layout:fixed !important; width:100% !important; border-collapse:collapse !important; overflow:hidden; }',
-    '  th, td { font-size:9px !important; padding:3px 4px !important; white-space:nowrap; overflow:hidden; text-overflow:clip; }',
+    '  th, td { font-size:9px !important; padding:3px 5px !important; white-space:normal; overflow:visible; word-break:break-word; }',
     '  .td-right { text-align:right !important; }',
-    '  .td-clip { overflow:hidden; text-overflow:ellipsis; }',
+    '  .td-clip { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }',
     '}',
     /* === Shared (screen + print) base styles === */
     'body { font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei","Heiti TC",sans-serif; font-size:10px; color:#1a1a1a; line-height:1.4; }',
