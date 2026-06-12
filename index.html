@@ -3633,6 +3633,7 @@ function _renderAllBookingsTab(el){
       +'</div>'
       +'<div class="abSectionBody" id="repairBody">'
       +'<div id="repairToolInner">'+_repairToolHtml()+'</div>'
+      +'<div id="mfRepairToolInner">'+_mfRepairToolHtml()+'</div>'
       +'</div>'
       +'</div>';
   }
@@ -3967,6 +3968,160 @@ function _executeOverlapRepair(idx){
     showToast('修復失敗：'+e.message);
     _repairRefreshUI();
   });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   月費重複紀錄修復工具（舊版 bug：多期月費被拆成多筆）
+   ▸ _scanMonthlyDuplicates()  掃描 financeRecords，回傳重複組
+   ▸ _mfRepairToolHtml()        view（inject 至 mfRepairToolInner）
+   ▸ _executeMfMerge(idx)       合併：更新主筆金額/期數，void 其餘
+   ═══════════════════════════════════════════════════════════════════════════ */
+var _mfRepairState = { status:'idle', groups:[], done:[], error:null };
+
+function _mfRepairRefreshUI(){
+  var el = document.getElementById('mfRepairToolInner');
+  if(el) el.innerHTML = _mfRepairToolHtml();
+}
+
+function _scanMonthlyDuplicates(){
+  if(!isAdminLike()){ console.warn('[mfRepair] 權限不足'); return; }
+  _mfRepairState = { status:'scanning', groups:[], done:_mfRepairState.done||[], error:null };
+  _mfRepairRefreshUI();
+
+  // 依「會員 + 繳費日期 + 建立者」分組；≥2 筆 active 月費視為重複
+  var idx = {};
+  financeRecords.forEach(function(r){
+    if(r.type !== 'monthly') return;
+    if((r.status||'active') === 'void') return;
+    var key = (r.memberId||'') + '|' + (r.date||'') + '|' + (r.createdByUid||r.createdByName||'');
+    if(!idx[key]) idx[key] = [];
+    idx[key].push(r);
+  });
+
+  var groups = [];
+  Object.keys(idx).forEach(function(key){
+    var recs = idx[key];
+    if(recs.length < 2) return;
+    // 依帳期排序（最早在前）
+    recs.sort(function(a,b){
+      var am = (a.billingYear||a.year||0)*12+(a.billingMonth||1);
+      var bm = (b.billingYear||b.year||0)*12+(b.billingMonth||1);
+      return am - bm;
+    });
+    var totalAmt = recs.reduce(function(s,r){ return s+(parseFloat(r.amount)||0); }, 0);
+    var memberName = recs[0].memberRealName||recs[0].memberDisplayName||recs[0].memberId||'（不明）';
+    var billingRange = recs.map(function(r){
+      return (r.billingYear||r.year)+'/'+String(r.billingMonth||1).padStart(2,'0');
+    }).join('、');
+    groups.push({
+      recs:          recs,
+      memberName:    memberName,
+      date:          recs[0].date,
+      createdByName: recs[0].createdByName||'—',
+      count:         recs.length,
+      totalAmt:      totalAmt,
+      billingRange:  billingRange,
+    });
+  });
+
+  _mfRepairState = { status:'done', groups:groups, done:_mfRepairState.done||[], error:null };
+  _mfRepairRefreshUI();
+}
+
+function _mfRepairToolHtml(){
+  var s = _mfRepairState;
+  var html = '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--color-border-soft)">';
+  html += '<div style="font-size:11px;letter-spacing:0.06em;color:var(--color-text-muted);font-weight:600;margin-bottom:8px;text-transform:uppercase">月費重複紀錄修復</div>';
+
+  if(s.status==='idle'){
+    html += '<div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:8px">找出同一會員、同日、同登記人的多筆月費（舊版多筆建立 bug 遺留）。</div>';
+    html += '<button class="abActionBtn repair" onclick="_scanMonthlyDuplicates()">掃描月費重複紀錄</button>';
+  } else if(s.status==='scanning'){
+    html += '<div style="font-size:12px;color:var(--color-text-muted)">掃描中…</div>';
+  } else if(s.status==='done'){
+    if(s.groups.length===0){
+      html += '<div style="font-size:12px;color:#3a7a3a;font-weight:600;padding:4px 0">✓ 未發現重複月費紀錄</div>';
+      html += '<button class="abActionBtn" style="margin-top:6px" onclick="_mfRepairState.status='idle';_mfRepairRefreshUI()">重新掃描</button>';
+    } else {
+      html += '<div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:8px">發現 <b>'+s.groups.length+'</b> 組重複月費，確認後可合併。執行前請核對名單：</div>';
+      s.groups.forEach(function(g,gi){
+        var firstPeriod = (g.recs[0].billingYear||g.recs[0].year)+'/'+String(g.recs[0].billingMonth||1).padStart(2,'0');
+        html += '<div class="repairCard">'
+          +'<div class="repairCardConflict">'+_esc(g.memberName)+'　'+_esc(g.date)+'</div>'
+          +'<div class="repairCardMeta">登記人：'+_esc(g.createdByName)+'</div>'
+          +'<div class="repairCardMeta">'+g.count+' 筆重複帳期：'+_esc(g.billingRange)+'</div>'
+          +'<div class="repairCardMeta">金額合計：NT$ '+g.totalAmt.toLocaleString()+'</div>'
+          +'<div class="repairCardArrow">'+g.count+' 筆 → 1 筆（月費 '+g.count+' 個月，起始 '+_esc(firstPeriod)+'，金額 NT$ '+g.totalAmt.toLocaleString()+'）</div>'
+          +'<div class="repairCardReason">保留最早帳期那筆，其餘 '+(g.count-1)+' 筆標記作廢</div>'
+          +'<button class="abActionBtn repair" onclick="_executeMfMerge('+gi+')">執行合併</button>'
+          +'</div>';
+      });
+      html += '<button class="abActionBtn" style="margin-top:4px" onclick="_mfRepairState.status='idle';_mfRepairRefreshUI()">重新掃描</button>';
+    }
+  }
+
+  // 已修復紀錄 log
+  if(s.done && s.done.length){
+    html += '<div class="repairDoneSection">';
+    html += '<div class="repairDoneTitle">✓ 已合併月費（'+s.done.length+' 組）</div>';
+    s.done.forEach(function(d){
+      html += '<div class="repairDoneCard">'
+        +'<div class="repairDoneArrow">'+_esc(d.memberName)+'</div>'
+        +'<div>日期：'+_esc(d.date)+'　'+d.count+' 筆 → 1 筆（'+d.count+' 個月）</div>'
+        +'<div>合計：NT$ '+d.totalAmt.toLocaleString()+'　登記人：'+_esc(d.createdByName)+'</div>'
+        +'<div>修復時間：'+_esc(d.fixedAt)+'</div>'
+        +'</div>';
+    });
+    html += '</div>';
+  }
+
+  html += '</div>';
+  return html;
+}
+
+function _executeMfMerge(gi){
+  if(!isAdminLike()){ showToast('權限不足'); return; }
+  if(!db){ showToast('無法連線'); return; }
+  var g = _mfRepairState.groups[gi];
+  if(!g){ showToast('找不到修復項目'); return; }
+
+  var primary = g.recs[0];   // 帳期最早那筆保留
+  var voided  = g.recs.slice(1);
+  var now = TS();
+  var batch = db.batch();
+
+  // 更新主筆：金額 = 合計，periodMonths = 組內筆數
+  batch.update(db.collection('financialRecords').doc(primary.id), {
+    amount:       g.totalAmt,
+    periodMonths: g.count,
+    updatedAt:    now,
+  });
+  // 其餘標記作廢
+  voided.forEach(function(r){
+    batch.update(db.collection('financialRecords').doc(r.id), {
+      status:    'void',
+      updatedAt: now,
+    });
+  });
+
+  batch.commit()
+    .then(function(){
+      // 更新本機快取
+      var pLoc = financeRecords.find(function(r){ return r.id===primary.id; });
+      if(pLoc){ pLoc.amount=g.totalAmt; pLoc.periodMonths=g.count; }
+      voided.forEach(function(r){
+        var loc = financeRecords.find(function(x){ return x.id===r.id; });
+        if(loc) loc.status='void';
+      });
+
+      var fixedAt = new Date().toLocaleString('zh-TW',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+      _mfRepairState.done.push({ memberName:g.memberName, date:g.date, count:g.count, totalAmt:g.totalAmt, createdByName:g.createdByName, fixedAt:fixedAt });
+      _mfRepairState.groups.splice(gi, 1);
+      showToast('✓ 合併完成：'+g.memberName+' '+g.count+'筆→1筆');
+      _mfRepairRefreshUI();
+      renderFinance();
+    })
+    .catch(function(e){ showToast('合併失敗：'+e.message); });
 }
 
 function _toggleAbSection(id){
@@ -7891,51 +8046,28 @@ function submitFinanceRecord(){
       closeFinanceForm(); renderFinance();
     }
 
-    if(_mPeriod === 1){
-      // 單月：建立 1 筆
-      var _r1 = {
-        type:'monthly', memberId:member||'', memberDisplayName:_mDN2, memberRealName:_mRN2,
-        memberNameSnapshot:_mRN2||_mDN2, year:_monthList[0].billingYear, date:date, amount:amount, note:note||'',
-        membershipType:'monthly', membershipYear:null, membershipExpiry:_msExpiry2,
-        periodMonths:1, billingYear:_monthList[0].billingYear, billingMonth:_monthList[0].billingMonth,
-        createdByUid:_creatorUid2, createdByName:_creatorName2, createdAt:TS(), updatedAt:null, status:'active',
-      };
-      db.collection('financialRecords').add(_r1)
-        .then(function(docRef){
-          financeRecords.push(Object.assign({},_r1,{id:docRef.id}));
-          _afterMonthlyCreate();
-          showToast('月費紀錄已建立');
-        })
-        .catch(function(e){ console.error('submitFinanceRecord error:',e); showToast('儲存失敗，請稍後再試'); });
-    } else {
-      // 多月：批量建立 N 筆，金額均分（尾數補入最後一筆）
-      var _perMo  = Math.round(amount / _mPeriod);
-      var _batch  = db.batch();
-      var _bRefs  = [], _bRecs = [];
-      for(var _bi = 0; _bi < _mPeriod; _bi++){
-        var _bml  = _monthList[_bi];
-        var _bAmt = (_bi === _mPeriod - 1) ? (amount - _perMo * (_mPeriod - 1)) : _perMo;
-        var _bRef = db.collection('financialRecords').doc();
-        _bRefs.push(_bRef);
-        var _bRec = {
-          type:'monthly', memberId:member||'', memberDisplayName:_mDN2, memberRealName:_mRN2,
-          memberNameSnapshot:_mRN2||_mDN2, year:_bml.billingYear, date:date, amount:_bAmt, note:note||'',
-          membershipType:'monthly', membershipYear:null, membershipExpiry:_msExpiry2,
-          periodMonths:1, billingYear:_bml.billingYear, billingMonth:_bml.billingMonth,
-          createdByUid:_creatorUid2, createdByName:_creatorName2, createdAt:TS(), updatedAt:null, status:'active',
-        };
-        _batch.set(_bRef, _bRec);
-        _bRecs.push(_bRec);
-      }
-      _batch.commit()
-        .then(function(){
-          _bRefs.forEach(function(ref,idx){ financeRecords.push(Object.assign({},_bRecs[idx],{id:ref.id})); });
-          _afterMonthlyCreate();
-          var _labels = _monthList.map(function(ml){ return ml.billingYear+'/'+String(ml.billingMonth).padStart(2,'0'); }).join('、');
-          showToast(_mPeriod+' 筆月費已建立（'+_labels+'）');
-        })
-        .catch(function(e){ console.error('submitFinanceRecord batch error:',e); showToast('儲存失敗，請稍後再試'); });
-    }
+    // 無論幾個月，永遠只建立 1 筆紀錄（periodMonths 記錄期數）
+    var _r = {
+      type:'monthly', memberId:member||'', memberDisplayName:_mDN2, memberRealName:_mRN2,
+      memberNameSnapshot:_mRN2||_mDN2, year:_monthList[0].billingYear, date:date, amount:amount, note:note||'',
+      membershipType:'monthly', membershipYear:null, membershipExpiry:_msExpiry2,
+      periodMonths:_mPeriod, billingYear:_monthList[0].billingYear, billingMonth:_monthList[0].billingMonth,
+      createdByUid:_creatorUid2, createdByName:_creatorName2, createdAt:TS(), updatedAt:null, status:'active',
+    };
+    db.collection('financialRecords').add(_r)
+      .then(function(docRef){
+        financeRecords.push(Object.assign({},_r,{id:docRef.id}));
+        _afterMonthlyCreate();
+        var _label = _mPeriod > 1
+          ? _mPeriod+'個月（'
+            +_monthList[0].billingYear+'/'+String(_monthList[0].billingMonth).padStart(2,'0')
+            +'～'
+            +_monthList[_mPeriod-1].billingYear+'/'+String(_monthList[_mPeriod-1].billingMonth).padStart(2,'0')
+            +'）'
+          : _monthList[0].billingYear+'/'+String(_monthList[0].billingMonth).padStart(2,'0');
+        showToast('月費紀錄已建立（'+_label+'）');
+      })
+      .catch(function(e){ console.error('submitFinanceRecord error:',e); showToast('儲存失敗，請稍後再試'); });
     return;
   }
 
