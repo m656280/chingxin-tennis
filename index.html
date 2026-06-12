@@ -7123,6 +7123,9 @@ function _buildFinancePDFHtml(d){
     '<meta name="viewport" content="width=device-width,initial-scale=1">'+
     '<title>高雄市清心網球協會　'+d.reportTitle+'</title>'+
     '<style>'+css+'</style>'+
+    // html2canvas + jsPDF — loaded async, checked before use
+    '<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></'+'script>'+
+    '<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></'+'script>'+
     '</head><body>'+
     '<div class="no-print print-bar">'+
       '<button type="button" '+
@@ -7132,11 +7135,11 @@ function _buildFinancePDFHtml(d){
       '<span style="font-size:13px;font-weight:600;letter-spacing:.04em;flex:1;text-align:center;padding:0 10px">'+
         d.reportTitle+'　高雄市清心網球協會</span>'+
       '<button id="shareBtn" type="button" '+
-        'onclick="_doShare()" '+
+        'onclick="_doSharePDF()" '+
         'style="background:#1a6fad;color:#fff;border:none;padding:10px 24px;border-radius:8px;'+
         'font-size:14px;font-weight:700;cursor:pointer;touch-action:manipulation;flex-shrink:0;'+
         'box-shadow:0 2px 6px rgba(0,0,0,0.3);-webkit-tap-highlight-color:transparent;">'+
-        '📤 分享</button>'+
+        '📤 分享 PDF</button>'+
     '</div>'+
     // Page 1 — overview + monthly balance
     '<div class="page">'+
@@ -7159,34 +7162,57 @@ function _buildFinancePDFHtml(d){
       auditHtml+
     '</div>'+
     '<script>'+
-      // _doShare: try Web Share API first (iOS share sheet), fallback to clipboard
-      'function _doShare(){'+
-        'var shareData={title:document.title,url:location.href};'+
-        'if(navigator.share){'+
-          'navigator.share(shareData)'+
-            '.then(function(){})'+
-            '.catch(function(e){'+
-              // AbortError = user cancelled, not an error
-              'if(e&&e.name!=="AbortError"){'+
-                '_doCopyFallback();'+
+      // Generate PDF from .page divs using html2canvas + jsPDF, then share as file
+      'async function _doSharePDF(){'+
+        'var btn=document.getElementById("shareBtn");'+
+        'var orig=btn.innerHTML;'+
+        'btn.innerHTML="⏳ 產生中…";btn.disabled=true;'+
+        'try{'+
+          // Guard: libraries must be loaded
+          'if(!window.html2canvas||!window.jspdf){'+
+            'alert("PDF 庫尚未載入，請稍後再試");'+
+            'btn.innerHTML=orig;btn.disabled=false;return;'+
+          '}'+
+          'var pages=Array.from(document.querySelectorAll(".page"));'+
+          'var doc=new window.jspdf.jsPDF({orientation:"l",unit:"mm",format:"a4"});'+
+          'var W=297,H=210;'+
+          // Capture each page div as image
+          'for(var i=0;i<pages.length;i++){'+
+            'var canvas=await html2canvas(pages[i],{'+
+              'scale:2,useCORS:true,logging:false,backgroundColor:"#ffffff",'+
+              'windowWidth:1200,'+  // force desktop-width rendering
+              'onclone:function(clonedDoc,el){'+
+                // Force A4-landscape width, strip visual chrome in clone
+                'el.style.cssText+="box-shadow:none!important;margin:0!important;'+
+                  'width:1047px!important;max-width:none!important;'+
+                  'padding:40px 38px!important;";'+
               '}'+
             '});'+
-        '}else{'+
-          '_doCopyFallback();'+
+            'var img=canvas.toDataURL("image/jpeg",0.92);'+
+            // Scale to fit A4 landscape, anchor top
+            'var iw=W,ih=Math.round(canvas.height/canvas.width*W);'+
+            'if(ih>H){ih=H;iw=Math.round(canvas.width/canvas.height*H);}'+
+            'if(i>0)doc.addPage([W,H],"l");'+
+            'doc.addImage(img,"JPEG",(W-iw)/2,0,iw,ih);'+
+          '}'+
+          // Build File object
+          'var blob=doc.output("blob");'+
+          'var fname=(document.title||"財務報表").replace(/[\\s　]+/g,"_")+".pdf";'+
+          'var file=new File([blob],fname,{type:"application/pdf"});'+
+          // Try file share → fallback download
+          'if(navigator.canShare&&navigator.canShare({files:[file]})){'+
+            'await navigator.share({files:[file],title:document.title,text:"財務報表 PDF"});'+
+          '}else{'+
+            // Download fallback (desktop Chrome, LINE WebView, etc.)
+            'var u=URL.createObjectURL(blob);'+
+            'var a=document.createElement("a");'+
+            'a.href=u;a.download=fname;document.body.appendChild(a);a.click();'+
+            'setTimeout(function(){URL.revokeObjectURL(u);a.remove();},2000);'+
+          '}'+
+        '}catch(e){'+
+          'if(!e||e.name!=="AbortError")alert("PDF 產生失敗："+(e&&e.message||String(e)));'+
         '}'+
-      '}'+
-      'function _doCopyFallback(){'+
-        'var url=location.href;'+
-        'if(navigator.clipboard&&navigator.clipboard.writeText){'+
-          'navigator.clipboard.writeText(url)'+
-            '.then(function(){ alert("連結已複製！\\n請在 Safari 中貼上開啟，再點「列印」可儲存 PDF。"); })'+
-            '.catch(function(){ _doPromptCopy(url); });'+
-        '}else{'+
-          '_doPromptCopy(url);'+
-        '}'+
-      '}'+
-      'function _doPromptCopy(url){'+
-        'window.prompt("請長按複製此連結，在 Safari 開啟後可列印存 PDF：",url);'+
+        'btn.innerHTML=orig;btn.disabled=false;'+
       '}'+
     '</'+'script>'+
     '</body></html>';
