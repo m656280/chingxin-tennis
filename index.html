@@ -7169,7 +7169,7 @@ function _buildFinancePDFHtml(d){
       auditHtml+
     '</div>'+
     '<script>'+
-      // html2canvas + jsPDF: capture each .print-page div, slice tall pages, share as file
+      // ── _doSharePDF: section-aware pagination ──
       'async function _doSharePDF(){'+
         'var btn=document.getElementById("shareBtn");'+
         'var orig=btn.innerHTML;'+
@@ -7179,28 +7179,38 @@ function _buildFinancePDFHtml(d){
             'alert("PDF 庫尚未載入，請稍後再試");'+
             'btn.innerHTML=orig;btn.disabled=false;return;'+
           '}'+
-          // A4 portrait: 210×297mm
           'var W=210,H=297;'+
           'var doc=new window.jspdf.jsPDF({orientation:"p",unit:"mm",format:"a4"});'+
           'var pages=Array.from(document.querySelectorAll(".print-page"));'+
           'var isFirst=true;'+
-          'for(var i=0;i<pages.length;i++){'+
-            'var canvas=await html2canvas(pages[i],{'+
+          'for(var pi=0;pi<pages.length;pi++){'+
+            'var spacers=pi===1?_computeDetailSpacers(pages[pi],W,H):null;'+
+            'var canvas=await html2canvas(pages[pi],{'+
               'scale:2,useCORS:true,logging:false,backgroundColor:"#ffffff",'+
               'windowWidth:820,'+
               'onclone:function(clonedDoc,el){'+
                 'el.style.cssText+="box-shadow:none!important;margin:0!important;'+
                   'width:756px!important;max-width:none!important;'+
                   'padding:36px 28px!important;";'+
+                'if(spacers&&spacers.length){'+
+                  'var secs=el.querySelectorAll(".detail-section");'+
+                  'for(var j=0;j<secs.length&&j<spacers.length;j++){'+
+                    'if(spacers[j]>1){'+
+                      'var sp=clonedDoc.createElement("div");'+
+                      'sp.style.height=spacers[j]+"px";'+
+                      'secs[j].parentNode.insertBefore(sp,secs[j]);'+
+                    '}'+
+                  '}'+
+                '}'+
               '}'+
             '});'+
-            // slice tall canvas into A4-height pages — no scale-down
             'var pxPerMm=canvas.width/W;'+
             'var pageHpx=Math.round(H*pxPerMm);'+
-            'var slices=Math.ceil(canvas.height/pageHpx);'+
+            'var effectiveH=_trimCanvasTrailing(canvas,pageHpx);'+
+            'var slices=Math.ceil(effectiveH/pageHpx);'+
             'for(var s=0;s<slices;s++){'+
               'var startY=s*pageHpx;'+
-              'var sliceH=Math.min(pageHpx,canvas.height-startY);'+
+              'var sliceH=Math.min(pageHpx,effectiveH-startY);'+
               'var sc=document.createElement("canvas");'+
               'sc.width=canvas.width;sc.height=sliceH;'+
               'var ctx=sc.getContext("2d");'+
@@ -7228,6 +7238,68 @@ function _buildFinancePDFHtml(d){
           'if(!e||e.name!=="AbortError")alert("PDF 產生失敗："+(e&&e.message||String(e)));'+
         '}'+
         'btn.innerHTML=orig;btn.disabled=false;'+
+      '}'+
+      // ── _computeDetailSpacers ──
+      // Pre-measures .detail-section positions in a temp container at the same
+      // width/padding as onclone. Returns array of spacer heights (screen px) to
+      // insert before each section so title+thead+≥3 rows land on a fresh A4 slice.
+      'function _computeDetailSpacers(pageEl,W,H){'+
+        'try{'+
+          'var ELEM_W=756,PAD=36;'+
+          'var pageHpx=H*(ELEM_W/W);'+
+          'var wrap=document.createElement("div");'+
+          'wrap.style.cssText="position:fixed;left:0;top:-10000px;width:"+ELEM_W+'+
+            '"px;padding:"+PAD+"px 28px;box-sizing:border-box;background:#fff;'+
+            'visibility:hidden;pointer-events:none;z-index:-1;";'+
+          'var cloneEl=pageEl.cloneNode(true);'+
+          'cloneEl.style.cssText="width:"+ELEM_W+"px;max-width:none;'+
+            'padding:0;margin:0;box-shadow:none;";'+
+          'wrap.appendChild(cloneEl);'+
+          'document.body.appendChild(wrap);'+
+          'void wrap.offsetHeight;'+
+          'var wrapTop=wrap.getBoundingClientRect().top;'+
+          'var secs=Array.from(cloneEl.querySelectorAll(".detail-section"));'+
+          'var results=[];'+
+          'var extraOffset=0;'+
+          'for(var j=0;j<secs.length;j++){'+
+            'var secTop=secs[j].getBoundingClientRect().top-wrapTop+extraOffset;'+
+            'var posInPage=secTop%pageHpx;'+
+            'var remaining=pageHpx-posInPage;'+
+            'var h3El=secs[j].querySelector("h3");'+
+            'var theadEl=secs[j].querySelector("thead");'+
+            'var rowEls=secs[j].querySelectorAll("tbody tr");'+
+            'var minH=(h3El?h3El.getBoundingClientRect().height:18)'+
+                    '+(theadEl?theadEl.getBoundingClientRect().height:18);'+
+            'for(var k=0;k<Math.min(3,rowEls.length);k++){'+
+              'minH+=rowEls[k].getBoundingClientRect().height||16;'+
+            '}'+
+            'minH+=8;'+
+            'var sp=0;'+
+            'if(remaining<minH&&remaining>2){sp=Math.ceil(remaining);extraOffset+=sp;}'+
+            'results.push(sp);'+
+          '}'+
+          'document.body.removeChild(wrap);'+
+          'return results;'+
+        '}catch(ex){return [];}'+
+      '}'+
+      // ── _trimCanvasTrailing ──
+      // Finds last non-white row in the canvas and returns a trimmed height,
+      // eliminating large trailing blank areas from the bottom of each PDF page.
+      'function _trimCanvasTrailing(canvas,pageHpx){'+
+        'try{'+
+          'var ctx=canvas.getContext("2d");'+
+          'var w=canvas.width,h=canvas.height;'+
+          'var scanFrom=Math.max(pageHpx,Math.floor(h*0.7));'+
+          'for(var y=h-1;y>scanFrom;y-=3){'+
+            'var row=ctx.getImageData(0,y,w,1).data;'+
+            'for(var x=0;x<row.length;x+=48){'+
+              'if(row[x]<245||row[x+1]<245||row[x+2]<245){'+
+                'return Math.min(y+80,h);'+
+              '}'+
+            '}'+
+          '}'+
+          'return scanFrom;'+
+        '}catch(ex){return canvas.height;}'+
       '}'+
     '</'+'script>'+
     '</body></html>';
