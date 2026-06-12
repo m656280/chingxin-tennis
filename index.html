@@ -7125,21 +7125,26 @@ function _buildFinancePDFHtml(d){
     '<style>'+css+'</style>'+
     '</head><body>'+
     '<div class="no-print print-bar">'+
-      '<button id="backBtn" type="button" '+
+      '<button type="button" '+
         'onclick="location.href=location.origin+location.pathname" '+
-        'style="background:none;border:1px solid #aaa;border-radius:6px;padding:8px 16px;'+
-        'font-size:13px;cursor:pointer;touch-action:manipulation;color:#ccc;">← 返回財務頁</button>'+
-      '<span style="font-size:13px;font-weight:600;letter-spacing:.04em">'+d.reportTitle+'　高雄市清心網球協會</span>'+
-      '<button id="printBtn" type="button" '+
-        'onclick="window.print()" '+
-        'style="background:#4a7c4e;color:#fff;border:none;padding:10px 28px;border-radius:8px;'+
-        'font-size:14px;font-weight:700;cursor:pointer;touch-action:manipulation;'+
-        'box-shadow:0 2px 6px rgba(0,0,0,0.3);-webkit-tap-highlight-color:transparent;">'+
-        '🖨 列印 / 儲存 PDF</button>'+
-    '</div>'+
-    '<div id="lineHint" style="display:none;background:#fffbe6;border-bottom:1px solid #ffe58f;'+
-      'padding:10px 16px;font-size:13px;color:#7c5b00;text-align:center">'+
-      '📱 LINE 內建瀏覽器不支援列印。請點右上角 ⋯ → 「以瀏覽器開啟」，再點「列印 / 儲存 PDF」。'+
+        'style="background:none;border:1px solid #aaa;border-radius:6px;padding:8px 14px;'+
+        'font-size:13px;cursor:pointer;touch-action:manipulation;color:#ccc;white-space:nowrap;">← 返回財務頁</button>'+
+      '<span style="font-size:13px;font-weight:600;letter-spacing:.04em;flex:1;text-align:center;padding:0 10px">'+
+        d.reportTitle+'　高雄市清心網球協會</span>'+
+      '<div style="display:flex;gap:8px;flex-shrink:0">'+
+        '<button id="shareBtn" type="button" '+
+          'onclick="_doShare()" '+
+          'style="background:#1a6fad;color:#fff;border:none;padding:10px 20px;border-radius:8px;'+
+          'font-size:14px;font-weight:700;cursor:pointer;touch-action:manipulation;'+
+          'box-shadow:0 2px 6px rgba(0,0,0,0.3);-webkit-tap-highlight-color:transparent;">'+
+          '📤 分享</button>'+
+        '<button id="printBtn" type="button" '+
+          'onclick="window.print()" '+
+          'style="background:#4a7c4e;color:#fff;border:none;padding:10px 20px;border-radius:8px;'+
+          'font-size:14px;font-weight:700;cursor:pointer;touch-action:manipulation;'+
+          'box-shadow:0 2px 6px rgba(0,0,0,0.3);-webkit-tap-highlight-color:transparent;">'+
+          '🖨 列印</button>'+
+      '</div>'+
     '</div>'+
     // Page 1 — overview + monthly balance
     '<div class="page">'+
@@ -7162,12 +7167,35 @@ function _buildFinancePDFHtml(d){
       auditHtml+
     '</div>'+
     '<script>'+
-      '(function(){'+
-        // Open-in-browser hint for LINE WebView (WKWebView blocks window.print)
-        'var isLine=/Line\//i.test(navigator.userAgent);'+
-        'var hint=document.getElementById("lineHint");'+
-        'if(isLine&&hint)hint.style.display="block";'+
-      '})();'+
+      // _doShare: try Web Share API first (iOS share sheet), fallback to clipboard
+      'function _doShare(){'+
+        'var shareData={title:document.title,url:location.href};'+
+        'if(navigator.share){'+
+          'navigator.share(shareData)'+
+            '.then(function(){})'+
+            '.catch(function(e){'+
+              // AbortError = user cancelled, not an error
+              'if(e&&e.name!=="AbortError"){'+
+                '_doCopyFallback();'+
+              '}'+
+            '});'+
+        '}else{'+
+          '_doCopyFallback();'+
+        '}'+
+      '}'+
+      'function _doCopyFallback(){'+
+        'var url=location.href;'+
+        'if(navigator.clipboard&&navigator.clipboard.writeText){'+
+          'navigator.clipboard.writeText(url)'+
+            '.then(function(){ alert("連結已複製！\\n請在 Safari 中貼上開啟，再點「列印」可儲存 PDF。"); })'+
+            '.catch(function(){ _doPromptCopy(url); });'+
+        '}else{'+
+          '_doPromptCopy(url);'+
+        '}'+
+      '}'+
+      'function _doPromptCopy(url){'+
+        'window.prompt("請長按複製此連結，在 Safari 開啟後可列印存 PDF：",url);'+
+      '}'+
     '</'+'script>'+
     '</body></html>';
 }
