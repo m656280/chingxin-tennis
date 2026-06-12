@@ -6964,7 +6964,7 @@ function _buildFinancePDFHtml(d){
     '  @page { size:A4 landscape; margin:10mm; }',
     '  * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }',
     '  body { font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei","Heiti TC",sans-serif; font-size:9px; color:#000; margin:0; padding:0; background:#fff; line-height:1.3; }',
-    '  .print-bar { display:none !important; }',
+    '  .print-bar, #lineHint { display:none !important; }',
     '  .page { background:#fff; box-shadow:none; padding:0; margin:0; max-width:none; width:100%; }',
     '  .page-break { page-break-before:always; break-before:page; }',
     '  .section { page-break-inside:avoid; break-inside:avoid; }',
@@ -7127,11 +7127,19 @@ function _buildFinancePDFHtml(d){
     '<div class="no-print print-bar">'+
       '<button id="backBtn" type="button" '+
         'onclick="location.href=location.origin+location.pathname" '+
-        'style="background:none;border:1px solid #ccc;border-radius:6px;padding:6px 14px;'+
-        'font-size:13px;cursor:pointer;touch-action:manipulation;color:#555;">← 返回財務頁</button>'+
-      '<span>'+d.reportTitle+'　高雄市清心網球協會</span>'+
-      '<button id="printBtn" type="button" onclick="window.print()" '+
-        'style="touch-action:manipulation;">列印 / 儲存 PDF</button>'+
+        'style="background:none;border:1px solid #aaa;border-radius:6px;padding:8px 16px;'+
+        'font-size:13px;cursor:pointer;touch-action:manipulation;color:#ccc;">← 返回財務頁</button>'+
+      '<span style="font-size:13px;font-weight:600;letter-spacing:.04em">'+d.reportTitle+'　高雄市清心網球協會</span>'+
+      '<button id="printBtn" type="button" '+
+        'onclick="window.print()" '+
+        'style="background:#4a7c4e;color:#fff;border:none;padding:10px 28px;border-radius:8px;'+
+        'font-size:14px;font-weight:700;cursor:pointer;touch-action:manipulation;'+
+        'box-shadow:0 2px 6px rgba(0,0,0,0.3);-webkit-tap-highlight-color:transparent;">'+
+        '🖨 列印 / 儲存 PDF</button>'+
+    '</div>'+
+    '<div id="lineHint" style="display:none;background:#fffbe6;border-bottom:1px solid #ffe58f;'+
+      'padding:10px 16px;font-size:13px;color:#7c5b00;text-align:center">'+
+      '📱 LINE 內建瀏覽器不支援列印。請點右上角 ⋯ → 「以瀏覽器開啟」，再點「列印 / 儲存 PDF」。'+
     '</div>'+
     // Page 1 — overview + monthly balance
     '<div class="page">'+
@@ -7155,11 +7163,10 @@ function _buildFinancePDFHtml(d){
     '</div>'+
     '<script>'+
       '(function(){'+
-        'var btn=document.getElementById("printBtn");'+
-        'if(btn){btn.addEventListener("click",function(){window.print();});}'+
-        'if(!/Mobi|Android/i.test(navigator.userAgent)){'+
-          'setTimeout(function(){window.print();},800);'+
-        '}'+
+        // Open-in-browser hint for LINE WebView (WKWebView blocks window.print)
+        'var isLine=/Line\//i.test(navigator.userAgent);'+
+        'var hint=document.getElementById("lineHint");'+
+        'if(isLine&&hint)hint.style.display="block";'+
       '})();'+
     '</'+'script>'+
     '</body></html>';
