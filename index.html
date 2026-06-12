@@ -7188,12 +7188,23 @@ function _buildFinancePDFHtml(d){
                   'padding:40px 38px!important;";'+
               '}'+
             '});'+
-            'var img=canvas.toDataURL("image/jpeg",0.92);'+
-            // Scale to fit A4 landscape, anchor top
-            'var iw=W,ih=Math.round(canvas.height/canvas.width*W);'+
-            'if(ih>H){ih=H;iw=Math.round(canvas.width/canvas.height*H);}'+
-            'if(i>0)doc.addPage([W,H],"l");'+
-            'doc.addImage(img,"JPEG",(W-iw)/2,0,iw,ih);'+
+            // Split canvas into A4-height slices — no scale-down compression
+            'var pxPerMm=canvas.width/W;'+
+            'var pageHpx=Math.round(H*pxPerMm);'+
+            'var slices=Math.ceil(canvas.height/pageHpx);'+
+            'for(var s=0;s<slices;s++){'+
+              'var startY=s*pageHpx;'+
+              'var sliceH=Math.min(pageHpx,canvas.height-startY);'+
+              'var sc=document.createElement("canvas");'+
+              'sc.width=canvas.width;sc.height=sliceH;'+
+              'var ctx=sc.getContext("2d");'+
+              'ctx.fillStyle="#ffffff";ctx.fillRect(0,0,sc.width,sc.height);'+
+              'ctx.drawImage(canvas,0,-startY);'+
+              'var img=sc.toDataURL("image/jpeg",0.92);'+
+              'var hmm=sliceH/pxPerMm;'+
+              'if(i>0||s>0)doc.addPage([W,H],"l");'+
+              'doc.addImage(img,"JPEG",0,0,W,hmm);'+
+            '}'+
           '}'+
           // Build File object
           'var blob=doc.output("blob");'+
