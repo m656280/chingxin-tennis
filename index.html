@@ -6876,6 +6876,7 @@ function _buildFinancePDFHtml(d){
       .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
   function serial(p,i){ return p+String(i+1).padStart(3,'0'); }
+  function fmtDate(s){ return s && s.length>=7 ? s.slice(5).replace('-','/') : (s||'—'); }
 
   // ── table builder ──
   // colSpecs: optional array of {width, align} per column
@@ -6920,28 +6921,27 @@ function _buildFinancePDFHtml(d){
   }
 
   // ── income detail column specs ──
-  // A4 landscape 277mm 可用 — 6 欄：流水號8+日期12+會員25+備註25+金額15+登記人15 = 100%
+  // A4 portrait 190mm 可用 — 5 欄：流水號10+日期15+會員30+備註30+金額15 = 100%
   var INC_COLS = [
-    {width:'8%',  clip:false},               // 流水號 A001
-    {width:'12%', clip:false},               // 日期 2026-01-15
-    {width:'25%', clip:false},               // 會員名 — 完整顯示
-    {width:'25%', clip:false},               // 項目/備註 — 完整顯示
+    {width:'10%', clip:false},               // 流水號 A001
+    {width:'15%', clip:false},               // 日期 12/31
+    {width:'30%', clip:false},               // 會員名 — 完整顯示
+    {width:'30%', clip:false},               // 項目/備註 — 完整顯示
     {width:'15%', align:'right', clip:false}, // 金額 — 絕不截斷
-    {width:'15%', clip:false},               // 登記人 — 完整顯示
   ];
 
-  // ── income section helper（6欄，含項目/備註）──
+  // ── income section helper（5欄，無登記人）──
   function incSection(title, prefix, recs, total){
     if(!recs.length) return '';
     var rows = recs.map(function(r,i){
       var _pm = parseInt(r.periodMonths,10)||1;
       var _nm = _finExportName(r) + (_pm > 1 ? ' · '+_pm+'個月' : '');
       var _nt = _finExportNote(r);
-      return [serial(prefix,i), r.date, _nm, _nt, d.fmtN(d.effAmt(r)), r.createdByName||'—'];
+      return [serial(prefix,i), fmtDate(r.date), _nm, _nt, d.fmtN(d.effAmt(r))];
     });
-    var foot = ['','','筆數：'+recs.length,'','合計：'+d.fmtN(total),''];
+    var foot = ['','','筆數：'+recs.length,'','合計：'+d.fmtN(total)];
     return '<div class="section"><h3>'+esc(title)+'</h3>'+
-      table(['流水號','日期','會員','項目/備註','金額','登記人'], rows, foot, 'inc-table', INC_COLS)+
+      table(['流水號','日期','會員','項目/備註','金額'], rows, foot, 'inc-table', INC_COLS)+
       '</div>';
   }
 
@@ -6956,12 +6956,12 @@ function _buildFinancePDFHtml(d){
     '  .print-bar button { background:#4a7c4e; color:#fff; border:none; padding:8px 24px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; touch-action:manipulation; }',
     '  .print-bar button:hover { background:#3a6a3e; }',
     '  .print-bar span { font-size:12px; opacity:.7; }',
-    '  .page { background:#fff; max-width:277mm; margin:8mm auto; padding:12mm 10mm; box-shadow:0 2px 8px rgba(0,0,0,0.18); box-sizing:border-box; }',
+    '  .page { background:#fff; max-width:190mm; margin:8mm auto; padding:12mm 10mm; box-shadow:0 2px 8px rgba(0,0,0,0.18); box-sizing:border-box; }',
     '  .page-header-compact { display:none; }',
     '}',
     /* === Print-only === */
     '@media print {',
-    '  @page { size:A4 landscape; margin:10mm; }',
+    '  @page { size:A4 portrait; margin:10mm; }',
     '  * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }',
     '  body { font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei","Heiti TC",sans-serif; font-size:9px; color:#000; margin:0; padding:0; background:#fff; line-height:1.3; }',
     '  .print-bar, #lineHint { display:none !important; }',
@@ -6974,7 +6974,7 @@ function _buildFinancePDFHtml(d){
     '  h2 { page-break-after:avoid; break-after:avoid; }',
     '  h3 { page-break-after:avoid; break-after:avoid; }',
     '  table { table-layout:fixed !important; width:100% !important; border-collapse:collapse !important; overflow:hidden; }',
-    '  th, td { font-size:9px !important; padding:3px 5px !important; white-space:normal; overflow:visible; word-break:break-word; }',
+    '  th, td { font-size:10px !important; padding:2px 4px !important; white-space:normal; overflow:visible; word-break:break-word; }',
     '  .td-right { text-align:right !important; }',
     '  .td-clip { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }',
     '}',
@@ -6993,7 +6993,7 @@ function _buildFinancePDFHtml(d){
     'table { width:100%; border-collapse:collapse; font-size:9.5px; margin-bottom:9px; }',
     '.inc-table { table-layout:fixed; }',
     'th { background:#2a4a2e; color:#fff; padding:4px 5px; text-align:left; font-weight:600; font-size:9px; letter-spacing:.03em; white-space:nowrap; }',
-    'td { padding:3px 5px; border-bottom:1px solid #ddd; font-size:9px; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:clip; vertical-align:middle; }',
+    'td { padding:3px 5px; border-bottom:1px solid #ddd; font-size:9px; line-height:1.3; vertical-align:middle; }',
     'tbody tr:nth-child(even) { background:#f7f7f5; }',
     'tr:last-child td { border-bottom:none; }',
     'tfoot td { font-weight:700; background:#eef3ee; border-top:1.5px solid #2a4a2e; }',
@@ -7058,12 +7058,18 @@ function _buildFinancePDFHtml(d){
     incSection('其他收入明細（O 系列）','O', d.otherRecs,   d.otherT);
 
   // expense
+  var EXP_COLS = [
+    {width:'10%', clip:false},
+    {width:'15%', clip:false},
+    {width:'60%', clip:false},
+    {width:'15%', align:'right', clip:false},
+  ];
   if(d.expRecs.length){
     var expRows  = d.expRecs.map(function(r,i){
-      return [serial('E',i), r.date, _finExportNote(r)||_finExportName(r), d.fmtN(r.amount), r.createdByName||'—'];
+      return [serial('E',i), fmtDate(r.date), _finExportNote(r)||_finExportName(r), d.fmtN(r.amount)];
     });
-    var expFoot  = ['','','筆數：'+d.expRecs.length,'合計：'+d.fmtN(d.expTotal),''];
-    detailHtml  += '<h3>支出明細（E 系列）</h3>'+table(['流水號','日期','項目/備註','金額','登記人'], expRows, expFoot);
+    var expFoot  = ['','','筆數：'+d.expRecs.length,'合計：'+d.fmtN(d.expTotal)];
+    detailHtml  += '<div class="section"><h3>支出明細（E 系列）</h3>'+table(['流水號','日期','項目/備註','金額'], expRows, expFoot, 'inc-table', EXP_COLS)+'</div>';
   }
 
   // void
@@ -7154,7 +7160,7 @@ function _buildFinancePDFHtml(d){
     '<div class="page page-break">'+
       '<div class="page-header-compact">高雄市清心網球協會｜'+d.reportTitle+'</div>'+
       '<h2>收入 / 支出明細</h2>'+
-      '<div class="section">'+detailHtml+'</div>'+
+      detailHtml+
     '</div>'+
     // Last page audit
     '<div class="page page-break">'+
@@ -7174,18 +7180,18 @@ function _buildFinancePDFHtml(d){
             'btn.innerHTML=orig;btn.disabled=false;return;'+
           '}'+
           'var pages=Array.from(document.querySelectorAll(".page"));'+
-          'var doc=new window.jspdf.jsPDF({orientation:"l",unit:"mm",format:"a4"});'+
-          'var W=297,H=210;'+
+          'var doc=new window.jspdf.jsPDF({orientation:"p",unit:"mm",format:"a4"});'+
+          'var W=210,H=297;'+
           // Capture each page div as image
           'for(var i=0;i<pages.length;i++){'+
             'var canvas=await html2canvas(pages[i],{'+
               'scale:2,useCORS:true,logging:false,backgroundColor:"#ffffff",'+
-              'windowWidth:1200,'+  // force desktop-width rendering
+              'windowWidth:820,'+  // portrait-width rendering (~A4 portrait at 96dpi)
               'onclone:function(clonedDoc,el){'+
-                // Force A4-landscape width, strip visual chrome in clone
+                // Force A4-portrait width, strip visual chrome in clone
                 'el.style.cssText+="box-shadow:none!important;margin:0!important;'+
-                  'width:1047px!important;max-width:none!important;'+
-                  'padding:40px 38px!important;";'+
+                  'width:756px!important;max-width:none!important;'+
+                  'padding:36px 28px!important;";'+
               '}'+
             '});'+
             // Split canvas into A4-height slices — no scale-down compression
