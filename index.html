@@ -7021,8 +7021,6 @@ function _buildFinancePDFHtml(d){
     '.stat-card.balance { border-color:#2a4a2e; background:#f0f5f0; }',
     '.stat-card.balance .stat-value { color:#1a3a1e; }',
     /* Audit */
-    '.audit-ok   { color:#2a7a2a; font-weight:600; }',
-    '.audit-warn { color:#a83232; font-weight:600; }',
   ].join('\n');
   // ── overview section ──
   var overviewHtml =
@@ -7083,29 +7081,6 @@ function _buildFinancePDFHtml(d){
   }
 
   // ── audit section ──
-  var unpaidRows = d.unpaidMs.map(function(m){
-    var hist = m.membershipType==='annual'?'年費':m.membershipType==='monthly'?'月費':'未設定';
-    return [_mName(m)||'—', hist, '當年度無有效繳費紀錄'];
-  });
-  var anomalyRows = d.anomaly.map(function(m){
-    return [_mName(m)||'—', 'membershipType 未設定'];
-  });
-  var auditHtml =
-    '<h2>會員繳費稽核表</h2>'+
-    table(['項目','人數'],[
-      ['應繳人數（核准會員）', d.shouldPayLen],
-      ['已繳人數',             d.paidCnt],
-      ['未繳人數',             d.unpaidMs.length],
-      ['繳費率',               d.paidRate+'%'],
-    ], null)+
-    '<h3>未繳名單（'+d.unpaidMs.length+' 人）</h3>'+
-    (d.unpaidMs.length
-      ? table(['姓名','歷史類型','說明'], unpaidRows, null)
-      : '<p class="audit-ok">✓ 本年度全員已繳</p>')+
-    '<h3>資料異常（'+d.anomaly.length+' 筆）</h3>'+
-    (d.anomaly.length
-      ? table(['姓名','異常原因'], anomalyRows, null)
-      : '<p class="audit-ok">✓ 無異常</p>');
 
   // ── monthly balance HTML for PDF（單一月份時不顯示，全年或多月時顯示）──
   var monthlyBalanceHtml = '';
@@ -7163,11 +7138,7 @@ function _buildFinancePDFHtml(d){
       '<h2>收入 / 支出明細</h2>'+
       detailHtml+
     '</div>'+
-    // Audit page
-    '<div class="print-page">'+
-      '<div class="page-header-compact">高雄市清心網球協會｜'+d.reportTitle+'</div>'+
-      auditHtml+
-    '</div>'+
+
     '<script>'+
       // ── _doSharePDF: section-aware pagination ──
       'async function _doSharePDF(){'+
