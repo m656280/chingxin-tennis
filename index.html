@@ -7131,6 +7131,8 @@ function _buildFinancePDFHtml(d){
     '<meta name="viewport" content="width=device-width,initial-scale=1">'+
     '<title>高雄市清心網球協會　'+d.reportTitle+'</title>'+
     '<style>'+css+'</style>'+
+    '<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></'+'script>'+
+    '<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></'+'script>'+
     '</head><body>'+
     '<div class="no-print print-bar">'+
       '<button type="button" '+
@@ -7144,7 +7146,7 @@ function _buildFinancePDFHtml(d){
         'style="background:#1a6fad;color:#fff;border:none;padding:10px 24px;border-radius:8px;'+
         'font-size:14px;font-weight:700;cursor:pointer;touch-action:manipulation;flex-shrink:0;'+
         'box-shadow:0 2px 6px rgba(0,0,0,0.3);-webkit-tap-highlight-color:transparent;">'+
-        '📄 列印 / 存 PDF</button>'+
+        '📤 分享 PDF</button>'+
     '</div>'+
     // Page 1 — overview + monthly balance
     '<div class="print-page">'+
@@ -7167,15 +7169,65 @@ function _buildFinancePDFHtml(d){
       auditHtml+
     '</div>'+
     '<script>'+
-      // Use browser native print — CSS @media print handles layout, pagination, thead repeat
-      'function _doSharePDF(){'+
-        // LINE WebView: window.print() silently fails — detect and guide user
-        'var ua=navigator.userAgent||"";'+
-        'if(/Line\\/[0-9]/i.test(ua)){'+
-          'alert("LINE 內建瀏覽器不支援列印。\\n請點右上角選單 → 在瀏覽器開啟，再點「列印 / 存 PDF」。");'+
-          'return;'+
+      // html2canvas + jsPDF: capture each .print-page div, slice tall pages, share as file
+      'async function _doSharePDF(){'+
+        'var btn=document.getElementById("shareBtn");'+
+        'var orig=btn.innerHTML;'+
+        'btn.innerHTML="⏳ 產生中…";btn.disabled=true;'+
+        'try{'+
+          'if(!window.html2canvas||!window.jspdf){'+
+            'alert("PDF 庫尚未載入，請稍後再試");'+
+            'btn.innerHTML=orig;btn.disabled=false;return;'+
+          '}'+
+          // A4 portrait: 210×297mm
+          'var W=210,H=297;'+
+          'var doc=new window.jspdf.jsPDF({orientation:"p",unit:"mm",format:"a4"});'+
+          'var pages=Array.from(document.querySelectorAll(".print-page"));'+
+          'var isFirst=true;'+
+          'for(var i=0;i<pages.length;i++){'+
+            'var canvas=await html2canvas(pages[i],{'+
+              'scale:2,useCORS:true,logging:false,backgroundColor:"#ffffff",'+
+              'windowWidth:820,'+
+              'onclone:function(clonedDoc,el){'+
+                'el.style.cssText+="box-shadow:none!important;margin:0!important;'+
+                  'width:756px!important;max-width:none!important;'+
+                  'padding:36px 28px!important;";'+
+              '}'+
+            '});'+
+            // slice tall canvas into A4-height pages — no scale-down
+            'var pxPerMm=canvas.width/W;'+
+            'var pageHpx=Math.round(H*pxPerMm);'+
+            'var slices=Math.ceil(canvas.height/pageHpx);'+
+            'for(var s=0;s<slices;s++){'+
+              'var startY=s*pageHpx;'+
+              'var sliceH=Math.min(pageHpx,canvas.height-startY);'+
+              'var sc=document.createElement("canvas");'+
+              'sc.width=canvas.width;sc.height=sliceH;'+
+              'var ctx=sc.getContext("2d");'+
+              'ctx.fillStyle="#ffffff";ctx.fillRect(0,0,sc.width,sc.height);'+
+              'ctx.drawImage(canvas,0,-startY);'+
+              'var img=sc.toDataURL("image/jpeg",0.92);'+
+              'var hmm=sliceH/pxPerMm;'+
+              'if(!isFirst)doc.addPage([W,H],"p");'+
+              'isFirst=false;'+
+              'doc.addImage(img,"JPEG",0,0,W,hmm);'+
+            '}'+
+          '}'+
+          'var blob=doc.output("blob");'+
+          'var fname=(document.title||"財務報表").replace(/[\\s　]+/g,"_")+".pdf";'+
+          'var file=new File([blob],fname,{type:"application/pdf"});'+
+          'if(navigator.canShare&&navigator.canShare({files:[file]})){'+
+            'await navigator.share({files:[file],title:document.title,text:"財務報表 PDF"});'+
+          '}else{'+
+            'var u=URL.createObjectURL(blob);'+
+            'var a=document.createElement("a");'+
+            'a.href=u;a.download=fname;document.body.appendChild(a);a.click();'+
+            'setTimeout(function(){URL.revokeObjectURL(u);a.remove();},2000);'+
+          '}'+
+        '}catch(e){'+
+          'if(!e||e.name!=="AbortError")alert("PDF 產生失敗："+(e&&e.message||String(e)));'+
         '}'+
-        'window.print();'+
+        'btn.innerHTML=orig;btn.disabled=false;'+
       '}'+
     '</'+'script>'+
     '</body></html>';
