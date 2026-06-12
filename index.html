@@ -7023,6 +7023,18 @@ function _buildFinancePDFHtml(d){
     /* Audit */
   ].join('\n');
   // ── overview section ──
+  // 收入統計表：只顯示有實際紀錄的類型（教練費、其他收入若無資料則隱藏）
+  var _incSumRows = [
+    ['年費',    d.annualRecs.length,  d.fmtN(d.annualT)],
+    ['月費',    d.monthlyRecs.length, d.fmtN(d.monthlyT)],
+    ['臨打',    d.dayPassRecs.length, d.fmtN(d.dayPassT)],
+    ['教練費',  d.coachRecs.length,   d.fmtN(d.coachT)],
+    ['捐款',    d.donateRecs.length,  d.fmtN(d.donateT)],
+    ['其他收入',d.otherRecs.length,   d.fmtN(d.otherT)],
+  ].filter(function(r){ return r[1] > 0; });
+  _incSumRows.push(['支出', d.expRecs.length, d.fmtN(d.expTotal)]);
+  var _incSumCnt = d.annualRecs.length + d.monthlyRecs.length + d.dayPassRecs.length +
+                   d.coachRecs.length  + d.donateRecs.length  + d.otherRecs.length;
   var overviewHtml =
     '<h2>年度財務總覽</h2>'+
     '<div class="stat-grid">'+
@@ -7031,21 +7043,7 @@ function _buildFinancePDFHtml(d){
       '<div class="stat-card balance"><div class="stat-label">結餘</div><div class="stat-value">'+esc(d.fmtN(d.balance))+'</div></div>'+
     '</div>'+
     '<h2>收入統計表</h2>'+
-    table(
-      ['類型','筆數','金額'],
-      [
-        ['年費',   d.annualRecs.length,   d.fmtN(d.annualT)],
-        ['月費',   d.monthlyRecs.length,  d.fmtN(d.monthlyT)],
-        ['臨打',   d.dayPassRecs.length,  d.fmtN(d.dayPassT)],
-        ['教練費', d.coachRecs.length,    d.fmtN(d.coachT)],
-        ['捐款',   d.donateRecs.length,   d.fmtN(d.donateT)],
-        ['其他收入',d.otherRecs.length,   d.fmtN(d.otherT)],
-        ['支出',   d.expRecs.length,      d.fmtN(d.expTotal)],
-      ],
-      ['收入合計',
-       d.annualRecs.length+d.monthlyRecs.length+d.dayPassRecs.length+d.coachRecs.length+d.donateRecs.length+d.otherRecs.length,
-       d.fmtN(d.incTotal)]
-    );
+    table(['類型','筆數','金額'], _incSumRows, ['收入合計', _incSumCnt, d.fmtN(d.incTotal)]);
 
   // ── detail sections ──
   var detailHtml =
