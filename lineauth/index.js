@@ -51,7 +51,7 @@ const crypto      = require('crypto');
 // ── Firebase Admin init ───────────────────────────────────────────────
 initializeApp();
 const db         = getFirestore();
-const authAdmin  = getAuth();
+// authAdmin intentionally NOT initialized at module level (avoids Firebase CLI analysis timeout)
 
 setGlobalOptions({ maxInstances: 10, region: 'asia-east1' });
 
@@ -273,7 +273,7 @@ exports.issueFirebaseToken = onRequest(
       const status = memberSnap.exists ? (memberSnap.data().status || 'pending') : 'pending';
 
       // ③ Issue Firebase Custom Token
-      const customToken = await authAdmin.createCustomToken(lineUserId, { role, status });
+      const customToken = await getAuth().createCustomToken(lineUserId, { role, status });
 
       console.info('[issueFirebaseToken] issued for:', lineUserId, '| role:', role, '| status:', status);
       return res.status(200).json({ customToken });
