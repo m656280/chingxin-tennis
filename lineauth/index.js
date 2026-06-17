@@ -49,7 +49,7 @@ const querystring = require('querystring');
 const crypto      = require('crypto');
 
 // ── Firebase Admin init ───────────────────────────────────────────────
-initializeApp();
+initializeApp({ projectId: 'chingxin-tennis' });
 const db         = getFirestore();
 // authAdmin intentionally NOT initialized at module level (avoids Firebase CLI analysis timeout)
 
