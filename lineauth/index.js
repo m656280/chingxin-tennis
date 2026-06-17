@@ -48,10 +48,16 @@ const https       = require('https');
 const querystring = require('querystring');
 const crypto      = require('crypto');
 
-// ── Firebase Admin init ───────────────────────────────────────────────
-initializeApp({ projectId: 'chingxin-tennis' });
-const db         = getFirestore();
-// authAdmin intentionally NOT initialized at module level (avoids Firebase CLI analysis timeout)
+// ── Firebase Admin init (fully lazy — avoids Firebase CLI ADC/GCE timeout) ──
+// Firebase CLI does local code analysis by requiring this module;
+// calling initializeApp() or getFirestore() at module level triggers
+// firebase-admin 13.x ADC credential detection which tries the GCE metadata
+// endpoint (169.254.169.254) and hangs for 10 s on non-GCP machines.
+let _app = null;
+let _db  = null;
+function _getApp(){ return _app || (_app = initializeApp({ projectId: 'chingxin-tennis' })); }
+function getDb()  { return _db  || (_db  = getFirestore(_getApp())); }
+// getAuth() is already lazy — use getAuth() inline (it calls _getApp() implicitly)
 
 setGlobalOptions({ maxInstances: 10, region: 'asia-east1' });
 
@@ -180,7 +186,7 @@ exports.lineCallback = onRequest(
       }
 
       // ── Step 3: Upsert Firestore members/{lineUserId} ────────────────
-      const memberRef  = db.collection('members').doc(lineUserId);
+      const memberRef  = getDb().collection('members').doc(lineUserId);
       const memberSnap = await memberRef.get();
       const now        = FieldValue.serverTimestamp();
 
@@ -215,7 +221,7 @@ exports.lineCallback = onRequest(
       const sessionToken = crypto.randomBytes(32).toString('hex'); // 256-bit
       const expiresAt    = new Date(Date.now() + SESSION_EXPIRY_DAYS * 864e5);
 
-      await db.collection('sessions').doc(sessionToken).set({
+      await getDb().collection('sessions').doc(sessionToken).set({
         lineUserId,
         createdAt: now,
         expiresAt: Timestamp.fromDate(expiresAt),
@@ -268,7 +274,7 @@ exports.issueFirebaseToken = onRequest(
       }
 
       // ② Read member doc for latest role / status
-      const memberSnap = await db.collection('members').doc(lineUserId).get();
+      const memberSnap = await getDb().collection('members').doc(lineUserId).get();
       const role   = memberSnap.exists ? (memberSnap.data().role   || 'member')  : 'member';
       const status = memberSnap.exists ? (memberSnap.data().status || 'pending') : 'pending';
 
