@@ -2051,6 +2051,7 @@ button {
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script>
 /* ── Firebase Init ── */
@@ -2066,10 +2067,12 @@ const FB_CONFIG = {
 // Messaging API channel → LIFF → 新增 LIFF 應用程式
 const LIFF_ID = '2010122854-usyGQhHI';
 
-var db;
+var db, auth;
 try {
   firebase.initializeApp(FB_CONFIG);
-  db = firebase.firestore();
+  db   = firebase.firestore();
+  auth = firebase.auth();
+  auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(function(){});
 } catch(e){
   console.error('[Firebase] Init failed:', e);
 }
@@ -2374,6 +2377,36 @@ function _canEnter(d){
 
 // Fast path: if localStorage has a known UID, read Firestore and enter directly.
 async function _tryResumeSession(){
+  // ── Fast path: Firebase Auth already signed in ────────────────────────
+  if(auth){
+    try{
+      var _fbUser = await new Promise(function(resolve){
+        var _timer  = setTimeout(function(){ resolve(null); }, 2000);
+        var _unsub  = auth.onAuthStateChanged(function(u){ clearTimeout(_timer); _unsub(); resolve(u); });
+      });
+      if(_fbUser){
+        var _uid = _fbUser.uid;
+        var _tr  = await _fbUser.getIdTokenResult(false);
+        var _cl  = _tr.claims;
+        if(_cl.role && _cl.status){
+          var _profile = { userId:_uid, displayName:_fbUser.displayName||'', pictureUrl:_fbUser.photoURL||'' };
+          var _d = {
+            role:        _cl.role,
+            status:      _cl.status,
+            displayName: _fbUser.displayName || '',
+            photoURL:    _fbUser.photoURL    || '',
+            approved:    _cl.status==='active' || _cl.status==='approved',
+          };
+          console.log('[AUTH] resume via Firebase Auth uid:', _uid, '| role:', _cl.role, '| status:', _cl.status);
+          if(db){ db.collection('members').doc(_uid).update({ lastLoginAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(function(){}); }
+          _routeByStatus(_d, _profile);
+          return true;
+        }
+      }
+    } catch(e){ console.warn('[AUTH] Firebase Auth resume error (non-fatal):', e.message||e); }
+  }
+
+  // ── Fallback: localStorage → Firestore read ───────────────────────────
   var uid = '';
   try { uid = localStorage.getItem(LS_UID_KEY) || ''; } catch(e){ return false; }
   if(!uid || !db) return false;
@@ -2565,6 +2598,11 @@ async function _upsertAndRoute(profile){
     // Cache UID for fast resume on next page load
     try { localStorage.setItem(LS_UID_KEY, uid); } catch(e){}
     _routeByStatus(finalData, profile);
+    // Fire-and-forget: sign in to Firebase Auth with custom token (non-blocking)
+    try{
+      var _lineAt = (typeof liff !== 'undefined') ? liff.getAccessToken() : null;
+      if(_lineAt){ _signInWithLineToken(_lineAt); }
+    } catch(e){ /* LIFF not ready — skip silently */ }
   } catch(e){
     _liffDbg('upsert ERROR', e.message || String(e));
     _showAuthGate('login');
@@ -2635,11 +2673,38 @@ function _doReapply(){
 
 function _doLogout(){
   currentUser = null;
+  if(auth){ try{ auth.signOut(); }catch(e){} }
   try { localStorage.removeItem(LS_UID_KEY); } catch(e){}
   try { sessionStorage.clear(); } catch(e){}
   try { liff.logout(); } catch(e){}
   _showAuthGate('login');
 }
+// ── Firebase Auth Custom Token ───────────────────────────────────────
+// URL is confirmed after first deploy of the issueFirebaseToken function.
+// If the function URL changes, update this constant only.
+const _ISSUE_TOKEN_URL = 'https://asia-east1-chingxin-tennis.cloudfunctions.net/issueFirebaseToken';
+
+// Called after LIFF login (fire-and-forget — never blocks main UI flow).
+// On success, firebase.auth().currentUser will be set for future sessions.
+// On failure, the Firestore-based flow continues working unchanged.
+async function _signInWithLineToken(lineAccessToken){
+  if(!auth || !lineAccessToken) return;
+  try{
+    var res = await fetch(_ISSUE_TOKEN_URL, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ accessToken: lineAccessToken }),
+    });
+    if(!res.ok){ throw new Error('HTTP ' + res.status); }
+    var data = await res.json();
+    if(!data.customToken){ throw new Error(data.error || 'no_token'); }
+    await auth.signInWithCustomToken(data.customToken);
+    console.log('[AUTH] Firebase signInWithCustomToken OK');
+  } catch(e){
+    console.warn('[AUTH] _signInWithLineToken failed (non-fatal):', e.message || e);
+  }
+}
+
 /* ══ end auth flow ══ */
 
 /* ── Constants ── */

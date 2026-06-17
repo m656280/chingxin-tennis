@@ -43,13 +43,15 @@ const { setGlobalOptions } = require('firebase-functions');
 const { onRequest }        = require('firebase-functions/https');
 const { initializeApp }    = require('firebase-admin/app');
 const { getFirestore, FieldValue, Timestamp } = require('firebase-admin/firestore');
+const { getAuth }          = require('firebase-admin/auth');
 const https       = require('https');
 const querystring = require('querystring');
 const crypto      = require('crypto');
 
 // ── Firebase Admin init ───────────────────────────────────────────────
 initializeApp();
-const db = getFirestore();
+const db         = getFirestore();
+const authAdmin  = getAuth();
 
 setGlobalOptions({ maxInstances: 10, region: 'asia-east1' });
 
@@ -226,6 +228,59 @@ exports.lineCallback = onRequest(
     } catch (err) {
       console.error('[lineCallback] Unexpected error:', err.message || err);
       return res.redirect(`${APP_BASE_URL}?auth_error=internal`);
+    }
+  }
+);
+
+
+// ── issueFirebaseToken ────────────────────────────────────────────────
+// Called by LIFF frontend to exchange a LINE Access Token for a
+// Firebase Custom Token with role/status claims.
+//
+// POST /issueFirebaseToken
+// Body: { accessToken: string }   ← liff.getAccessToken()
+// Response: { customToken: string } | { error: string }
+exports.issueFirebaseToken = onRequest(
+  {
+    region: 'asia-east1',
+    cors:   ['https://chingxin-tennis.web.app'],
+  },
+  async (req, res) => {
+    if (req.method !== 'POST') {
+      return res.status(405).json({ error: 'method_not_allowed' });
+    }
+
+    const { accessToken } = req.body || {};
+    if (!accessToken || typeof accessToken !== 'string' || accessToken.length < 10) {
+      return res.status(400).json({ error: 'missing_access_token' });
+    }
+
+    try {
+      // ① Verify token with LINE /v2/profile
+      const profileRes = await httpsGetJson('https://api.line.me/v2/profile', accessToken);
+      if (profileRes.status !== 200) {
+        console.warn('[issueFirebaseToken] LINE profile error:', profileRes.status, JSON.stringify(profileRes.data));
+        return res.status(401).json({ error: 'invalid_access_token' });
+      }
+      const lineUserId = profileRes.data.userId;
+      if (!lineUserId) {
+        return res.status(401).json({ error: 'no_user_id' });
+      }
+
+      // ② Read member doc for latest role / status
+      const memberSnap = await db.collection('members').doc(lineUserId).get();
+      const role   = memberSnap.exists ? (memberSnap.data().role   || 'member')  : 'member';
+      const status = memberSnap.exists ? (memberSnap.data().status || 'pending') : 'pending';
+
+      // ③ Issue Firebase Custom Token
+      const customToken = await authAdmin.createCustomToken(lineUserId, { role, status });
+
+      console.info('[issueFirebaseToken] issued for:', lineUserId, '| role:', role, '| status:', status);
+      return res.status(200).json({ customToken });
+
+    } catch (err) {
+      console.error('[issueFirebaseToken] error:', err.message || err);
+      return res.status(500).json({ error: 'internal' });
     }
   }
 );
