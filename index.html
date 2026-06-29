@@ -1489,6 +1489,29 @@ button {
     <p class="authStateDesc">帳號未通過審核，<br>請聯絡管理員。</p>
     <button class="authLogoutBtn" onclick="_doLogout()">登出</button>
   </div>
+  <!-- Register (first-time: fill realName before creating member doc) -->
+  <div id="authRegisterScreen" class="authCenter" style="display:none">
+    <div style="margin-bottom:28px;text-align:center">
+      <img src="/apple-touch-icon.png" width="56" height="56" alt="清心 logo" style="display:block;margin:0 auto 14px;border-radius:12px">
+      <div class="authBrandCn">高雄市清心網球協會</div>
+      <div class="authBrandSub">Kaohsiung Ching Xin Tennis Association</div>
+    </div>
+    <div style="width:100%;max-width:320px">
+      <div style="font-size:15px;font-weight:600;color:var(--color-text-primary);margin-bottom:18px">會員申請</div>
+      <label style="display:block;font-size:12px;color:var(--color-text-muted);margin-bottom:6px;letter-spacing:0.04em">LINE 暱稱</label>
+      <div id="registerDisplayName" style="padding:10px 12px;border:1px solid var(--color-border,#d4c9b5);border-radius:8px;font-size:14px;color:var(--color-text-muted);background:var(--color-bg,#f5f0e8);margin-bottom:16px">—</div>
+      <label style="display:block;font-size:12px;color:var(--color-text-muted);margin-bottom:6px;letter-spacing:0.04em">真實姓名 <span style="color:#c0392b">*</span></label>
+      <input id="registerRealName" type="text" placeholder="請輸入真實姓名" maxlength="20"
+        style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--color-border,#d4c9b5);border-radius:8px;font-size:14px;background:var(--color-bg-card,#fff);color:var(--color-text-primary);outline:none;margin-bottom:4px"
+        oninput="_onRegisterInput()"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();_submitRegistration();}"
+      >
+      <div id="registerNameHint" style="font-size:11px;color:#c0392b;min-height:16px;margin-bottom:8px"></div>
+      <p style="font-size:12px;color:var(--color-text-muted);margin:0 0 18px;line-height:1.7">本協會採實名制，請填寫真實姓名。<br>管理員將依此姓名進行會員審核。</p>
+      <button id="registerSubmitBtn" class="authLineBtn" style="opacity:0.4;pointer-events:none" onclick="_submitRegistration()">送出申請</button>
+      <button class="authLogoutBtn" style="margin-top:10px" onclick="_doLogout()">取消，返回登入</button>
+    </div>
+  </div>
 </div>
 
 <div class="app court-active">
@@ -2105,7 +2128,7 @@ function _showAuthGate(state){
   var gate = document.getElementById('authGate');
   if(!gate) return;
   gate.style.display = 'block';
-  ['Loading','Login','Pending','Resigned','Reapply','Blocked','Rejected'].forEach(function(s){
+  ['Loading','Login','Pending','Resigned','Reapply','Blocked','Rejected','Register'].forEach(function(s){
     var el = document.getElementById('auth'+s+'Screen');
     if(el) el.style.display = 'none';
   });
@@ -2557,6 +2580,9 @@ function _showAuthGateError(msg){
 // profile: { userId, displayName, pictureUrl }
 // Rule: NEVER overwrite role/status of existing members.
 // New members only: role=member, status=pending.
+// Temp storage for LINE profile during first-time registration flow
+var _pendingRegProfile = null;
+
 async function _upsertAndRoute(profile){
   var uid = profile.userId;
   _liffDbg('upsert uid', uid);
@@ -2567,21 +2593,13 @@ async function _upsertAndRoute(profile){
     var now  = firebase.firestore.FieldValue.serverTimestamp();
 
     if(!snap.exists){
-      // First login — create doc with safe defaults only
-      await memberRef.set({
-        uid:          uid,
-        displayName:  profile.displayName || '',
-        photoURL:     profile.pictureUrl  || '',
-        status:       'pending',
-        role:         'member',
-        memberSource: 'line',
-        createdAt:    now,
-        approvedAt:   null,
-        approvedBy:   null,
-        lastLoginAt:  now,
-      });
-      _liffDbg('created', 'pending/member');
-      snap = await memberRef.get();
+      // First login — show registration form so user can enter their real name
+      _pendingRegProfile = profile;
+      _showAuthGate('register');
+      // Populate the read-only LINE display name field
+      var dnEl = document.getElementById('registerDisplayName');
+      if(dnEl) dnEl.textContent = profile.displayName || '';
+      return;
 
     } else {
       // Existing member — only update display fields, NEVER touch role/status
@@ -2606,6 +2624,64 @@ async function _upsertAndRoute(profile){
   } catch(e){
     _liffDbg('upsert ERROR', e.message || String(e));
     _showAuthGate('login');
+  }
+}
+
+/* ── First-time registration helpers ────────────────────────────────
+   Called from authRegisterScreen.
+   ──────────────────────────────────────────────────────────────────── */
+function _onRegisterInput(){
+  var val = (document.getElementById('registerRealName')||{value:''}).value.trim();
+  var btn = document.getElementById('registerSubmitBtn');
+  var hint = document.getElementById('registerNameHint');
+  if(!btn) return;
+  var valid = val.length >= 2 && val.length <= 20;
+  btn.style.opacity        = valid ? '1'    : '0.4';
+  btn.style.pointerEvents  = valid ? 'auto' : 'none';
+  if(hint){
+    if(val.length > 0 && val.length < 2)       hint.textContent = '姓名至少 2 個字';
+    else if(val.length > 20)                    hint.textContent = '姓名不可超過 20 個字';
+    else                                        hint.textContent = '';
+  }
+}
+
+async function _submitRegistration(){
+  var realName = ((document.getElementById('registerRealName')||{}).value||'').trim();
+  if(!realName || realName.length < 2 || realName.length > 20){ return; }  // guard
+  if(!_pendingRegProfile){ _showAuthGate('login'); return; }
+  if(!db){ _showAuthGate('login'); return; }
+
+  var btn = document.getElementById('registerSubmitBtn');
+  if(btn){ btn.disabled = true; btn.textContent = '送出中…'; }
+
+  var profile = _pendingRegProfile;
+  var uid     = profile.userId;
+  var now     = firebase.firestore.FieldValue.serverTimestamp();
+
+  try {
+    await db.collection('members').doc(uid).set({
+      uid:          uid,
+      realName:     realName,
+      displayName:  profile.displayName || '',
+      photoURL:     profile.pictureUrl  || '',
+      status:       'pending',
+      role:         'member',
+      memberSource: 'line',
+      createdAt:    now,
+      approvedAt:   null,
+      approvedBy:   null,
+      lastLoginAt:  now,
+    });
+    _liffDbg('register created', 'pending/member realName:' + realName);
+    _pendingRegProfile = null;
+    var snap = await db.collection('members').doc(uid).get();
+    _routeByStatus(snap.data(), profile);
+  } catch(e) {
+    _liffDbg('register ERROR', e.message || String(e));
+    if(btn){ btn.disabled = false; btn.textContent = '送出申請'; }
+    // show a simple inline error message
+    var errEl = document.getElementById('registerRealName');
+    if(errEl) errEl.style.borderColor = '#c0392b';
   }
 }
 
