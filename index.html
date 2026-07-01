@@ -2409,7 +2409,12 @@ async function _tryResumeSession(){
       });
       if(_fbUser){
         var _uid = _fbUser.uid;
-        var _tr  = await _fbUser.getIdTokenResult(false);
+        var _tr  = await Promise.race([
+          _fbUser.getIdTokenResult(false),
+          new Promise(function(_,reject){
+            setTimeout(function(){ reject(new Error('getIdTokenResult timeout')); }, 3000);
+          }),
+        ]);
         var _cl  = _tr.claims;
         if(_cl.role && _cl.status){
           var _profile = { userId:_uid, displayName:_fbUser.displayName||'', pictureUrl:_fbUser.photoURL||'' };
