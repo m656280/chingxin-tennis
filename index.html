@@ -8164,18 +8164,29 @@ function _expFallbackCopy(text){
 function _prepMemberRosterData(){
   var STATUS_LABEL = {active:'正常', approved:'正常', resigned:'已離會', expired:'已到期', inactive:'停用'};
 
+  // ── 入會日期 = 第一筆「有效」對應類別繳費紀錄的繳費日期 ──────────────────
+  // 規則：年費會員看第一筆有效 annual 紀錄、月費會員看第一筆有效 monthly 紀錄，
+  //       兩類分開統計不混用；同時有兩類紀錄時依目前 membershipType 取用；
+  //       無對應紀錄（或非年費/月費會員）顯示「—」，不回退 createdAt/approvedAt。
+  // 「有效」= status 為 active（排除 void/cancelled/deleted/archived/refund），
+  //       與財務 CSV 會員繳費稽核表的 paidMap 同一套判定。
+  var _firstPay = {};   // memberId → {annual:'YYYY-MM-DD', monthly:'YYYY-MM-DD'}
+  (typeof financeRecords !== 'undefined' && financeRecords || []).forEach(function(r){
+    if((r.status||'active') !== 'active') return;
+    if(r.type !== 'annual' && r.type !== 'monthly') return;
+    var mid = r.memberId || '';
+    var dt  = String(r.date || '');
+    if(!mid || dt.length < 10) return;
+    if(!_firstPay[mid]) _firstPay[mid] = {};
+    if(!_firstPay[mid][r.type] || dt < _firstPay[mid][r.type]) _firstPay[mid][r.type] = dt;
+  });
   function joinDate(m){
-    var ts = m.approvedAt || m.createdAt;   // 入會日期：核准時間，無則首次建立時間
-    if(ts && typeof ts.toDate === 'function'){
-      var d0 = ts.toDate();
-      return d0.getFullYear()+'/'+String(d0.getMonth()+1).padStart(2,'0')+'/'+String(d0.getDate()).padStart(2,'0');
-    }
-    if(ts && ts.seconds){
-      var d1 = new Date(ts.seconds*1000);
-      return d1.getFullYear()+'/'+String(d1.getMonth()+1).padStart(2,'0')+'/'+String(d1.getDate()).padStart(2,'0');
-    }
-    if(typeof ts === 'string' && ts.length >= 10) return ts.slice(0,10).replace(/-/g,'/');
-    return '—';
+    var t = m.membershipType;
+    if(t !== 'annual' && t !== 'monthly') return '—';
+    var mid = m.userId || m.uid || '';
+    var fp  = _firstPay[mid];
+    var dt  = fp ? (fp[t] || '') : '';
+    return dt ? dt.slice(0,10).replace(/-/g,'/') : '—';
   }
   function gender(m){
     var g = String(m.gender||'').toLowerCase();
