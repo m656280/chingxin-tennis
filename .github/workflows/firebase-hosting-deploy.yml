@@ -17,13 +17,18 @@ jobs:
       - name: Install Firebase Tools
         run: npm install -g firebase-tools
 
-      - name: Deploy to Firebase Hosting + Firestore Rules
+      # 2026-07-09：改回只部署 hosting。
+      # 原因：CI 的 service account 缺 serviceusage 權限，firestore:rules 部署
+      #       會在 API 檢查階段 403，連帶 hosting 一起失敗（run #40/#41）。
+      #       且依維護政策 rules 變更需經 MK 確認 → rules 一律改用本機
+      #       deploy_rules 腳本手動部署，不走 CI。
+      - name: Deploy to Firebase Hosting
         env:
           FIREBASE_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_CHINGXIN_TENNIS }}
         run: |
           echo "$FIREBASE_SA" > /tmp/firebase-sa.json
           GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json \
-          firebase deploy --only hosting,firestore:rules --project chingxin-tennis 2>&1 | tee /tmp/deploy.log
+          firebase deploy --only hosting --project chingxin-tennis 2>&1 | tee /tmp/deploy.log
           EXIT_CODE=${PIPESTATUS[0]}
           if grep -q "current active version" /tmp/deploy.log; then
             echo "Version already active — no new release needed. Treating as success."
