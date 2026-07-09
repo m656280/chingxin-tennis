@@ -1,0 +1,227 @@
+rules_version = '2';
+
+// ════════════════════════════════════════════════════════════════════════════
+// 清心網球系統 — Firestore Security Rules
+//
+// 版本：v2.0-draft（2026-06-18）
+// 狀態：⚠️  草案 — 尚未 deploy，待 Rules Playground 驗證後正式上線
+//
+// 依賴：
+//   Firebase Auth Custom Token 由 issueFirebaseToken Cloud Function 發行
+//     request.auth.uid          ← LINE userId（= members document ID）
+//     request.auth.token.role   ← 來自 members/{uid}.role
+//     request.auth.token.status ← 來自 members/{uid}.status
+//
+// 角色（role）：
+//   owner   → 最高權限（系統管理員）
+//   admin   → 管理員（財務、成員審核、公告）
+//   coach   → 教練（與 member 相同存取，未來可擴充）
+//   member  → 一般會員
+//
+// 狀態（status）：
+//   active  → 已核准，可完整使用系統
+//   pending → 待審核，只能讀自己的 member doc（看審核狀態）
+//
+// 升級說明（相對 v1.0-stopgap）：
+//   [L1] members：讀者限 active 用戶（pending 只能讀自己）；write 限本人/admin
+//   [L2] financialRecords：讀寫全限 admin/owner（不再全開）
+//   [L3] announcements：write 限 admin/owner
+//   [L4] notifications：讀限本人（uid 比對）
+//   [L5] bookings.delete 限 owner；bookings.update 限本人取消或 admin 所有操作
+//   [L6] members.delete 仍封鎖（前端 owner-only，請用 Firebase Console）
+//         → owner 可刪 members 和 financialRecords（新增）
+//
+// ⚠️  部署注意：
+//   此版規則部署後，舊 localStorage session（無 Firebase Auth）的用戶
+//   將無法透過 Firestore fallback 讀取 members doc。
+//   舊用戶需重新從 LIFF 登入，走 issueFirebaseToken → signInWithCustomToken。
+// ════════════════════════════════════════════════════════════════════════════
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper functions ────────────────────────────────────────────────
+
+    // 是否已登入 Firebase Auth
+    function isAuth()   { return request.auth != null; }
+
+    // 取得 Custom Token claims
+    function myRole()   { return request.auth.token.role; }
+    function myStatus() { return request.auth.token.status; }
+
+    // 角色判斷（上位角色包含下位所有權限）
+    function isOwner()  { return isAuth() && myRole() == 'owner'; }
+    function isAdmin()  { return isAuth() && myRole() in ['owner', 'admin']; }
+    function isCoach()  { return isAuth() && myRole() in ['owner', 'admin', 'coach']; }
+
+    // 帳號狀態已核准（active）
+    function isActive() { return isAuth() && myStatus() == 'active'; }
+
+    // 已登入且已核准（最常用的 guard）
+    function isActiveUser() { return isActive(); }
+
+    // ── sessions ────────────────────────────────────────────────────────
+    // Admin SDK (lineCallback) 寫入；token 為 256-bit random，本身即 capability
+    // 前端舊 session 流程需讀取，不可改為 require auth（否則初次登入時無 auth）
+    match /sessions/{token} {
+      allow read:  if true;
+      allow write: if false;  // Admin SDK only
+    }
+
+    // ── members ─────────────────────────────────────────────────────────
+    match /members/{userId} {
+
+      // 讀：
+      //   ① 任何已登入用戶可讀自己的 doc（pending 用戶需要看審核狀態）
+      //   ② active 用戶可讀所有 members（場地頁、預約頁顯示姓名）
+      allow read: if isAuth() && (request.auth.uid == userId || isActive());
+
+      // 建立：Admin SDK only（lineCallback server-side upsert）
+      // Admin SDK 本身 bypass rules，這條是防止任何 client 端直接建立 member doc
+      allow create: if false;
+
+      // 更新：
+      //   ① 本人（active）：可改 display 安全欄位（displayName, pictureUrl, lastLoginAt）
+      //      → 不可動 role / status / approvedAt / approvedBy
+      //   ② Admin/Owner：可改任何欄位（審核 status、改 role 等）
+      //      → 但 admin 不可把 owner 的 role 改掉（需是 owner 本人才能改 owner 的 role）
+      allow update: if
+          // ① 本人 update（display 安全欄位）
+          (isActiveUser()
+            && request.auth.uid == userId
+            && !request.resource.data.diff(resource.data)
+                .affectedKeys().hasAny(['role', 'status', 'approvedAt', 'approvedBy']))
+          ||
+          // ② Admin：一般 member 的 role/status 更新
+          (isAdmin()
+            && resource.data.role != 'owner')
+          ||
+          // ③ Owner：可以改任何 doc 的任何欄位（包含 owner 自己）
+          isOwner();
+
+      // 刪除：owner only（極少使用，緊急改用 Firebase Console）
+      allow delete: if isOwner();
+    }
+
+    // ── bookings ────────────────────────────────────────────────────────
+    match /bookings/{bookingId} {
+
+      // 讀：active 用戶可讀所有預約（場地日曆）
+      allow read: if isActiveUser();
+
+      // 建立：active 用戶可新增預約
+      //   - 必要欄位齊全
+      //   - createdBy 必須是自己的 uid（防止冒名建立）
+      //   - 初始 status 必須是 'active'
+      allow create: if isActiveUser()
+                    && request.resource.data.keys()
+                       .hasAll(['date', 'startTime', 'endTime', 'court', 'mode', 'createdBy', 'status'])
+                    && request.resource.data.status == 'active'
+                    && request.resource.data.createdBy is string
+                    && request.resource.data.createdBy == request.auth.uid;
+
+      // 更新：
+      //   ① 本人（active）：只可取消自己的預約（status → 'cancelled'）
+      //      → 不可改日期/時間/場地/createdBy
+      //   ② Admin/Owner：可做所有狀態變更（作廢、移場、還原等）
+      allow update: if
+          // ① 本人取消
+          (isActiveUser()
+            && resource.data.createdBy == request.auth.uid
+            && request.resource.data.status == 'cancelled'
+            && !request.resource.data.diff(resource.data)
+                .affectedKeys().hasAny(['date', 'startTime', 'endTime', 'court', 'createdBy']))
+          ||
+          // ② Admin 全操作
+          (isAdmin()
+            && request.resource.data.status in ['active', 'cancelled', 'void', 'auto_moved']);
+
+      // 刪除：owner only（永久刪除預約記錄）
+      allow delete: if isOwner();
+    }
+
+    // ── financialRecords ────────────────────────────────────────────────
+    match /financialRecords/{recordId} {
+
+      // 讀：admin/owner only（財務資料敏感，不對一般會員開放）
+      allow read: if isAdmin();
+
+      // 建立：admin/owner only，必要欄位驗證
+      allow create: if isAdmin()
+                    && request.resource.data.keys()
+                       .hasAll(['type', 'amount', 'date', 'status'])
+                    && request.resource.data.amount is number
+                    && request.resource.data.amount > 0;
+
+      // 更新：admin/owner only
+      allow update: if isAdmin()
+                    && request.resource.data.amount is number
+                    && request.resource.data.amount > 0;
+
+      // 刪除：owner only
+      allow delete: if isOwner();
+    }
+
+    // ── announcements ────────────────────────────────────────────────────
+    match /announcements/{annId} {
+
+      // 讀：所有 active 用戶可讀公告
+      allow read: if isActiveUser();
+
+      // 建立：admin/owner only，必要欄位驗證
+      allow create: if isAdmin()
+                    && request.resource.data.keys().hasAll(['content', 'createdAt'])
+                    && request.resource.data.content is string
+                    && request.resource.data.content.size() > 0;
+
+      // 更新：admin/owner only
+      allow update: if isAdmin();
+
+      // 刪除：admin/owner only（過時公告清理）
+      allow delete: if isAdmin();
+    }
+
+    // ── notifications ────────────────────────────────────────────────────
+    match /notifications/{notifId} {
+
+      // 讀：只有通知本人可讀自己的通知
+      allow read: if isAuth() && resource.data.uid == request.auth.uid;
+
+      // 建立：active 用戶可建立（預約/取消時產生通知給相關人員）
+      //   Admin SDK 建立的 bypass rules；這條保護前端直接建立的情況
+      allow create: if isActiveUser()
+                    && request.resource.data.uid is string
+                    && request.resource.data.uid.size() > 0
+                    && request.resource.data.keys().hasAll(['uid', 'createdAt']);
+
+      // 更新：本人標記已讀（只允許改 read: true 和 updatedAt）
+      allow update: if isAuth()
+                    && resource.data.uid == request.auth.uid
+                    && request.resource.data.diff(resource.data)
+                       .affectedKeys().hasOnly(['read', 'updatedAt'])
+                    && request.resource.data.read == true;
+
+      // 刪除：本人可刪（booking 刪除時清理自己的通知）
+      //        Admin 也可刪（清理舊通知、管理工具）
+      allow delete: if isAuth()
+                    && (resource.data.uid == request.auth.uid || isAdmin());
+    }
+
+    // ── duplicateIgnorePairs ────────────────────────────────────────────
+    // 財務重複比對例外名單，admin 財務工具使用
+    match /duplicateIgnorePairs/{pairId} {
+      allow read:   if isAdmin();
+      allow create: if isAdmin()
+                    && request.resource.data.keys().hasAll(['createdAt'])
+                    && request.resource.data.createdAt != null;
+      allow update: if false;   // 一旦建立不可修改
+      allow delete: if false;   // 不可刪除例外記錄（保留 audit trail）
+    }
+
+    // ── catch-all ────────────────────────────────────────────────────────
+    // 明確拒絕所有未列出的 collection，防止意外寫入
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

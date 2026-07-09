@@ -1,0 +1,235 @@
+rules_version = '2';
+
+// ════════════════════════════════════════════════════════════════════════════
+// 清心網球系統 — Firestore Security Rules
+//
+// 版本：v1.1-stopgap（2026-07-08）
+//   變更：members.create 新增分支 ② — admin/owner（Firebase Auth custom claims）
+//         可建立 memberSource='manual'、status='approved' 的手動會員。
+//         注意：Firebase Auth（issueFirebaseToken + signInWithCustomToken）已上線，
+//         檔頭下方「Auth 尚未整合」的描述僅適用於尚未升級的其他 collection。
+// 狀態：⚠️  STOPGAP — Firebase Auth 尚未整合，request.auth 恆為 null。
+//       本版規則無法做身份驗證，僅能做資料形狀驗證 + 防止最高危操作。
+//       待 Firebase Auth（Custom Token）整合後升級為 v2.0。
+//
+// 覆蓋 Collections：
+//   members            前端讀寫（LIFF userId = document ID）
+//   bookings           前端讀寫（active / cancelled / void / auto_moved）
+//   financialRecords   前端讀寫（admin only，但目前無法驗證）
+//   announcements      前端讀寫（admin only，但目前無法驗證）
+//   notifications      前端讀寫（每個使用者看自己的）
+//   duplicateIgnorePairs  前端讀寫（admin finance 工具）
+//   sessions           Admin SDK 寫入（lineauth Cloud Function），前端不讀寫
+//
+// 已知限制（Firebase Auth 整合後移除）：
+//   [L1] 無法驗證呼叫者身份 → 無法實現 isAdmin / isOwner 角色保護
+//   [L2] financialRecords 理應僅 admin 可寫，但目前無法限制
+//   [L3] announcements 理應僅 admin 可寫，但目前無法限制
+//   [L4] notifications 理應僅限本人讀取，但目前全開
+//   [L5] bookings.delete 理應僅 owner 可執行，但目前無法限制
+//   [L6] members.delete 已封鎖（前端 owner-only，不常用，請改用 Firebase Console）
+//
+// 升級計畫：
+//   1. lineauth 新增 admin.auth().createCustomToken(lineUserId)
+//   2. 前端加入 firebase.auth().signInWithCustomToken(token)
+//   3. members/{userId} 的 role 欄位寫入 request.auth.token.role（Custom Claims）
+//   4. 升級至 v2.0 規則，移除所有 [Lx] 限制
+// ════════════════════════════════════════════════════════════════════════════
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ──────────────────────────────────────────────────────────────────────
+    // HELPER FUNCTIONS
+    // ──────────────────────────────────────────────────────────────────────
+
+    // 合法的 role 值（不含 owner / admin，防止自我升級）
+    function isSafeMemberRole(role) {
+      return role in ['member', 'coach'];
+    }
+
+    // 合法的 booking status 值
+    function isValidBookingStatus(s) {
+      return s in ['active', 'cancelled', 'void', 'auto_moved'];
+    }
+
+    // 合法的 financialRecord type 值
+    function isValidFinanceType(t) {
+      return t in ['annual', 'monthly', 'dayPass', 'coach', 'donate', 'other', 'expense'];
+    }
+
+    // 合法的 financialRecord status 值
+    function isValidFinanceStatus(s) {
+      return s in ['active', 'void'];
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // sessions  — lineauth Admin SDK 寫入，前端目前不讀取
+    // ──────────────────────────────────────────────────────────────────────
+    match /sessions/{token} {
+      // Admin SDK bypasses rules; client 無法寫入
+      allow read:   if true;
+      allow write:  if false;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // members
+    // ──────────────────────────────────────────────────────────────────────
+    match /members/{userId} {
+      // 讀：全員可讀（場地頁、預約頁需要顯示所有使用者名稱）
+      // TODO [L1]: 改為 request.auth != null 後限制
+      allow read: if true;
+
+      // 建立（v1.1：新增分支 ②）：
+      // ① LIFF 首次登入自我註冊：role=member、status=pending、不可帶 approved
+      //    ← 防止任何人透過 API 直接建立 owner/admin 帳號
+      // ② 管理員手動建立（無 LINE 會員，memberSource='manual'）：
+      //    需 Firebase Auth 登入且 custom token claims role 為 owner/admin，
+      //    status 直接為 approved，role 僅限 member/coach（不可建 owner/admin）
+      allow create: if (
+                      // ① LIFF 自我註冊
+                      request.resource.data.role == 'member'
+                      && request.resource.data.status == 'pending'
+                      && !('approved' in request.resource.data)
+                      && request.resource.data.keys().hasAll(['uid', 'displayName', 'status', 'role', 'createdAt'])
+                    ) || (
+                      // ② admin/owner 手動建立
+                      request.auth != null
+                      && request.auth.token.role in ['owner', 'admin']
+                      && request.resource.data.memberSource == 'manual'
+                      && request.resource.data.status == 'approved'
+                      && isSafeMemberRole(request.resource.data.role)
+                      && request.resource.data.keys().hasAll(['uid', 'displayName', 'status', 'role', 'createdAt'])
+                    );
+
+      // 更新：
+      // ① 如果 role 欄位未被異動 → 允許（display info, lastLoginAt, status 等）
+      // ② 如果 role 欄位被異動 → 只允許設為 member / coach（不允許 owner / admin）
+      // ← [L1] 限制：admin 可以把人升為 coach，但任何人都可以把自己改成 coach
+      //              真正的 owner-only / admin-only 保護需要 Firebase Auth
+      allow update: if (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])
+          || isSafeMemberRole(request.resource.data.role)
+        )
+        // owner 帳號的 role 不可被任何 client 端請求修改
+        && (resource.data.role != 'owner'
+            || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']));
+
+      // 刪除：全部封鎖。
+      // permanentDeleteMember 是 owner-only 且極少使用，
+      // 緊急情況請直接在 Firebase Console 刪除。
+      // TODO [L1]: 改為 request.auth.token.role == 'owner' 後開放
+      allow delete: if false;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // bookings
+    // ──────────────────────────────────────────────────────────────────────
+    match /bookings/{bookingId} {
+      // 讀：全員可讀（場地日曆需要顯示所有預約）
+      allow read: if true;
+
+      // 建立：驗證必要欄位存在且格式正確
+      allow create: if request.resource.data.keys().hasAll(['date', 'startTime', 'endTime', 'court', 'mode', 'createdBy', 'status'])
+                    && request.resource.data.status == 'active'
+                    && request.resource.data.createdBy is string
+                    && request.resource.data.createdBy.size() > 0
+                    && request.resource.data.date is string
+                    && request.resource.data.startTime is string
+                    && request.resource.data.endTime is string;
+
+      // 更新：允許狀態變更（取消、作廢、自動移場等）
+      // TODO [L5]: 改為限制只有 createdBy 或 admin 可取消
+      allow update: if request.resource.data.status in ['active', 'cancelled', 'void', 'auto_moved'];
+
+      // 刪除：允許（永久刪除由前端 owner-only 控制）
+      // TODO [L5]: 改為 request.auth.token.role == 'owner' 後限制
+      allow delete: if true;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // financialRecords
+    // ──────────────────────────────────────────────────────────────────────
+    match /financialRecords/{recordId} {
+      // 讀：全員可讀（月費會員看自己的記錄）
+      // TODO [L2]: 改為限制 isAdmin 或 memberId == request.auth.uid 後限制
+      allow read: if true;
+
+      // 建立：驗證必要欄位
+      allow create: if request.resource.data.keys().hasAll(['type', 'amount', 'date', 'status'])
+                    && isValidFinanceType(request.resource.data.type)
+                    && request.resource.data.amount is number
+                    && request.resource.data.amount > 0
+                    && isValidFinanceStatus(request.resource.data.status);
+
+      // 更新：允許（admin 修改金額/作廢/合併等操作）
+      // TODO [L2]: 改為 isAdmin 後限制
+      allow update: if isValidFinanceStatus(request.resource.data.status)
+                    && request.resource.data.amount is number
+                    && request.resource.data.amount > 0;
+
+      // 刪除：允許（admin 永久刪除誤新增資料，前端有確認對話框）
+      // TODO [L2]: 改為 isAdmin 後限制
+      allow delete: if true;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // announcements
+    // ──────────────────────────────────────────────────────────────────────
+    match /announcements/{annId} {
+      // 讀：全員可讀
+      allow read: if true;
+
+      // 寫：目前無法驗證 admin 身份，暫時全開
+      // TODO [L3]: 改為 isAdmin 後限制
+      allow create: if request.resource.data.keys().hasAll(['content', 'createdAt'])
+                    && request.resource.data.content is string
+                    && request.resource.data.content.size() > 0;
+      allow update: if true;
+      allow delete: if true;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // notifications
+    // ──────────────────────────────────────────────────────────────────────
+    match /notifications/{notifId} {
+      // 讀：全員可讀（前端用 where uid == myUid 過濾）
+      // TODO [L4]: 改為 resource.data.uid == request.auth.uid 後限制
+      allow read: if true;
+
+      // 建立：預約系統在建立/取消/移場時建立通知
+      allow create: if request.resource.data.keys().hasAll(['uid', 'createdAt'])
+                    && request.resource.data.uid is string
+                    && request.resource.data.uid.size() > 0;
+
+      // 更新：只允許標記已讀（read: true）和相關時間戳記
+      // 防止通知內容被篡改
+      allow update: if request.resource.data.diff(resource.data).affectedKeys()
+                       .hasOnly(['read', 'updatedAt'])
+                    && request.resource.data.read == true;
+
+      // 刪除：允許（booking 永久刪除時清理對應通知）
+      allow delete: if true;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // duplicateIgnorePairs  — 財務重複比對的例外名單
+    // ──────────────────────────────────────────────────────────────────────
+    match /duplicateIgnorePairs/{pairId} {
+      allow read:   if true;
+      // 建立：admin 財務工具標記「不是重複」
+      // TODO: 改為 isAdmin 後限制
+      allow create: if request.resource.data.keys().hasAll(['createdAt'])
+                    && request.resource.data.createdAt != null;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // catch-all — 明確拒絕所有未列出的 collection
+    // ──────────────────────────────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
