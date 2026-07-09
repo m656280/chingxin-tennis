@@ -8226,7 +8226,10 @@ function _prepMemberRosterData(year, msType){
     var s = m.status || '';
     return s!=='pending' && s!=='blocked' && s!=='rejected' && s!=='deleted';
   }).filter(function(m){
-    // 類別＋年度篩選：該年度有有效「對應類別」繳費者才列入（依繳費紀錄，不依入會日期）
+    // 類別＋年度雙條件：
+    // ① 會員目前類別（membershipType）必須等於冊別 — 避免曾繳過另一類費用者混冊
+    // ② 該年度有有效「對應類別」繳費紀錄（依繳費紀錄，不依入會日期）
+    if(m.membershipType !== msType) return false;
     var mid = m.userId || m.uid || '';
     return !!(_paidYears[mid] && _paidYears[mid][msType] && _paidYears[mid][msType][year]);
   }).sort(function(a,b){
