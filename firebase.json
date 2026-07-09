@@ -1,4 +1,8 @@
 {
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
   "functions": [
     {
       "codebase": "default",
@@ -28,6 +32,8 @@
     "ignore": [
       "firebase.json",
       "**/.*",
+      "**/.*/**",
+      ".git/**",
       "**/node_modules/**",
       "functions/**",
       "src/**",
