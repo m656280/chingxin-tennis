@@ -1972,7 +1972,8 @@ button {
   </div>
   <div class="formSection">
     <p style="font-size:12px;color:var(--color-text-muted);line-height:1.6;margin:0 0 16px">
-      適用於無 LINE 帳號的會員。管理員手動建立後即視為「已核准」。
+      適用於無 LINE 帳號的會員。管理員手動建立後即視為「已核准」。<br>
+      <span style="opacity:.55;font-size:10px">MANUAL_MEMBER_CALLABLE_V4</span>
     </p>
     <div class="formRow">
       <label class="formLabel">正式姓名 <span style="color:#e74c3c">*</span></label>
@@ -2075,6 +2076,7 @@ button {
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script>
 /* ── Firebase Init ── */
@@ -2095,7 +2097,9 @@ try {
   firebase.initializeApp(FB_CONFIG);
   db   = firebase.firestore();
   auth = firebase.auth();
-  auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(function(){});
+  auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+    .then(function(){ console.log('[AUTH-STEP] STEP7 persistence=LOCAL 設定 OK（session 跨重啟保存）'); })
+    .catch(function(e){ console.error('[AUTH-STEP] STEP7 persistence 設定 FAIL:', e.message || e); });
 } catch(e){
   console.error('[Firebase] Init failed:', e);
 }
@@ -2454,6 +2458,20 @@ async function _tryResumeSession(){
       }).catch(function(e){ console.warn('[AUTH] lastLoginAt update failed:', e.message); });
     }
 
+    // ── 啟動時自動完成 Firebase Auth（管理後台 callable 共用）──
+    // 管理員：等登入完成再進入介面；真的失敗才提示。其他角色背景完成即可。
+    if(!(auth && auth.currentUser)){
+      if(d.role === 'owner' || d.role === 'admin'){
+        var _fbU = await ensureFirebaseAuth();
+        if(!_fbU){
+          console.error('[AUTH] 管理員 Firebase Auth 啟動登入失敗');
+          _showAdminAuthFail();   // 停留在管理介面，統一橫幅提示
+        }
+      } else {
+        ensureFirebaseAuth();
+      }
+    }
+
     var profile = { userId: uid, displayName: d.displayName || '', pictureUrl: d.photoURL || '' };
     _routeByStatus(d, profile);
     return true;
@@ -2620,12 +2638,20 @@ async function _upsertAndRoute(profile){
     var finalData = snap.data();
     // Cache UID for fast resume on next page load
     try { localStorage.setItem(LS_UID_KEY, uid); } catch(e){}
+    // ── 啟動時自動完成 Firebase Auth（此路徑 LIFF 已 init，直接換 token）──
+    // 管理員：等登入完成再進入介面；其他角色背景完成。
+    if(!(auth && auth.currentUser)){
+      if(finalData.role === 'owner' || finalData.role === 'admin'){
+        var _fbU2 = await ensureFirebaseAuth();
+        if(!_fbU2){
+          console.error('[AUTH] 管理員 Firebase Auth 啟動登入失敗');
+          _showAdminAuthFail();   // 停留在管理介面，統一橫幅提示
+        }
+      } else {
+        ensureFirebaseAuth();
+      }
+    }
     _routeByStatus(finalData, profile);
-    // Fire-and-forget: sign in to Firebase Auth with custom token (non-blocking)
-    try{
-      var _lineAt = (typeof liff !== 'undefined') ? liff.getAccessToken() : null;
-      if(_lineAt){ _signInWithLineToken(_lineAt); }
-    } catch(e){ /* LIFF not ready — skip silently */ }
   } catch(e){
     _liffDbg('upsert ERROR', e.message || String(e));
     _showAuthGate('login');
@@ -2770,20 +2796,167 @@ const _ISSUE_TOKEN_URL = 'https://asia-east1-chingxin-tennis.cloudfunctions.net/
 // On failure, the Firestore-based flow continues working unchanged.
 async function _signInWithLineToken(lineAccessToken){
   if(!auth || !lineAccessToken) return;
+  // STEP3：LIFF access token → issueFirebaseToken → custom token
+  var data = null;
   try{
     var res = await fetch(_ISSUE_TOKEN_URL, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ accessToken: lineAccessToken }),
     });
-    if(!res.ok){ throw new Error('HTTP ' + res.status); }
-    var data = await res.json();
+    if(!res.ok){
+      var bodyTxt = '';
+      try{ bodyTxt = (await res.text()).slice(0, 160); } catch(_e){}
+      throw new Error('HTTP ' + res.status + (bodyTxt ? '｜' + bodyTxt : ''));
+    }
+    data = await res.json();
     if(!data.customToken){ throw new Error(data.error || 'no_token'); }
-    await auth.signInWithCustomToken(data.customToken);
-    console.log('[AUTH] Firebase signInWithCustomToken OK');
+    _authStep('STEP3 issueFirebaseToken', true);
   } catch(e){
-    console.warn('[AUTH] _signInWithLineToken failed (non-fatal):', e.message || e);
+    _authStep('STEP3 issueFirebaseToken', false, e.message || String(e));
+    return;
   }
+  // STEP4：signInWithCustomToken
+  try{
+    await auth.signInWithCustomToken(data.customToken);
+    _authStep('STEP4 signInWithCustomToken', true);
+  } catch(e){
+    _authStep('STEP4 signInWithCustomToken', false, (e.code || '') + ' ' + (e.message || String(e)));
+  }
+}
+
+/* ── Shared Firebase Auth bootstrap ─────────────────────────────────────
+   整個管理後台共用的 Firebase Auth 初始化。所有需要 callable 的功能
+   一律先 `await ensureFirebaseAuth()`，不要各自實作登入。
+
+   行為：
+   · App 啟動時自動執行（initAuth 兩條路徑都會呼叫），不等使用者按功能鍵
+   · 已有 persistence session → 直接回傳（0 額外延遲）
+   · 沒有 → 自動 liff.init（若尚未）→ LIFF access token → custom token 登入
+   · ID token 到期由 Firebase SDK 用 refresh token 自動續期，不需重開 LINE
+   · 若 session 被登出，記憶的 promise 會重置，下次呼叫自動重新登入
+   · 回傳 firebase user 或 null（null = 真的失敗，呼叫端才顯示錯誤）
+   ─────────────────────────────────────────────────────────────────────── */
+var _liffReadyPromise   = null;
+var _fbAuthReadyPromise = null;
+var _fbAuthHadUser      = false;
+
+// ── AUTH-STEP 追蹤：每次 ensureFirebaseAuth 執行都記錄各步驟 OK/FAIL ──
+// console 有完整 log；失敗時 _showAdminAuthFail() 橫幅會直接列出（手機可見）
+var _authSteps = [];
+function _authStep(step, ok, detail){
+  var line = step + ' ' + (ok ? 'OK' : 'FAIL') + (detail ? '｜' + detail : '');
+  _authSteps.push(line);
+  if(ok){ console.log('[AUTH-STEP] ' + line); }
+  else  { console.error('[AUTH-STEP] ' + line); }
+}
+
+function _ensureLiffReady(){
+  if(_liffReadyPromise) return _liffReadyPromise;
+  _liffReadyPromise = (async function(){
+    if(typeof liff === 'undefined') return false;
+    try{
+      if(liff.id){ return true; }                 // 已 init 過（slow path 做的）
+      await liff.init({ liffId: LIFF_ID });
+      console.log('[AUTH] ensureFirebaseAuth: liff.init OK');
+      return true;
+    } catch(e){
+      console.warn('[AUTH] ensureFirebaseAuth: liff.init 失敗:', e.message || e);
+      _liffReadyPromise = null;                   // 允許下次重試
+      return false;
+    }
+  })();
+  return _liffReadyPromise;
+}
+
+function ensureFirebaseAuth(){
+  if(_fbAuthReadyPromise) return _fbAuthReadyPromise;
+  _fbAuthReadyPromise = (async function(){
+    _authSteps = [];
+    if(!auth){
+      _authStep('STEP7 persistence/auth 初始化', false, 'firebase.auth 未初始化');
+      return null;
+    }
+    // STEP7：等 persistence 恢復既存 session（最多 2.5 秒；已登入則立即返回）
+    var u = await new Promise(function(resolve){
+      var t  = setTimeout(function(){ resolve(auth.currentUser); }, 2500);
+      var un = auth.onAuthStateChanged(function(x){ clearTimeout(t); un(); resolve(x); });
+    });
+    if(u){
+      _authStep('STEP7 persistence 恢復既存 session', true, u.uid);
+      _authStep('STEP5 firebase.auth().currentUser', true, u.uid);
+      return u;
+    }
+    _authStep('STEP7 persistence 恢復既存 session', false, '無既存 session，改走 LINE 換發流程');
+
+    // STEP1：LIFF init + login 狀態
+    var liffOk = await _ensureLiffReady();
+    if(!liffOk){
+      _authStep('STEP1 LIFF init/login', false, 'liff.init 失敗或 LIFF SDK 不存在');
+      _fbAuthReadyPromise = null;
+      return null;
+    }
+    var logged = false;
+    try{ logged = !!(liff.isLoggedIn && liff.isLoggedIn()); } catch(e){}
+    _authStep('STEP1 LIFF login', logged, logged ? '' : 'liff.isLoggedIn() = false（此環境未登入 LINE）');
+    if(!logged){ _fbAuthReadyPromise = null; return null; }
+
+    // STEP2：取得 LIFF access token
+    var at = null;
+    try{ at = liff.getAccessToken(); } catch(e){}
+    _authStep('STEP2 取得 LIFF access token', !!at, at ? '' : 'getAccessToken() 回傳空值');
+    if(!at){ _fbAuthReadyPromise = null; return null; }
+
+    // STEP3 + STEP4：在 _signInWithLineToken 內記錄
+    await _signInWithLineToken(at);
+
+    // STEP5：最終確認
+    u = auth ? auth.currentUser : null;
+    _authStep('STEP5 firebase.auth().currentUser', !!u, u ? u.uid : 'null');
+    if(!u){ _fbAuthReadyPromise = null; }         // 失敗允許之後重試
+    return u;
+  })();
+  return _fbAuthReadyPromise;
+}
+
+/* ── 統一的管理功能初始化失敗顯示 ────────────────────────────────────
+   規範：所有 callable 功能遇到 ensureFirebaseAuth() 回傳 null 時，
+   一律呼叫 _showAdminAuthFail()，不要各自顯示錯誤訊息。
+   使用者仍停留在管理介面，僅頂部出現橫幅。 ── */
+var _adminAuthFailShown = false;
+function _showAdminAuthFail(){
+  if(_adminAuthFailShown) return;
+  _adminAuthFailShown = true;
+  var b = document.createElement('div');
+  b.id = 'adminAuthFailBanner';
+  b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;'
+    + 'background:#c0392b;color:#fff;font-size:13px;line-height:1.5;'
+    + 'padding:10px 40px 10px 14px;text-align:center';
+  b.innerHTML = '<b>管理功能初始化失敗，請重新登入 LINE</b>'
+    + (_authSteps.length
+        ? '<br><span style="font-size:11px;opacity:.92;display:inline-block;text-align:left;margin-top:4px">'
+          + _authSteps.join('<br>') + '</span>'
+        : '');
+  var x = document.createElement('span');
+  x.textContent = '✕';
+  x.style.cssText = 'position:absolute;right:14px;top:10px;cursor:pointer;opacity:.85';
+  x.onclick = function(){ b.remove(); _adminAuthFailShown = false; };
+  b.appendChild(x);
+  document.body.appendChild(b);
+}
+
+// session 被登出時重置（僅在「曾經登入過」之後才重置，避免啟動時的 null 誤觸）
+if(auth){
+  auth.onAuthStateChanged(function(u){
+    // STEP6：全域 auth 狀態追蹤
+    console.log('[AUTH-STEP] STEP6 onAuthStateChanged →', u ? ('user=' + u.uid) : 'null');
+    if(u){ _fbAuthHadUser = true; }
+    else if(_fbAuthHadUser){
+      _fbAuthHadUser = false;
+      _fbAuthReadyPromise = null;
+      console.warn('[AUTH-STEP] STEP6 session 已登出，下次 ensureFirebaseAuth 會自動重新登入');
+    }
+  });
 }
 
 /* ══ end auth flow ══ */
@@ -9750,29 +9923,48 @@ function closeManualMemberSheet(){
   document.getElementById('sheetBackdrop').classList.remove('open');
 }
 
-function _doCreateManualMember(memberData, realName){
+var MANUAL_MEMBER_VERSION = 'MANUAL_MEMBER_CALLABLE_V4';
+
+async function _doCreateManualMember(memberData, realName){
   var err = document.getElementById('mmError');
   var btn = document.getElementById('mmSubmitBtn');
   if(btn){ btn.disabled=true; btn.textContent='建立中…'; }
-  if(!db){
-    if(err){ err.textContent='資料庫連線失敗'; err.style.display='block'; }
+  console.log('[' + MANUAL_MEMBER_VERSION + '] 走 callable 路徑，不直接寫 Firestore');
+
+  // ── ① 唯一入口：await ensureFirebaseAuth()（禁止另行實作登入流程）──
+  var _fbUser = await ensureFirebaseAuth();
+  if(!_fbUser){
+    _showAdminAuthFail();   // 統一顯示，不各自跳錯
     if(btn){ btn.disabled=false; btn.textContent='建立會員'; }
     return;
   }
-  db.collection('members').add(memberData)
-    .then(function(docRef){
-      return docRef.update({ uid: docRef.id, updatedAt: memberData.updatedAt });
-    })
-    .then(function(){
-      showToast('手動會員「' + realName + '」已建立');
-      closeManualMemberSheet();
-    })
-    .catch(function(e){
-      var msg = e.message || String(e);
-      console.error('[submitManualMember]', msg);
-      if(err){ err.textContent='建立失敗：' + msg; err.style.display='block'; }
-      if(btn){ btn.disabled=false; btn.textContent='建立會員'; }
+
+  // ── ② 呼叫 callable function（Admin SDK 寫入；前端不再直接寫 members）──
+  try{
+    var fn = firebase.app().functions('asia-east1').httpsCallable('createManualMember');
+    await fn({
+      realName:          memberData.realName,
+      displayName:       memberData.displayName,
+      role:              memberData.role,
+      membershipType:    memberData.membershipType,
+      ntrp:              memberData.ntrp,
+      preferredPosition: memberData.preferredPosition,
     });
+    showToast('手動會員「' + realName + '」已建立');
+    closeManualMemberSheet();
+  } catch(e){
+    var msg = (e && e.message) || String(e);
+    console.error('[createManualMember]', (e && e.code) || '', msg);
+    if(err){
+      err.innerHTML = '[' + MANUAL_MEMBER_VERSION + ']<br>'
+        + '<b>建立失敗：' + msg + '</b>'
+        + '<br><br>MM-DEBUG（callable 路徑）'
+        + '<br>authUid: ' + _fbUser.uid
+        + '<br>error code: ' + ((e && e.code) || 'unknown');
+      err.style.display = 'block';
+    }
+    if(btn){ btn.disabled=false; btn.textContent='建立會員'; }
+  }
 }
 
 function submitManualMember(){

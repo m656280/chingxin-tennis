@@ -285,8 +285,10 @@ exports.issueFirebaseToken = onRequest(
       return res.status(200).json({ customToken });
 
     } catch (err) {
-      console.error('[issueFirebaseToken] error:', err.message || err);
-      return res.status(500).json({ error: 'internal' });
+      // 完整 stack 進 Functions log；精簡 detail 回傳給前端 STEP3 顯示
+      console.error('[issueFirebaseToken] error:', err.stack || err.message || err);
+      const detail = String((err && err.message) || err).slice(0, 200);
+      return res.status(500).json({ error: 'internal', detail: detail });
     }
   }
 );
