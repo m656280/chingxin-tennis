@@ -4503,6 +4503,17 @@ function _renderMembersTab(el){
       + 'margin-bottom:14px;text-align:left;font-family:var(--font-body)">'
       + '<span style="font-size:16px;line-height:1">＋</span> 新增手動會員'
       + '</button>';
+    // 會員名冊匯出（admin only）— 沿用財務匯出架構（PDF 列印頁 / CSV 下載）
+    html += '<div style="display:flex;gap:8px;margin-bottom:14px">'
+      + '<button onclick="exportMemberRosterPDF()"'
+      + ' style="flex:1;padding:9px 0;border-radius:8px;border:1px solid var(--color-border);'
+      + 'background:transparent;color:var(--color-text-muted);font-size:12px;cursor:pointer;'
+      + 'font-family:var(--font-body)">匯出會員名冊（PDF）</button>'
+      + '<button onclick="exportMemberRosterExcel()"'
+      + ' style="flex:1;padding:9px 0;border-radius:8px;border:1px solid var(--color-border);'
+      + 'background:transparent;color:var(--color-text-muted);font-size:12px;cursor:pointer;'
+      + 'font-family:var(--font-body)">匯出會員名冊（Excel）</button>'
+      + '</div>';
   }
 
   // ── 統一會員名錄（搜尋 / 篩選）— 所有角色一律顯示 ──
@@ -7824,6 +7835,12 @@ function _runExportCSV(rg){
     return '清心網球財務_'+_sy+p(_sm)+'-'+_ey+p(_em)+'.csv';
   })();
 
+  _deliverCSVExport(csv, blob, filename);
+}
+
+/* ── CSV 下載共用出口（財務 CSV / 會員名冊共用）──
+   iOS / LINE WebView → action sheet；其他 → 直接下載 ── */
+function _deliverCSVExport(csv, blob, filename){
   var _csvIsIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
   var _csvIsLine = /Line\//i.test(navigator.userAgent);
   if(_csvIsIOS || _csvIsLine){
@@ -7957,6 +7974,257 @@ function _expFallbackCopy(text){
   document.body.removeChild(ta);
   showToast(ok ? 'CSV 已複製到剪貼簿' : '複製失敗，請手動選取內容');
   if(ok) _closeExportSheet();
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   會員名冊匯出（PDF / Excel-CSV）
+   - 資料來源：usersCache（Firestore members，已由 app 載入）
+   - 僅匯出正常會員：排除 pending / blocked / rejected / deleted
+     （與會員管理頁統計卡、名錄清單同一套篩選）
+   - 不含電話 / Email / LINE UID / Firebase UID 等個資
+   - 排序沿用會員名錄既定排序：角色（owner→admin→coach→member）→ 姓名（zh-Hant）
+   - PDF 沿用財務報表列印頁架構（A4 直式 + 分享 PDF）
+   - Excel 沿用財務 CSV 架構（UTF-8 BOM，Excel 可直接開啟）
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* 名冊資料組裝：回傳 {rows, annualCnt, monthlyCnt, total, dateStr} */
+function _prepMemberRosterData(){
+  var STATUS_LABEL = {active:'正常', approved:'正常', resigned:'已離會', expired:'已到期', inactive:'停用'};
+
+  function joinDate(m){
+    var ts = m.approvedAt || m.createdAt;   // 入會日期：核准時間，無則首次建立時間
+    if(ts && typeof ts.toDate === 'function'){
+      var d0 = ts.toDate();
+      return d0.getFullYear()+'/'+String(d0.getMonth()+1).padStart(2,'0')+'/'+String(d0.getDate()).padStart(2,'0');
+    }
+    if(ts && ts.seconds){
+      var d1 = new Date(ts.seconds*1000);
+      return d1.getFullYear()+'/'+String(d1.getMonth()+1).padStart(2,'0')+'/'+String(d1.getDate()).padStart(2,'0');
+    }
+    if(typeof ts === 'string' && ts.length >= 10) return ts.slice(0,10).replace(/-/g,'/');
+    return '—';
+  }
+  function gender(m){
+    var g = String(m.gender||'').toLowerCase();
+    if(g==='male'||g==='m'||g==='男') return '男';
+    if(g==='female'||g==='f'||g==='女') return '女';
+    return m.gender ? String(m.gender) : '—';
+  }
+  function msType(m){
+    return m.membershipType==='annual' ? '年費'
+         : m.membershipType==='monthly' ? '月費' : '—';
+  }
+  function statusLabel(m){
+    var s = m.status || '';
+    return STATUS_LABEL[s] || (s ? s : '正常');
+  }
+
+  var list = Object.values(usersCache).filter(function(m){
+    var s = m.status || '';
+    return s!=='pending' && s!=='blocked' && s!=='rejected' && s!=='deleted';
+  }).sort(function(a,b){
+    var ORDER={owner:0,admin:1,coach:2,member:3,annual_member:3,monthly_member:3};
+    var oa=ORDER[a.role]!=null?ORDER[a.role]:4;
+    var ob=ORDER[b.role]!=null?ORDER[b.role]:4;
+    if(oa!==ob) return oa-ob;
+    return (a.realName||a.displayName||'').localeCompare(b.realName||b.displayName||'','zh-Hant');
+  });
+
+  var rows = list.map(function(m,i){
+    return [i+1, m.realName||m.displayName||'未知', gender(m), msType(m), joinDate(m), statusLabel(m)];
+  });
+
+  var now = new Date();
+  return {
+    rows:       rows,
+    annualCnt:  list.filter(function(m){ return m.membershipType==='annual'; }).length,
+    monthlyCnt: list.filter(function(m){ return m.membershipType==='monthly'; }).length,
+    total:      list.length,
+    dateStr:    now.getFullYear()+'/'+String(now.getMonth()+1).padStart(2,'0')+'/'+String(now.getDate()).padStart(2,'0'),
+    fileStamp:  ''+now.getFullYear()+String(now.getMonth()+1).padStart(2,'0')+String(now.getDate()).padStart(2,'0')
+  };
+}
+
+/* 匯出會員名冊（PDF）— 開啟 A4 直式列印頁（與財務 PDF 同路徑） */
+function exportMemberRosterPDF(){
+  if(!isAdminLike()){ showToast('僅管理員可匯出'); return; }
+  var d = _prepMemberRosterData();
+  if(!d.total){ showToast('沒有資料可匯出'); return; }
+  var html = _buildMemberRosterPDFHtml(d);
+  var _pdfIsLine = /Line\//i.test(navigator.userAgent);
+  var _pdfIsIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  if(_pdfIsLine || _pdfIsIOS){
+    document.open('text/html', 'replace');
+    document.write(html);
+    document.close();
+  } else {
+    var w = window.open('', '_blank');
+    if(w){ w.document.open('text/html','replace'); w.document.write(html); w.document.close(); }
+    else { showToast('請允許彈出視窗後重試'); }
+  }
+}
+
+/* 匯出會員名冊（Excel）— CSV（UTF-8 BOM），沿用財務 CSV 下載出口 */
+function exportMemberRosterExcel(){
+  if(!isAdminLike()){ showToast('僅管理員可匯出'); return; }
+  var d = _prepMemberRosterData();
+  if(!d.total){ showToast('沒有資料可匯出'); return; }
+
+  function esc(v){
+    var s = String(v===null||v===undefined?'':v).replace(/"/g,'""');
+    return /[,"\n\r]/.test(s)?'"'+s+'"':s;
+  }
+  function row(cells){ return cells.map(esc).join(','); }
+
+  var L = [];
+  L.push('高雄市清心網球協會　會員名冊（匯出日期：'+d.dateStr+'）');
+  L.push(row(['編號','姓名','性別','會員類別','入會日期','狀態']));
+  d.rows.forEach(function(r){ L.push(row(r)); });
+  L.push('');
+  L.push(row(['年費會員', d.annualCnt+' 人']));
+  L.push(row(['月費會員', d.monthlyCnt+' 人']));
+  L.push(row(['總會員數', d.total+' 人']));
+
+  var csv      = '﻿' + L.join('\r\n');  // UTF-8 BOM for Numbers/Excel
+  var blob     = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  var filename = '清心網球會員名冊_'+d.fileStamp+'.csv';
+  _deliverCSVExport(csv, blob, filename);
+}
+
+/* 會員名冊 PDF HTML builder — A4 直式，沿用財務報表列印頁樣式 */
+function _buildMemberRosterPDFHtml(d){
+  function esc(v){
+    return String(v===null||v===undefined?'':v)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+  var title = '會員名冊（'+d.dateStr+'）';
+
+  var css = [
+    '@media screen {',
+    '  body { font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei","Heiti TC",sans-serif; font-size:10px; color:#1a1a1a; margin:0; line-height:1.4; background:#ddd; }',
+    '  .print-bar { display:flex; align-items:center; justify-content:space-between; gap:10px; background:#1a1a2e; color:#fff; padding:10px 16px; }',
+    '  .print-page { background:#fff; max-width:190mm; margin:8mm auto; padding:12mm 10mm; box-shadow:0 2px 8px rgba(0,0,0,0.18); box-sizing:border-box; }',
+    '}',
+    '@media print {',
+    '  @page { size:A4 portrait; margin:10mm; }',
+    '  html, body { width:210mm; margin:0; padding:0; font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei","Heiti TC",sans-serif; font-size:10px; color:#000; background:#fff; line-height:1.3; }',
+    '  * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }',
+    '  .print-bar { display:none !important; }',
+    '  .print-page { width:190mm; margin:0 auto; padding:0; box-shadow:none; background:#fff; box-sizing:border-box; }',
+    '  table { width:100% !important; table-layout:fixed !important; border-collapse:collapse !important; page-break-inside:auto; }',
+    '  thead { display:table-header-group; }',
+    '  tr { page-break-inside:avoid; break-inside:avoid; }',
+    '  th, td { font-size:10px !important; padding:2px 4px !important; }',
+    '}',
+    'body { font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei","Heiti TC",sans-serif; font-size:10px; color:#1a1a1a; line-height:1.4; }',
+    'header { text-align:center; padding-bottom:10px; border-bottom:2px solid #2a4a2e; margin-bottom:14px; }',
+    '.report-org { font-size:14px; font-weight:700; letter-spacing:.08em; color:#2a4a2e; }',
+    '.report-title { font-size:11px; font-weight:600; margin-top:5px; color:#333; letter-spacing:.04em; }',
+    'table { width:100%; border-collapse:collapse; font-size:9.5px; margin-bottom:9px; table-layout:fixed; }',
+    'th { background:#2a4a2e; color:#fff; padding:4px 5px; text-align:left; font-weight:600; font-size:9px; letter-spacing:.03em; white-space:nowrap; }',
+    'td { padding:3px 5px; border-bottom:1px solid #ddd; font-size:9px; line-height:1.3; vertical-align:middle; }',
+    'tbody tr:nth-child(even) { background:#f7f7f5; }',
+    'tfoot td { font-weight:700; background:#eef3ee; border-top:1.5px solid #2a4a2e; border-bottom:none; }',
+  ].join('\n');
+
+  var colgroup = '<colgroup>'
+    + '<col style="width:10%"><col style="width:24%"><col style="width:10%">'
+    + '<col style="width:16%"><col style="width:20%"><col style="width:20%">'
+    + '</colgroup>';
+  var thead = '<thead><tr><th>編號</th><th>姓名</th><th>性別</th><th>會員類別</th><th>入會日期</th><th>狀態</th></tr></thead>';
+  var tbody = '<tbody>'+d.rows.map(function(r){
+    return '<tr>'+r.map(function(c){ return '<td>'+esc(c)+'</td>'; }).join('')+'</tr>';
+  }).join('')+'</tbody>';
+  var tfoot = '<tfoot>'
+    + '<tr><td colspan="3">年費會員：'+d.annualCnt+' 人</td><td colspan="3">月費會員：'+d.monthlyCnt+' 人</td></tr>'
+    + '<tr><td colspan="6">總會員數：'+d.total+' 人</td></tr>'
+    + '</tfoot>';
+
+  return '<!DOCTYPE html><html lang="zh-Hant"><head>'+
+    '<meta charset="UTF-8">'+
+    '<meta name="viewport" content="width=device-width,initial-scale=1">'+
+    '<title>高雄市清心網球協會　會員名冊_'+d.fileStamp+'</title>'+
+    '<style>'+css+'</style>'+
+    '<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></'+'script>'+
+    '<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></'+'script>'+
+    '</head><body>'+
+    '<div class="print-bar">'+
+      '<button type="button" '+
+        'onclick="location.href=location.origin+location.pathname" '+
+        'style="background:none;border:1px solid #aaa;border-radius:6px;padding:8px 14px;'+
+        'font-size:13px;cursor:pointer;touch-action:manipulation;color:#ccc;white-space:nowrap;">← 返回</button>'+
+      '<span style="font-size:13px;font-weight:600;letter-spacing:.04em;flex:1;text-align:center;padding:0 10px">'+
+        esc(title)+'　高雄市清心網球協會</span>'+
+      '<button id="shareBtn" type="button" '+
+        'onclick="_doSharePDF()" '+
+        'style="background:#1a6fad;color:#fff;border:none;padding:10px 24px;border-radius:8px;'+
+        'font-size:14px;font-weight:700;cursor:pointer;touch-action:manipulation;flex-shrink:0;'+
+        'box-shadow:0 2px 6px rgba(0,0,0,0.3);-webkit-tap-highlight-color:transparent;">'+
+        '📤 分享 PDF</button>'+
+    '</div>'+
+    '<div class="print-page">'+
+      '<header>'+
+        '<div class="report-org">高雄市清心網球協會</div>'+
+        '<div class="report-title">'+esc(title)+'</div>'+
+      '</header>'+
+      '<table>'+colgroup+thead+tbody+tfoot+'</table>'+
+    '</div>'+
+    '<script>'+
+      'async function _doSharePDF(){'+
+        'var btn=document.getElementById("shareBtn");'+
+        'var orig=btn.innerHTML;'+
+        'btn.innerHTML="⏳ 產生中…";btn.disabled=true;'+
+        'try{'+
+          'if(!window.html2canvas||!window.jspdf){'+
+            'alert("PDF 庫尚未載入，請稍後再試");'+
+            'btn.innerHTML=orig;btn.disabled=false;return;'+
+          '}'+
+          'var W=210,H=297;'+
+          'var doc=new window.jspdf.jsPDF({orientation:"p",unit:"mm",format:"a4"});'+
+          'var page=document.querySelector(".print-page");'+
+          'var canvas=await html2canvas(page,{'+
+            'scale:2,useCORS:true,logging:false,backgroundColor:"#ffffff",'+
+            'windowWidth:820,'+
+            'onclone:function(clonedDoc,el){'+
+              'el.style.cssText+="box-shadow:none!important;margin:0!important;'+
+                'width:756px!important;max-width:none!important;'+
+                'padding:36px 28px!important;";'+
+            '}'+
+          '});'+
+          'var pxPerMm=canvas.width/W;'+
+          'var pageHpx=Math.round(H*pxPerMm);'+
+          'var slices=Math.ceil(canvas.height/pageHpx);'+
+          'for(var s=0;s<slices;s++){'+
+            'var startY=s*pageHpx;'+
+            'var sliceH=Math.min(pageHpx,canvas.height-startY);'+
+            'var sc=document.createElement("canvas");'+
+            'sc.width=canvas.width;sc.height=sliceH;'+
+            'var ctx=sc.getContext("2d");'+
+            'ctx.fillStyle="#ffffff";ctx.fillRect(0,0,sc.width,sc.height);'+
+            'ctx.drawImage(canvas,0,-startY);'+
+            'var img=sc.toDataURL("image/jpeg",0.92);'+
+            'var hmm=sliceH/pxPerMm;'+
+            'if(s>0)doc.addPage([W,H],"p");'+
+            'doc.addImage(img,"JPEG",0,0,W,hmm);'+
+          '}'+
+          'var blob=doc.output("blob");'+
+          'var fname=(document.title||"會員名冊").replace(/[\\s　]+/g,"_")+".pdf";'+
+          'var file=new File([blob],fname,{type:"application/pdf"});'+
+          'if(navigator.canShare&&navigator.canShare({files:[file]})){'+
+            'await navigator.share({files:[file],title:document.title,text:"會員名冊 PDF"});'+
+          '}else{'+
+            'var u=URL.createObjectURL(blob);'+
+            'var a=document.createElement("a");'+
+            'a.href=u;a.download=fname;document.body.appendChild(a);a.click();'+
+            'setTimeout(function(){URL.revokeObjectURL(u);a.remove();},2000);'+
+          '}'+
+        '}catch(e){'+
+          'if(!e||e.name!=="AbortError")alert("PDF 產生失敗："+(e&&e.message||String(e)));'+
+        '}'+
+        'btn.innerHTML=orig;btn.disabled=false;'+
+      '}'+
+    '</'+'script>'+
+    '</body></html>';
 }
 
 /* ── Finance: 會籍到期日計算 ── */
