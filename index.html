@@ -8155,15 +8155,17 @@ function _expFallbackCopy(text){
    - 僅匯出正常會員：排除 pending / blocked / rejected / deleted
      （與會員管理頁統計卡、名錄清單同一套篩選）
    - 不含電話 / Email / LINE UID / Firebase UID 等個資
-   - 排序沿用會員名錄既定排序：角色（owner→admin→coach→member）→ 姓名（zh-Hant）
+   - 匯出前選「會員類別（年費/月費）＋年度」；兩類分開成冊不混用
+   - 排序：入會繳費日期舊→新，同日依姓名（zh-Hant）升冪；流水號依排序重編
    - PDF 沿用財務報表列印頁架構（A4 直式 + 分享 PDF）
    - Excel 沿用財務 CSV 架構（UTF-8 BOM，Excel 可直接開啟）
    ═══════════════════════════════════════════════════════════════════ */
 
-/* 會費年度判定：memberId → {年度:true}。
-   與財務 CSV 會員繳費稽核表 paidMap 同一套：
-   有效（active）annual/monthly 紀錄；年費優先用 membershipYear（會籍年度，
-   涵蓋 2025/12 預收 2026 年費情境），月費或無 membershipYear 用繳費日期年份。 */
+/* 會費年度判定（依類別分開）：memberId → {annual:{年度:true}, monthly:{年度:true}}。
+   與財務 CSV 會員繳費稽核表 paidMap 同一套「有效」判定：
+   status 為 active（排除 void/cancelled/deleted/archived/refund）的 annual/monthly 紀錄；
+   年費優先用 membershipYear（會籍年度，涵蓋 2025/12 預收 2026 年費情境），
+   月費或無 membershipYear 用繳費日期年份。 */
 function _rosterPaidYears(){
   var map = {};
   (typeof financeRecords !== 'undefined' && financeRecords || []).forEach(function(r){
@@ -8174,8 +8176,8 @@ function _rosterPaidYears(){
       : (parseInt(String(r.date||'').slice(0,4),10) || parseInt(r.year,10) || 0);
     var mid = r.memberId || '';
     if(!mid || !recYear) return;
-    if(!map[mid]) map[mid] = {};
-    map[mid][recYear] = true;
+    if(!map[mid]) map[mid] = {annual:{}, monthly:{}};
+    map[mid][r.type][recYear] = true;
   });
   return map;
 }
@@ -8185,25 +8187,26 @@ function _rosterAvailableYears(){
   var ys = {};
   var map = _rosterPaidYears();
   Object.keys(map).forEach(function(mid){
-    Object.keys(map[mid]).forEach(function(y){ ys[y] = true; });
+    Object.keys(map[mid].annual).forEach(function(y){ ys[y] = true; });
+    Object.keys(map[mid].monthly).forEach(function(y){ ys[y] = true; });
   });
   ys[new Date().getFullYear()] = true;
   return Object.keys(ys).map(Number).sort(function(a,b){ return b-a; });
 }
 
-/* 名冊資料組裝：回傳 {rows, annualCnt, monthlyCnt, total, dateStr, year}
-   year（必填）：僅列入該「會費年度」有有效繳費的會員；未繳該年度者不列入 */
-function _prepMemberRosterData(year){
-  var STATUS_LABEL = {active:'正常', approved:'正常', resigned:'已離會', expired:'已到期', inactive:'停用'};
+/* 名冊資料組裝：回傳 {rows, year, msType, msTypeLabel, total, dateStr}
+   year（必填）  ：會費年度。
+   msType（必填）：'annual' | 'monthly'。年費/月費分開成冊，不混用。
+   規則：
+   - 名單 = 該年度有「有效對應類別繳費」者（年費冊看 annual、月費冊看 monthly）
+   - 入會日期 = 第一筆有效對應類別繳費的日期（不用 createdAt/approvedAt）
+   - 排序 = 入會日期舊→新，同日依姓名（zh-Hant）升冪；流水號依排序重編 */
+function _prepMemberRosterData(year, msType){
   var _paidYears = _rosterPaidYears();
 
-  // ── 入會日期 = 第一筆「有效」對應類別繳費紀錄的繳費日期 ──────────────────
-  // 規則：年費會員看第一筆有效 annual 紀錄、月費會員看第一筆有效 monthly 紀錄，
-  //       兩類分開統計不混用；同時有兩類紀錄時依目前 membershipType 取用；
-  //       無對應紀錄（或非年費/月費會員）顯示「—」，不回退 createdAt/approvedAt。
-  // 「有效」= status 為 active（排除 void/cancelled/deleted/archived/refund），
-  //       與財務 CSV 會員繳費稽核表的 paidMap 同一套判定。
-  var _firstPay = {};   // memberId → {annual:'YYYY-MM-DD', monthly:'YYYY-MM-DD'}
+  // 第一筆有效繳費日期（依類別分開）：memberId → {annual:'YYYY-MM-DD', monthly:'YYYY-MM-DD'}
+  // 「有效」= status 為 active（排除 void/cancelled/deleted/archived/refund）
+  var _firstPay = {};
   (typeof financeRecords !== 'undefined' && financeRecords || []).forEach(function(r){
     if((r.status||'active') !== 'active') return;
     if(r.type !== 'annual' && r.type !== 'monthly') return;
@@ -8213,57 +8216,38 @@ function _prepMemberRosterData(year){
     if(!_firstPay[mid]) _firstPay[mid] = {};
     if(!_firstPay[mid][r.type] || dt < _firstPay[mid][r.type]) _firstPay[mid][r.type] = dt;
   });
-  function joinDate(m){
-    var t = m.membershipType;
-    if(t !== 'annual' && t !== 'monthly') return '—';
+  function rawJoin(m){
     var mid = m.userId || m.uid || '';
     var fp  = _firstPay[mid];
-    var dt  = fp ? (fp[t] || '') : '';
-    return dt ? dt.slice(0,10).replace(/-/g,'/') : '—';
-  }
-  function gender(m){
-    var g = String(m.gender||'').toLowerCase();
-    if(g==='male'||g==='m'||g==='男') return '男';
-    if(g==='female'||g==='f'||g==='女') return '女';
-    return m.gender ? String(m.gender) : '—';
-  }
-  function msType(m){
-    return m.membershipType==='annual' ? '年費'
-         : m.membershipType==='monthly' ? '月費' : '—';
-  }
-  function statusLabel(m){
-    var s = m.status || '';
-    return STATUS_LABEL[s] || (s ? s : '正常');
+    return fp ? (fp[msType] || '') : '';
   }
 
   var list = Object.values(usersCache).filter(function(m){
     var s = m.status || '';
     return s!=='pending' && s!=='blocked' && s!=='rejected' && s!=='deleted';
   }).filter(function(m){
-    // 年度篩選：該會費年度有有效繳費者才列入（依繳費紀錄，不依入會日期）
+    // 類別＋年度篩選：該年度有有效「對應類別」繳費者才列入（依繳費紀錄，不依入會日期）
     var mid = m.userId || m.uid || '';
-    return !!(_paidYears[mid] && _paidYears[mid][year]);
+    return !!(_paidYears[mid] && _paidYears[mid][msType] && _paidYears[mid][msType][year]);
   }).sort(function(a,b){
-    var ORDER={owner:0,admin:1,coach:2,member:3,annual_member:3,monthly_member:3};
-    var oa=ORDER[a.role]!=null?ORDER[a.role]:4;
-    var ob=ORDER[b.role]!=null?ORDER[b.role]:4;
-    if(oa!==ob) return oa-ob;
+    var da = rawJoin(a), db2 = rawJoin(b);
+    if(da !== db2) return da < db2 ? -1 : 1;   // 入會繳費日期舊→新
     return (a.realName||a.displayName||'').localeCompare(b.realName||b.displayName||'','zh-Hant');
   });
 
   var rows = list.map(function(m,i){
-    return [i+1, m.realName||m.displayName||'未知', gender(m), msType(m), joinDate(m), statusLabel(m)];
+    var dt = rawJoin(m);
+    return [i+1, m.realName||m.displayName||'未知', dt ? dt.slice(0,10).replace(/-/g,'/') : '—', ''];
   });
 
   var now = new Date();
   return {
-    rows:       rows,
-    year:       year,
-    annualCnt:  list.filter(function(m){ return m.membershipType==='annual'; }).length,
-    monthlyCnt: list.filter(function(m){ return m.membershipType==='monthly'; }).length,
-    total:      list.length,
-    dateStr:    now.getFullYear()+'/'+String(now.getMonth()+1).padStart(2,'0')+'/'+String(now.getDate()).padStart(2,'0'),
-    fileStamp:  ''+now.getFullYear()+String(now.getMonth()+1).padStart(2,'0')+String(now.getDate()).padStart(2,'0')
+    rows:        rows,
+    year:        year,
+    msType:      msType,
+    msTypeLabel: msType==='annual' ? '年費' : '月費',
+    total:       list.length,
+    dateStr:     now.getFullYear()+'/'+String(now.getMonth()+1).padStart(2,'0')+'/'+String(now.getDate()).padStart(2,'0')
   };
 }
 
@@ -8298,7 +8282,14 @@ function _showRosterYearSheet(kind){
     '<div style="width:36px;height:4px;border-radius:2px;background:var(--color-border);margin:10px auto 0"></div>',
     '<div style="padding:16px 20px 12px">',
       '<div style="font-family:var(--font-display);font-size:16px;color:var(--color-text-primary)">匯出會員名冊（'+(kind==='pdf'?'PDF':'Excel')+'）</div>',
-      '<div style="font-size:12px;color:var(--color-text-muted);margin-top:4px">選擇會員年度：僅列出該年度有有效繳費的會員</div>',
+      '<div style="font-size:12px;color:var(--color-text-muted);margin-top:4px">選擇會員類別與年度：僅列出該年度有有效對應類別繳費的會員</div>',
+    '</div>',
+    '<div style="padding:0 20px 10px">',
+      '<select id="_rosterTypeSel" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:10px;'
+        +'border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-primary);font-size:14px">',
+        '<option value="annual" selected>年費會員</option>',
+        '<option value="monthly">月費會員</option>',
+      '</select>',
     '</div>',
     '<div style="padding:0 20px 12px">',
       '<select id="_rosterYearSel" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:10px;'
@@ -8326,17 +8317,19 @@ function _closeRosterYearSheet(){
   if(bd) bd.remove();
 }
 function _confirmRosterYearExport(kind){
-  var sel  = document.getElementById('_rosterYearSel');
-  var year = sel ? parseInt(sel.value, 10) : new Date().getFullYear();
+  var ySel = document.getElementById('_rosterYearSel');
+  var tSel = document.getElementById('_rosterTypeSel');
+  var year   = ySel ? parseInt(ySel.value, 10) : new Date().getFullYear();
+  var msType = (tSel && tSel.value === 'monthly') ? 'monthly' : 'annual';
   _closeRosterYearSheet();
-  if(kind === 'pdf') _runRosterExportPDF(year);
-  else               _runRosterExportCSV(year);
+  if(kind === 'pdf') _runRosterExportPDF(year, msType);
+  else               _runRosterExportCSV(year, msType);
 }
 
 /* 匯出會員名冊（PDF）— 開啟 A4 直式列印頁（與財務 PDF 同路徑） */
-function _runRosterExportPDF(year){
-  var d = _prepMemberRosterData(year);
-  if(!d.total){ showToast(year+' 年度沒有符合的會員可匯出'); return; }
+function _runRosterExportPDF(year, msType){
+  var d = _prepMemberRosterData(year, msType);
+  if(!d.total){ showToast(year+' 年度沒有符合的'+d.msTypeLabel+'會員可匯出'); return; }
   var html = _buildMemberRosterPDFHtml(d);
   var _pdfIsLine = /Line\//i.test(navigator.userAgent);
   var _pdfIsIOS  = /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -8352,9 +8345,9 @@ function _runRosterExportPDF(year){
 }
 
 /* 匯出會員名冊（Excel）— CSV（UTF-8 BOM），沿用財務 CSV 下載出口 */
-function _runRosterExportCSV(year){
-  var d = _prepMemberRosterData(year);
-  if(!d.total){ showToast(year+' 年度沒有符合的會員可匯出'); return; }
+function _runRosterExportCSV(year, msType){
+  var d = _prepMemberRosterData(year, msType);
+  if(!d.total){ showToast(year+' 年度沒有符合的'+d.msTypeLabel+'會員可匯出'); return; }
 
   function esc(v){
     var s = String(v===null||v===undefined?'':v).replace(/"/g,'""');
@@ -8363,17 +8356,15 @@ function _runRosterExportCSV(year){
   function row(cells){ return cells.map(esc).join(','); }
 
   var L = [];
-  L.push('高雄市清心網球協會　'+d.year+' 年度會員名冊（匯出日期：'+d.dateStr+'）');
-  L.push(row(['編號','姓名','性別','會員類別','入會日期','狀態']));
+  L.push('高雄市清心網球協會　'+d.year+' 年度'+d.msTypeLabel+'會員名冊（匯出日期：'+d.dateStr+'）');
+  L.push(row(['編號','姓名','入會日期','備註']));
   d.rows.forEach(function(r){ L.push(row(r)); });
   L.push('');
-  L.push(row(['年費會員', d.annualCnt+' 人']));
-  L.push(row(['月費會員', d.monthlyCnt+' 人']));
-  L.push(row(['總會員數', d.total+' 人']));
+  L.push(row(['總人數', d.total+' 人']));
 
   var csv      = '﻿' + L.join('\r\n');  // UTF-8 BOM for Numbers/Excel
   var blob     = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-  var filename = '清心網球會員名冊_'+d.year+'年度_'+d.fileStamp+'.csv';
+  var filename = '清心網球協會_'+d.year+'年度_'+d.msTypeLabel+'會員名冊.csv';
   _deliverCSVExport(csv, blob, filename);
 }
 
@@ -8383,7 +8374,7 @@ function _buildMemberRosterPDFHtml(d){
     return String(v===null||v===undefined?'':v)
       .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
-  var title = d.year+' 年度會員名冊（匯出日期：'+d.dateStr+'）';
+  var title = d.year+' 年度'+d.msTypeLabel+'會員名冊（匯出日期：'+d.dateStr+'）';
 
   var css = [
     '@media screen {',
@@ -8414,22 +8405,21 @@ function _buildMemberRosterPDFHtml(d){
   ].join('\n');
 
   var colgroup = '<colgroup>'
-    + '<col style="width:10%"><col style="width:24%"><col style="width:10%">'
-    + '<col style="width:16%"><col style="width:20%"><col style="width:20%">'
+    + '<col style="width:12%"><col style="width:30%">'
+    + '<col style="width:24%"><col style="width:34%">'
     + '</colgroup>';
-  var thead = '<thead><tr><th>編號</th><th>姓名</th><th>性別</th><th>會員類別</th><th>入會日期</th><th>狀態</th></tr></thead>';
+  var thead = '<thead><tr><th>編號</th><th>姓名</th><th>入會日期</th><th>備註</th></tr></thead>';
   var tbody = '<tbody>'+d.rows.map(function(r){
     return '<tr>'+r.map(function(c){ return '<td>'+esc(c)+'</td>'; }).join('')+'</tr>';
   }).join('')+'</tbody>';
   var tfoot = '<tfoot>'
-    + '<tr><td colspan="3">年費會員：'+d.annualCnt+' 人</td><td colspan="3">月費會員：'+d.monthlyCnt+' 人</td></tr>'
-    + '<tr><td colspan="6">總會員數：'+d.total+' 人</td></tr>'
+    + '<tr><td colspan="4">總人數：'+d.total+' 人</td></tr>'
     + '</tfoot>';
 
   return '<!DOCTYPE html><html lang="zh-Hant"><head>'+
     '<meta charset="UTF-8">'+
     '<meta name="viewport" content="width=device-width,initial-scale=1">'+
-    '<title>高雄市清心網球協會　會員名冊_'+d.year+'年度_'+d.fileStamp+'</title>'+
+    '<title>清心網球協會_'+d.year+'年度_'+d.msTypeLabel+'會員名冊</title>'+
     '<style>'+css+'</style>'+
     '<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></'+'script>'+
     '<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></'+'script>'+
