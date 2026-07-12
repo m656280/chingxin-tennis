@@ -3,7 +3,10 @@ rules_version = '2';
 // ════════════════════════════════════════════════════════════════════════════
 // 清心網球系統 — Firestore Security Rules
 //
-// 版本：v1.1-stopgap（2026-07-08）
+// 版本：v1.2-stopgap（2026-07-12）
+//   變更：isValidFinanceType 改用前端實際型值（day_pass / coaching_fee，snake_case），
+//         修正「臨打」無法建立（permission-denied）；status 白名單加入 refund。
+// 前版：v1.1-stopgap（2026-07-08）
 //   變更：members.create 新增分支 ② — admin/owner（Firebase Auth custom claims）
 //         可建立 memberSource='manual'、status='approved' 的手動會員。
 //         注意：Firebase Auth（issueFirebaseToken + signInWithCustomToken）已上線，
@@ -54,13 +57,19 @@ service cloud.firestore {
     }
 
     // 合法的 financialRecord type 值
+    // v1.2 修正：前端實際使用 snake_case（day_pass / coaching_fee），
+    //   原白名單誤寫駝峰（dayPass / coach）導致臨打 create 被拒（permission-denied）。
+    //   駝峰舊值保留以防歷史資料/外部工具。
     function isValidFinanceType(t) {
-      return t in ['annual', 'monthly', 'dayPass', 'coach', 'donate', 'other', 'expense'];
+      return t in ['annual', 'monthly', 'day_pass', 'dayPass',
+                   'coaching_fee', 'coach_fee', 'coaching', 'coach',
+                   'donate', 'other', 'expense'];
     }
 
     // 合法的 financialRecord status 值
+    // v1.2：加入 'refund'（退款/修正，資料模型既有語意；避免編輯此類紀錄被拒）
     function isValidFinanceStatus(s) {
-      return s in ['active', 'void'];
+      return s in ['active', 'void', 'refund'];
     }
 
     // ──────────────────────────────────────────────────────────────────────
