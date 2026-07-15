@@ -5118,33 +5118,24 @@ function _markAnnouncementsRead(){
   try { localStorage.setItem('qx_announceLastRead', String(_announceLastReadTs)); } catch(e){}
   _updateManageNavBadge();
 }
-/* 未讀公告數（一般公告 + 個人通知；不含系統公告與待審核）
-   供「公告 tab 紅點」與「進入管理頁自動切換」使用 */
+/* 公告相關未讀數（系統公告 + 一般公告未讀 + 個人通知未讀；不含待審核）
+   單一未讀狀態來源：公告 tab 紅點、進入管理頁自動切換、底部管理 badge 皆共用此函式 */
 function _getUnreadAnnounceCount(){
-  var _todayBadge = formatDate(today);
-  var unreadNormal = announcementsCache.filter(function(a){
-    if(a.showDate && a.showDate !== _todayBadge) return false;
-    if(!a.updatedAt) return false;
-    var ts = a.updatedAt.toDate ? a.updatedAt.toDate().getTime()
-           : (typeof a.updatedAt === 'number' ? a.updatedAt : 0);
-    return ts > _announceLastReadTs;
-  }).length;
-  return unreadNormal + _getUnreadNotifCount();
-}
-function _getManageBadgeCount(){
-  var pendingCount = Object.values(usersCache).filter(function(m){ return m.status==='pending'; }).length;
   var sysCount = _generateSystemAnnouncements().length;
   var _todayBadge = formatDate(today);
   var unreadNormal = announcementsCache.filter(function(a){
-    /* skip showDate announcements that aren't today */
     if(a.showDate && a.showDate !== _todayBadge) return false;
     if(!a.updatedAt) return false;
     var ts = a.updatedAt.toDate ? a.updatedAt.toDate().getTime()
            : (typeof a.updatedAt === 'number' ? a.updatedAt : 0);
     return ts > _announceLastReadTs;
   }).length;
-  var unreadNotifs = _getUnreadNotifCount();
-  return pendingCount + sysCount + unreadNormal + unreadNotifs;
+  return sysCount + unreadNormal + _getUnreadNotifCount();
+}
+function _getManageBadgeCount(){
+  var pendingCount = Object.values(usersCache).filter(function(m){ return m.status==='pending'; }).length;
+  /* 公告相關未讀改為共用 _getUnreadAnnounceCount（單一狀態來源，不再各自維護） */
+  return pendingCount + _getUnreadAnnounceCount();
 }
 function _updateManageNavBadge(){
   var badge = document.getElementById('manageBadge');
