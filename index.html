@@ -3794,11 +3794,7 @@ function renderManage(){
 
   // ── Counts ──
   var pendingCount = Object.values(usersCache).filter(function(m){return m.status==='pending';}).length;
-  var announcCount = _generateSystemAnnouncements().length + announcementsCache.filter(function(a){
-    if(!a.updatedAt) return false;
-    var ts = a.updatedAt.toDate ? a.updatedAt.toDate().getTime() : (typeof a.updatedAt==='number' ? a.updatedAt : 0);
-    return ts > _announceLastReadTs;
-  }).length;
+  var announcCount = _getUnreadAnnounceCount();
 
   /* Proactively load allBookings for admin/owner (background, enables dot without visiting tab) */
   if(adminLike && allBookingsCache === null) loadAllBookings();
@@ -3832,7 +3828,7 @@ function renderManage(){
   TABS.forEach(function(t){
     var active = _manageTab === t.key;
     var dot = '';
-    if(t.key==='announcements'&& announcCount > 0)    dot = '<span class="manageTabDot"></span>';
+    if(t.key==='announcements'&& announcCount > 0 && !active) dot = '<span class="manageTabDot"></span>';
     if(t.key==='allBookings'  && allBookingsDot)      dot = '<span class="manageTabDot"></span>';
     html += '<button class="manageTabBtn'+(active?' active':'')+'" onclick="_manageTab=\''+t.key+'\';renderManage()">'+dot+t.label+'</button>';
   });
@@ -5122,6 +5118,19 @@ function _markAnnouncementsRead(){
   try { localStorage.setItem('qx_announceLastRead', String(_announceLastReadTs)); } catch(e){}
   _updateManageNavBadge();
 }
+/* 未讀公告數（一般公告 + 個人通知；不含系統公告與待審核）
+   供「公告 tab 紅點」與「進入管理頁自動切換」使用 */
+function _getUnreadAnnounceCount(){
+  var _todayBadge = formatDate(today);
+  var unreadNormal = announcementsCache.filter(function(a){
+    if(a.showDate && a.showDate !== _todayBadge) return false;
+    if(!a.updatedAt) return false;
+    var ts = a.updatedAt.toDate ? a.updatedAt.toDate().getTime()
+           : (typeof a.updatedAt === 'number' ? a.updatedAt : 0);
+    return ts > _announceLastReadTs;
+  }).length;
+  return unreadNormal + _getUnreadNotifCount();
+}
 function _getManageBadgeCount(){
   var pendingCount = Object.values(usersCache).filter(function(m){ return m.status==='pending'; }).length;
   var sysCount = _generateSystemAnnouncements().length;
@@ -5627,7 +5636,8 @@ function loadAnnouncements(){
     .then(function(snap){
       announcementsCache=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());});
       _updateManageNavBadge();
-      if(_manageTab==='announcements') renderManage();
+      var _manScreenAnn = document.getElementById('screen-manage');
+      if(_manScreenAnn && _manScreenAnn.classList.contains('active')) renderManage();
     })
     .catch(function(e){ console.warn('loadAnnouncements error:',e); });
 }
@@ -9048,7 +9058,7 @@ function showTab(name, el){
   document.querySelector('.header').classList.toggle('court-header-hidden', name==='court');
   // court tab: disable min-height:100dvh so weekday grid doesn't leave blank space
   document.querySelector('.app').classList.toggle('court-active', name==='court');
-  if(name==='manage'){ renderManage(); if(!announcementsCache.length) loadAnnouncements(); if(Object.keys(usersCache).length===0) loadUsersCache(); }
+  if(name==='manage'){ if(_getUnreadAnnounceCount() > 0) _manageTab='announcements'; renderManage(); if(!announcementsCache.length) loadAnnouncements(); if(Object.keys(usersCache).length===0) loadUsersCache(); }
   if(name==='finance'){ renderFinance(); if(Object.keys(usersCache).length===0) loadUsersCache(); }
 }
 
