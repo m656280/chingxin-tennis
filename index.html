@@ -3892,8 +3892,11 @@ function _renderAllBookingsTab(el){
     var started  = _bookingHasStarted(b);
     var cutoff   = _withinCancelCutoff(b);
     if(isActive){
-      if(isAdminLike()){
-        /* admin / owner：進行中預約也可取消或作廢 */
+      if(!started && !cutoff && isAdminLike()){
+        /* 未開始：維持原有規則（admin / owner 可取消） */
+        actions += '<button class="abActionBtn danger" onclick="cancelBooking(\''+b.id+'\')">取消</button>';
+      } else if(started && isOwner){
+        /* 已開始：僅開發者可取消或作廢 */
         actions += '<button class="abActionBtn danger" onclick="cancelBooking(\''+b.id+'\')">取消</button>';
         actions += '<button class="abActionBtn danger" onclick="voidBooking(\''+b.id+'\')">作廢</button>';
       }
@@ -9903,10 +9906,12 @@ function showBookingDetail(id){
   var isActive   = _isActiveBooking(b);
   var hasStarted = _bookingHasStarted(b);
   var withinCut  = _withinCancelCutoff(b);
-  // Cancel: soft cancel — creator is time-gated; admin/owner can cancel anytime while active
-  var canCancel = isActive && ((isClubAdmin || isClubOwner) || (isBookingCreator && !hasStarted && !withinCut));
-  // Void: admin/owner only, any active booking (including in-progress)
-  var canVoid   = isActive && (isClubAdmin || isClubOwner);
+  // Cancel: 未開始 → 原有規則（創建者/管理員/開發者，距開始 30 分鐘內不可）；已開始 → 僅開發者
+  var canCancel = isActive && (hasStarted
+    ? isClubOwner
+    : (!withinCut && (isBookingCreator || isClubAdmin || isClubOwner)));
+  // Void: 僅開發者，且僅針對已開始的預約（未開始走原有取消流程）
+  var canVoid   = isActive && hasStarted && isClubOwner;
   // Leave: participant self-exit, time-gated
   var canLeave  = isActive && !hasStarted && !withinCut && isInPlayers && !isBookingCreator && !isAdminLike() && !isTeach;
 
@@ -10453,9 +10458,9 @@ function cancelBooking(id, callback){
   var b = _findBookingById(id);
   if(!b){ showToast('找不到此預約'); return; }
   if(!_isActiveBooking(b)){ showToast('此預約已取消或作廢'); return; }
-  /* 一般會員受時間限制；owner / admin 可隨時取消（含進行中） */
-  if(_bookingHasStarted(b) && !isAdminLike()){ showToast('預約已開始，無法取消'); return; }
-  if(_withinCancelCutoff(b) && !isAdminLike()){ showToast('距開始不足 30 分鐘，無法取消'); return; }
+  /* 已開始的預約僅開發者可取消；未開始維持原有規則（30 分鐘內不可取消） */
+  if(_bookingHasStarted(b) && _currentRole()!=='owner'){ showToast('預約已開始，無法取消'); return; }
+  if(!_bookingHasStarted(b) && _withinCancelCutoff(b)){ showToast('距開始不足 30 分鐘，無法取消'); return; }
   var role = _currentRole();
   var requireReason = (isAdminLike() || role === 'coach');
   _showCancelDlg(id, false, callback, requireReason);
@@ -10502,7 +10507,7 @@ function voidBooking(id, callback){
   var b = _findBookingById(id);
   if(!b){ showToast('找不到此預約'); return; }
   if(!_isActiveBooking(b)){ showToast('此預約已取消或作廢'); return; }
-  if(!isAdminLike()){ showToast('僅管理員或開發者可作廢預約'); return; }
+  if(_currentRole()!=='owner'){ showToast('僅開發者可強制作廢'); return; }
   _showCancelDlg(id, true, callback);
 }
 function _executeVoid(id, reason, callback){
