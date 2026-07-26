@@ -3106,7 +3106,7 @@ function _bookingHasEnded(b){
 }
 function _withinCancelCutoff(b){ var m=_minutesUntilStart(b); return m>=0 && m<30; }
 // canEditBooking: returns {can: bool, reason: string|null}
-// Admins/owners bypass time-gate. Members need to be creator/owner/player.
+// Admins/owners bypass time-gate. Regular members must be the booking creator.
 function canEditBooking(b){
   if(!b) return {can:false, reason:null};
   var s = b.status || 'active';
@@ -3116,11 +3116,9 @@ function canEditBooking(b){
   if(_bookingHasStarted(b)) return {can:false, reason:null};
   // Admins always can edit before booking starts/ends, no cutoff restriction
   if(isAdminLike()) return {can:true, reason:null};
-  // Self-edit: must be creator, ownerUid, or first player
+  // Self-edit: players and legacy ownerUid do not grant whole-booking authority
   var myUid = currentUser ? (currentUser.uid||currentUser.userId||currentUser.id||'') : '';
-  var isCreator = (b.createdBy===myUid || b.ownerUid===myUid);
-  var isPlayer  = Array.isArray(b.players) && b.players.indexOf(myUid)>=0;
-  if(!isCreator && !isPlayer) return {can:false, reason:null};
+  if(b.createdBy!==myUid) return {can:false, reason:null};
   // Within 30-min cutoff: show notice but block edit
   if(_withinCancelCutoff(b)) return {can:false, reason:'預約開始前 30 分鐘內無法自行修改，請聯絡管理員。'};
   return {can:true, reason:null};
@@ -3660,7 +3658,9 @@ function renderBookings(){
     var chipCls = _statusChipCls(b.status);
     var _nm2 = _normaliseMode(b.mode);
     // Time-gate cancel / edit buttons
-    var canSelfCancel = showCancel && _isActiveBooking(b) && !_bookingHasStarted(b) && !_withinCancelCutoff(b);
+    var _myUid2 = currentUser ? (currentUser.uid||currentUser.userId||currentUser.id||'') : '';
+    var canSelfCancel = showCancel && _isActiveBooking(b) && !_bookingHasStarted(b) && !_withinCancelCutoff(b)
+      && (b.createdBy===_myUid2 || isAdminLike());
     var _editRes = showCancel ? canEditBooking(b) : {can:false,reason:null};
     var canSelfEdit = _editRes.can;
     var isWithinCut = showCancel && _isActiveBooking(b) && !_bookingHasStarted(b) && _withinCancelCutoff(b);
@@ -9605,6 +9605,17 @@ function _dvRefreshDetail(){
   /* Re-open the detail panel for the currently open booking (after participant change) */
   if(_dvCurrentBookingId) showBookingDetail(_dvCurrentBookingId);
 }
+function _canManageBookingParticipants(b){
+  if(!b || _normaliseMode(b.mode)!=='general' || !_isActiveBooking(b) || _bookingHasStarted(b)) return false;
+  var myUid = currentUser ? (currentUser.uid||currentUser.userId||currentUser.id||'') : '';
+  return b.createdBy===myUid || isAdminLike();
+}
+function _callBookingFunction(name, data){
+  return ensureFirebaseAuth().then(function(fbUser){
+    if(!fbUser) throw new Error('Firebase 身份驗證失敗，請重新登入 LINE');
+    return firebase.app().functions('asia-east1').httpsCallable(name)(data);
+  });
+}
 function _dvAddMember(){
   if(!db){ showToast('無法連線'); return; }
   var sel = document.getElementById('dvMemberAddSel');
@@ -9614,15 +9625,12 @@ function _dvAddMember(){
   if(!bid) return;
   var b = _findBookingById(bid);
   if(!b){ showToast('找不到預約'); return; }
-  if(_bookingHasStarted(b)){ showToast('預約已開始，無法修改參與者'); return; }
+  if(!_canManageBookingParticipants(b)){ showToast('只有預約建立者或管理員可修改參與者'); return; }
   var players = Array.isArray(b.players) ? b.players.slice() : [];
   var guests  = Array.isArray(b.guests)  ? b.guests  : [];
   if(players.indexOf(uid) >= 0){ showToast('此會員已在預約中'); return; }
   if(players.length + guests.length >= 4){ showToast('已達 4 人上限'); return; }
-  db.collection('bookings').doc(bid).update({
-    players: firebase.firestore.FieldValue.arrayUnion(uid),
-    updatedAt: TS()
-  }).then(function(){
+  _callBookingFunction('addBookingParticipant', {bookingId:bid, targetUid:uid}).then(function(){
     players.push(uid);
     _patchBookingInAllCaches(bid, { players: players });
     loadMyBookings();
@@ -9638,15 +9646,12 @@ function _dvAddGuest(){
   if(!bid) return;
   var b = _findBookingById(bid);
   if(!b){ showToast('找不到預約'); return; }
-  if(_bookingHasStarted(b)){ showToast('預約已開始，無法修改參與者'); return; }
+  if(!_canManageBookingParticipants(b)){ showToast('只有預約建立者或管理員可修改參與者'); return; }
   var players   = Array.isArray(b.players) ? b.players  : [];
   var guests    = Array.isArray(b.guests)  ? b.guests.slice() : [];
   if(players.length + guests.length >= 4){ showToast('已達 4 人上限'); return; }
   var newGuests = guests.concat([name]);
-  db.collection('bookings').doc(bid).update({
-    guests: newGuests,
-    updatedAt: TS()
-  }).then(function(){
+  _callBookingFunction('addBookingParticipant', {bookingId:bid, guestName:name}).then(function(){
     _patchBookingInAllCaches(bid, { guests: newGuests });
     _dvRefreshDetail();
   }).catch(function(e){ showToast('新增失敗：'+e.message); });
@@ -9657,14 +9662,12 @@ function _dvRemovePlayer(uid){
   if(!bid||!uid) return;
   var b = _findBookingById(bid);
   if(!b){ showToast('找不到預約'); return; }
-  if(_bookingHasStarted(b)){ showToast('預約已開始，無法修改參與者'); return; }
+  if(!_canManageBookingParticipants(b)){ showToast('只有預約建立者或管理員可修改參與者'); return; }
+  if(uid===b.createdBy){ showToast('不可移除預約建立者'); return; }
   var players = Array.isArray(b.players) ? b.players.slice() : [];
   if(players.length <= 1){ showToast('至少保留一位會員'); return; }
   var newPlayers = players.filter(function(x){ return x !== uid; });
-  db.collection('bookings').doc(bid).update({
-    players:  firebase.firestore.FieldValue.arrayRemove(uid),
-    updatedAt: TS()
-  }).then(function(){
+  _callBookingFunction('removeBookingParticipant', {bookingId:bid, targetUid:uid}).then(function(){
     _patchBookingInAllCaches(bid, { players: newPlayers });
     loadMyBookings();
     _dvRefreshDetail();
@@ -9676,14 +9679,11 @@ function _dvRemoveGuest(guestIdx){
   if(!bid) return;
   var b = _findBookingById(bid);
   if(!b){ showToast('找不到預約'); return; }
-  if(_bookingHasStarted(b)){ showToast('預約已開始，無法修改參與者'); return; }
+  if(!_canManageBookingParticipants(b)){ showToast('只有預約建立者或管理員可修改參與者'); return; }
   var guests = Array.isArray(b.guests) ? b.guests.slice() : [];
   if(guestIdx < 0 || guestIdx >= guests.length){ showToast('找不到此來賓'); return; }
   guests.splice(guestIdx, 1);
-  db.collection('bookings').doc(bid).update({
-    guests:    guests,
-    updatedAt: TS()
-  }).then(function(){
+  _callBookingFunction('removeBookingParticipant', {bookingId:bid, guestIndex:guestIdx}).then(function(){
     _patchBookingInAllCaches(bid, { guests: guests });
     _dvRefreshDetail();
   }).catch(function(e){ showToast('移除失敗：'+e.message); });
@@ -10459,6 +10459,8 @@ function cancelBooking(id, callback){
   var b = _findBookingById(id);
   if(!b){ showToast('找不到此預約'); return; }
   if(!_isActiveBooking(b)){ showToast('此預約已取消或作廢'); return; }
+  var myUid = currentUser?(currentUser.uid||currentUser.userId||currentUser.id||''):'';
+  if(b.createdBy!==myUid && !isAdminLike()){ showToast('只有預約建立者或管理員可取消'); return; }
   /* 已開始的預約僅開發者可取消；未開始維持原有規則（30 分鐘內不可取消） */
   if(_bookingHasStarted(b) && _currentRole()!=='owner'){ showToast('預約已開始，無法取消'); return; }
   if(!_bookingHasStarted(b) && _withinCancelCutoff(b)){ showToast('距開始不足 30 分鐘，無法取消'); return; }
@@ -10472,21 +10474,24 @@ function _executeCancel(id, reason, callback){
   var myName = currentUser?(currentUser.realName||currentUser.displayName||''):'';
   /* Find booking snapshot for notification */
   var b = _findBookingById(id);
-  var updateObj = {
+  if(!b || (b.createdBy!==myUid && !isAdminLike())){
+    showToast('只有預約建立者或管理員可取消'); return;
+  }
+  var localUpdate = {
     status:          'cancelled',
     cancelledBy:     myUid,
     cancelledByUid:  myUid,
     cancelledByName: myName,
-    cancelledAt:     TS(),
-    updatedAt:       TS()
+    cancelledAt:     new Date(),
+    updatedAt:       new Date()
   };
-  if(reason) updateObj.cancelReason = reason;
-  db.collection('bookings').doc(id).update(updateObj)
+  if(reason) localUpdate.cancelReason = reason;
+  _callBookingFunction('cancelBooking', {bookingId:id, reason:reason||''})
     .then(function(){
       showToast('預約已取消');
       _dvCloseDetail();
       /* Remove cancelled booking from all local caches and reload views */
-      _patchBookingInAllCaches(id, updateObj);
+      _patchBookingInAllCaches(id, localUpdate);
       courtBookingsFirestore = null;
       allBookingsCache = null;
       loadMyBookings();
@@ -10802,11 +10807,11 @@ function onFormModeChange(){
 
   // General-only: buddy picker section
   var buddiesRow = document.getElementById('formGeneralBuddiesRow');
-  if(buddiesRow) buddiesRow.style.display = isGeneral ? '' : 'none';
+  if(buddiesRow) buddiesRow.style.display = isGeneral && !_bkEditId ? '' : 'none';
 
   // General-only: proxy row (checkbox-based)
   var proxyRow = document.getElementById('formProxyRow');
-  if(proxyRow) proxyRow.style.display = isGeneral ? '' : 'none';
+  if(proxyRow) proxyRow.style.display = isGeneral && !_bkEditId ? '' : 'none';
 
   // BookFor row: no longer used (pickleball removed, groupClass now uses formGroupCoachRow)
   var bfRow = document.getElementById('bookForRow');
@@ -11000,26 +11005,6 @@ function openBookingFormEdit(id){
     var _evtNature = document.getElementById('formEventNature');
     if(_evtNature && b.title) _evtNature.value = b.title;
 
-  } else {
-    // general / pickleball — buddy picker + proxy
-    var _myUid = currentUser ? (currentUser.userId||currentUser.uid||currentUser.id||'') : '';
-    var _pls   = Array.isArray(b.players) ? b.players : [];
-    var _gsts  = Array.isArray(b.guests)  ? b.guests  : [];
-    var _ownerUid = _pls[0] || b.createdBy || _myUid;
-    var _isProxy  = (_ownerUid !== _myUid);
-
-    var _proxyChk = document.getElementById('formProxyCheck');
-    if(_proxyChk) _proxyChk.checked = _isProxy;
-    var _proxyDetail = document.getElementById('formProxyDetail');
-    if(_proxyDetail) _proxyDetail.style.display = _isProxy ? '' : 'none';
-    if(_isProxy){
-      _formProxyToggle();  // re-populates proxy owner selector
-      var _proxySel = document.getElementById('formProxyOwnerSel');
-      if(_proxySel) _proxySel.value = _ownerUid;
-    }
-    _formBuddyMembers = _pls.slice(1).filter(function(u){ return u !== _ownerUid; });
-    _formBuddyGuests  = _gsts.slice();
-    _formBuddyRender();
   }
 }
 /* ── Populate booking form time selectors based on date's open hours ── */
@@ -11390,8 +11375,13 @@ function _submitBookingEdit(){
 
   var editId  = _bkEditId;
   var origBk  = _findBookingById(editId);  // fallback source for untouched fields
+  var editPerm = canEditBooking(origBk);
+  if(!editPerm.can){
+    if(btn){ btn.disabled=false; btn.textContent='儲存變更'; }
+    showToast(editPerm.reason||'您沒有權限編輯此預約');
+    return;
+  }
   var myUid4  = currentUser ? (currentUser.userId||currentUser.uid||currentUser.id||'') : '';
-  var isGeneral = (normMode === 'general');
 
   // Base update — fields common to all modes
   var upd = {
@@ -11407,18 +11397,7 @@ function _submitBookingEdit(){
   };
 
   // ── Mode-specific fields ───────────────────────────────────────────────
-  if(isGeneral){
-    var _ownerUid4 = _formBuddyOwnerUid();
-    var _gPls4 = _ownerUid4
-      ? [_ownerUid4].concat(_formBuddyMembers.filter(function(u){ return u!==_ownerUid4; }))
-      : _formBuddyMembers.slice();
-    upd.players          = _gPls4;
-    upd.guests           = _formBuddyGuests.slice();
-    upd.participantCount = _gPls4.length;
-    if(_ownerUid4 && usersCache[_ownerUid4])
-      upd.primaryName = usersCache[_ownerUid4].displayName || usersCache[_ownerUid4].realName || '';
-
-  } else if(normMode === 'teaching'){
+  if(normMode === 'teaching'){
     var _coachId4 = ((document.getElementById('formCoach')||{}).value||'')
                    || (origBk ? origBk.coachId||'' : '');
     var _studs4   = [];
@@ -11448,7 +11427,11 @@ function _submitBookingEdit(){
   }
 
   // ── Slot conflict check (same court, exclude self) — range-overlap ────────
-  hasBookingConflict(court, date, start, end, editId)
+  ensureFirebaseAuth()
+    .then(function(fbUser){
+      if(!fbUser) throw new Error('Firebase 身份驗證失敗，請重新登入 LINE');
+      return hasBookingConflict(court, date, start, end, editId);
+    })
     .then(function(conflict){
       if(conflict && conflict.queryError){
         if(btn){ btn.disabled=false; btn.textContent='儲存變更'; }
@@ -11555,7 +11538,7 @@ function submitBooking(){
   var ownerUid = isGeneral
     ? _formBuddyOwnerUid()
     : ((bookFor && usersCache[bookFor]) ? bookFor : myUid);
-  var playerUid   = ownerUid;  /* used in slot-conflict join path */
+  var playerUid   = ownerUid;
   var displayName = usersCache[ownerUid]
     ? (usersCache[ownerUid].displayName || usersCache[ownerUid].realName || '—')
     : (ownerUid === myUid && currentUser ? (currentUser.displayName||'—') : '—');
@@ -11564,8 +11547,6 @@ function submitBooking(){
   if(btn){ btn.disabled=true; btn.textContent='確認中…'; }
 
   var courtShortLabel = (COURT_LABELS[court]||{}).surface+' '+(COURT_LABELS[court]||{}).letter;
-  var isExclusive = (mode==='teaching'||mode==='groupClass'||mode==='event_lock');
-
   // Step 1: check for time-overlapping active bookings on the same court/date
   hasBookingConflict(court, date, start, end, null)
     .then(function(conflict){
@@ -11576,70 +11557,9 @@ function submitBooking(){
       }
 
       if(conflict){
-        var sameSlot = conflict.startTime === start && conflict.endTime === end;
-        if(!sameSlot){
-          // overlapping but different time bounds → block immediately
-          showToast('此場地該時段已有預約，請選擇其他時段');
-          if(btn){ btn.disabled=false; btn.textContent='確認預約'; }
-          return;
-        }
-        // exact same slot → proceed with original join / block logic
-        var ex = conflict;
-        var exMode = _normaliseMode(ex.mode);
-
-        // exclusive modes cannot share a slot with anything
-        if(isExclusive){
-          showToast(mode==='event_lock' ? '此時段已有預約，活動需獨占場地' : '此時段已有預約，教學／團課需獨占場地');
-          if(btn){ btn.disabled=false; btn.textContent='確認預約'; }
-          return;
-        }
-        // existing is exclusive mode → block
-        if(exMode==='teaching'||exMode==='groupClass'||exMode==='event_lock'){
-          showToast(exMode==='event_lock' ? '此時段已被活動佔用' : '此時段已被教學或團課佔用');
-          if(btn){ btn.disabled=false; btn.textContent='確認預約'; }
-          return;
-        }
-        // mode mismatch → block
-        if(exMode !== mode){
-          showToast('此時段已有「'+MODE_LABELS[exMode]+'」模式的預約，無法混用');
-          if(btn){ btn.disabled=false; btn.textContent='確認預約'; }
-          return;
-        }
-        // same mode (general / pickleball) — attempt to join
-        var players    = Array.isArray(ex.players) ? ex.players : [];
-        var exCapacity = ex.capacity || players.length || (isGeneral ? 4 : capacity);
-        if(players.indexOf(playerUid) >= 0){
-          showToast('您已在此預約中');
-          if(btn){ btn.disabled=false; btn.textContent='確認預約'; }
-          return;
-        }
-        if(players.length >= exCapacity){
-          showToast('此預約已滿（'+players.length+'/'+exCapacity+'）');
-          if(btn){ btn.disabled=false; btn.textContent='確認預約'; }
-          return;
-        }
-        // join existing booking — first check cross-court participant conflict for joiner
-        var _joinDraft = {date:date, startTime:start, endTime:end, court:court, participantUids:[playerUid]};
-        return hasParticipantTimeConflict(_joinDraft, ex.id).then(function(_joinConflict){
-          if(_joinConflict){
-            showToast(_bookingConflictMsg(_joinConflict));
-            if(btn){ btn.disabled=false; btn.textContent='確認預約'; }
-            return;
-          }
-          return db.collection('bookings').doc(ex.id).update({
-            players:          firebase.firestore.FieldValue.arrayUnion(playerUid),
-            participantCount: firebase.firestore.FieldValue.increment(1),
-            updatedAt:        TS()
-          }).then(function(){
-          showToast('已加入預約 · '+courtShortLabel+' '+start);
-          allBookingsCache = null;       /* invalidate admin cache */
-          courtBookingsFirestore = null; /* invalidate day view cache */
-          closeBookingForm();
-          loadWeekBookings();
-          loadMyBookings();
-          loadMonthBookings();
-          });  // end update().then()
-        });    // end hasParticipantTimeConflict().then()
+        showToast('此場地該時段已有預約，請選擇其他時段');
+        if(btn){ btn.disabled=false; btn.textContent='確認預約'; }
+        return;
       }
 
       // No conflict — create new booking

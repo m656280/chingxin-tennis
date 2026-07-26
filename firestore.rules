@@ -72,6 +72,27 @@ service cloud.firestore {
       return s in ['active', 'void', 'refund'];
     }
 
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function hasActorMember() {
+      return isSignedIn()
+             && exists(/databases/$(database)/documents/members/$(request.auth.uid));
+    }
+
+    function actorRole() {
+      return get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role;
+    }
+
+    function isAdminLike() {
+      return hasActorMember() && actorRole() in ['owner', 'admin'];
+    }
+
+    function isOwner() {
+      return hasActorMember() && actorRole() == 'owner';
+    }
+
     // ──────────────────────────────────────────────────────────────────────
     // sessions  — lineauth Admin SDK 寫入，前端目前不讀取
     // ──────────────────────────────────────────────────────────────────────
@@ -147,13 +168,96 @@ service cloud.firestore {
                     && request.resource.data.startTime is string
                     && request.resource.data.endTime is string;
 
-      // 更新：允許狀態變更（取消、作廢、自動移場等）
-      // TODO [L5]: 改為限制只有 createdBy 或 admin 可取消
-      allow update: if request.resource.data.status in ['active', 'cancelled', 'void', 'auto_moved'];
+      // 更新：Phase 1A 過渡防護。
+      // participants / createdBy / participantCount 與 cancelled 一律改由 Callable 寫入。
+      // 保留 creator/admin 的一般編輯、既有自行退出、出席與 owner 修復/作廢流程。
+      allow update: if (
+          isSignedIn()
+          && (
+            (
+              (
+                (('createdBy' in resource.data)
+                  && resource.data.createdBy == request.auth.uid)
+                || isAdminLike()
+              )
+              && !request.resource.data.diff(resource.data).affectedKeys()
+                    .hasAny(['players', 'guests', 'participantCount', 'createdBy', 'status'])
+            )
+            || (
+              (
+                !('createdBy' in resource.data)
+                || resource.data.createdBy != request.auth.uid
+              )
+              && ('players' in resource.data)
+              && resource.data.players is list
+              && request.resource.data.players is list
+              && request.auth.uid in resource.data.players
+              && request.resource.data.players
+                   == resource.data.players.removeAll([request.auth.uid])
+              && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(['players', 'participantCount', 'updatedAt'])
+              && (
+                (
+                  ('status' in resource.data)
+                  && request.resource.data.status == resource.data.status
+                )
+                || (
+                  !('status' in resource.data)
+                  && !('status' in request.resource.data)
+                )
+              )
+              && (
+                (
+                  ('participantCount' in resource.data)
+                  && resource.data.participantCount is number
+                  && request.resource.data.participantCount
+                       == resource.data.participantCount - 1
+                )
+                || (
+                  !('participantCount' in resource.data)
+                  && request.resource.data.participantCount == -1
+                )
+              )
+            )
+            || (
+              hasActorMember()
+              && (
+                actorRole() == 'owner'
+                || (
+                  actorRole() == 'coach'
+                  && ('coachId' in resource.data)
+                  && resource.data.coachId == request.auth.uid
+                )
+              )
+              && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(['attendance', 'updatedAt'])
+            )
+            || (
+              isOwner()
+              && (
+                (
+                  ('status' in request.resource.data)
+                  && request.resource.data.status != 'cancelled'
+                )
+                || (
+                  !('status' in resource.data)
+                  && !('status' in request.resource.data)
+                )
+              )
+              && !request.resource.data.diff(resource.data).affectedKeys()
+                    .hasAny(['players', 'guests', 'participantCount', 'createdBy'])
+            )
+          )
+        );
 
-      // 刪除：允許（永久刪除由前端 owner-only 控制）
-      // TODO [L5]: 改為 request.auth.token.role == 'owner' 後限制
-      allow delete: if true;
+      // 永久刪除保留 owner 現有流程；一般 client 一律拒絕。
+      allow delete: if isOwner();
+    }
+
+    // 最小 booking audit：僅 Admin SDK / Callable 可寫，client 全面禁止。
+    match /bookingAuditLogs/{auditId} {
+      allow read: if false;
+      allow create, update, delete: if false;
     }
 
     // ──────────────────────────────────────────────────────────────────────

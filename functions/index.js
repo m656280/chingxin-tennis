@@ -20,6 +20,306 @@ const { onCall, HttpsError } = require('firebase-functions/v2/https');
 
 admin.initializeApp();
 
+const bookingDb = admin.firestore();
+const SERVER_TS = admin.firestore.FieldValue.serverTimestamp;
+const ADMIN_ROLES = new Set(['owner', 'admin']);
+
+function cleanString(value, maxLength = 200) {
+  return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
+}
+
+function isActiveBooking(booking) {
+  const status = booking.status || 'active';
+  return status === 'active' || status === 'confirmed';
+}
+
+function isEligibleMember(member) {
+  if (!member) return false;
+  if (ADMIN_ROLES.has(member.role || '')) {
+    return member.status !== 'deleted' && member.status !== 'blocked';
+  }
+  return member.status === 'active' ||
+    member.status === 'approved' ||
+    member.approved === true;
+}
+
+function bookingStartMs(booking) {
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(booking.date || '');
+  const timeMatch = /^(\d{2}):(\d{2})$/.exec(booking.startTime || '');
+  if (!dateMatch || !timeMatch) return NaN;
+  return Date.UTC(
+    Number(dateMatch[1]),
+    Number(dateMatch[2]) - 1,
+    Number(dateMatch[3]),
+    Number(timeMatch[1]) - 8,
+    Number(timeMatch[2]),
+  );
+}
+
+async function getBookingActorContext(request) {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError('unauthenticated', '請重新登入 LINE 後再試');
+  }
+
+  const actorUid = request.auth.uid;
+  const actorSnap = await bookingDb.collection('members').doc(actorUid).get();
+  if (!actorSnap.exists) {
+    throw new HttpsError('permission-denied', '找不到操作者會員資料');
+  }
+  const actor = actorSnap.data() || {};
+
+  const bookingId = cleanString((request.data || {}).bookingId, 128);
+  if (!bookingId) {
+    throw new HttpsError('invalid-argument', 'bookingId 必填');
+  }
+  const bookingRef = bookingDb.collection('bookings').doc(bookingId);
+  const bookingSnap = await bookingRef.get();
+  if (!bookingSnap.exists) {
+    throw new HttpsError('not-found', '找不到此預約');
+  }
+  const booking = bookingSnap.data() || {};
+
+  const actorRole = actor.role || '';
+  const isManager = booking.createdBy === actorUid ||
+    ADMIN_ROLES.has(actorRole);
+  if (!isManager) {
+    throw new HttpsError('permission-denied', '只有預約建立者或管理員可執行此操作');
+  }
+  if (!isEligibleMember(actor)) {
+    throw new HttpsError('permission-denied', '操作者目前不具有效會員資格');
+  }
+
+  return {
+    actor,
+    actorRole,
+    actorUid,
+    booking,
+    bookingId,
+    bookingRef,
+  };
+}
+
+function assertParticipantMutationAllowed(booking) {
+  if (!isActiveBooking(booking)) {
+    throw new HttpsError('failed-precondition', '此預約已取消或作廢');
+  }
+  const startMs = bookingStartMs(booking);
+  if (!Number.isFinite(startMs) || Date.now() >= startMs) {
+    throw new HttpsError('failed-precondition', '預約已開始，無法修改參與者');
+  }
+  const mode = booking.mode || 'general';
+  if (mode !== 'general' && mode !== 'normal') {
+    throw new HttpsError('failed-precondition', '此預約模式不支援一般參與者管理');
+  }
+}
+
+async function assertNoParticipantTimeConflict(context, targetUid) {
+  const targetStart = bookingStartMs(context.booking);
+  const endBooking = Object.assign({}, context.booking, {
+    startTime: context.booking.endTime,
+  });
+  const targetEnd = bookingStartMs(endBooking);
+  if (!Number.isFinite(targetStart) || !Number.isFinite(targetEnd)) {
+    throw new HttpsError('failed-precondition', '預約時間資料不完整');
+  }
+
+  const sameDateSnap = await bookingDb.collection('bookings')
+    .where('date', '==', context.booking.date)
+    .get();
+  const hasConflict = sameDateSnap.docs.some((doc) => {
+    if (doc.id === context.bookingId) return false;
+    const booking = doc.data() || {};
+    if (!isActiveBooking(booking)) return false;
+    const start = bookingStartMs(booking);
+    const endBooking = Object.assign({}, booking, {
+      startTime: booking.endTime,
+    });
+    const end = bookingStartMs(endBooking);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return false;
+    if (!(targetStart < end && targetEnd > start)) return false;
+    return booking.coachId === targetUid ||
+      (Array.isArray(booking.players) && booking.players.includes(targetUid)) ||
+      (Array.isArray(booking.students) && booking.students.includes(targetUid));
+  });
+  if (hasConflict) {
+    throw new HttpsError(
+      'failed-precondition',
+      '此會員已在同時段參與其他預約',
+    );
+  }
+}
+
+function addAuditWrite(batch, context, action, targetUid, reason, targetLabel) {
+  const auditRef = bookingDb.collection('bookingAuditLogs').doc();
+  const audit = {
+    actorUid: context.actorUid,
+    targetUid: targetUid || '',
+    bookingId: context.bookingId,
+    action,
+    createdAt: SERVER_TS(),
+    reason: reason || '',
+    source: 'web_callable',
+  };
+  if (targetLabel) audit.targetLabel = targetLabel;
+  batch.set(auditRef, audit);
+}
+
+// ── Phase 1A: booking participant authorization + minimal audit ──────
+exports.addBookingParticipant = onCall({region: 'asia-east1'}, async (request) => {
+  const context = await getBookingActorContext(request);
+  const data = request.data || {};
+  const targetUid = cleanString(data.targetUid, 128);
+  const guestName = cleanString(data.guestName, 50);
+  const reason = cleanString(data.reason, 300);
+  if ((!targetUid && !guestName) || (targetUid && guestName)) {
+    throw new HttpsError('invalid-argument', '請指定一位會員或一位來賓');
+  }
+
+  assertParticipantMutationAllowed(context.booking);
+  const players = Array.isArray(context.booking.players) ?
+    context.booking.players.slice() : [];
+  const guests = Array.isArray(context.booking.guests) ?
+    context.booking.guests.slice() : [];
+  const capacity = Number(context.booking.capacity) || 4;
+  if (players.length + guests.length >= capacity) {
+    throw new HttpsError('failed-precondition', '此預約已達人數上限');
+  }
+
+  const update = {updatedAt: SERVER_TS()};
+  let auditTargetUid = '';
+  let auditTargetLabel = '';
+  if (targetUid) {
+    if (players.includes(targetUid)) {
+      throw new HttpsError('already-exists', '此會員已在預約中');
+    }
+    const targetSnap = await bookingDb.collection('members').doc(targetUid).get();
+    if (!targetSnap.exists) {
+      throw new HttpsError('not-found', '找不到指定會員');
+    }
+    if (!isEligibleMember(targetSnap.data() || {})) {
+      throw new HttpsError('failed-precondition', '此會員目前不具有效資格');
+    }
+    await assertNoParticipantTimeConflict(context, targetUid);
+    update.players = admin.firestore.FieldValue.arrayUnion(targetUid);
+    auditTargetUid = targetUid;
+  } else {
+    update.guests = guests.concat([guestName]);
+    auditTargetLabel = guestName;
+  }
+
+  const batch = bookingDb.batch();
+  batch.update(context.bookingRef, update);
+  addAuditWrite(
+    batch,
+    context,
+    'participant_added',
+    auditTargetUid,
+    reason,
+    auditTargetLabel,
+  );
+  await batch.commit();
+  return {ok: true};
+});
+
+exports.removeBookingParticipant = onCall({region: 'asia-east1'}, async (request) => {
+  const context = await getBookingActorContext(request);
+  const data = request.data || {};
+  const targetUid = cleanString(data.targetUid, 128);
+  const guestIndex = Number.isInteger(data.guestIndex) ? data.guestIndex : null;
+  const reason = cleanString(data.reason, 300);
+  if ((!targetUid && guestIndex === null) || (targetUid && guestIndex !== null)) {
+    throw new HttpsError('invalid-argument', '請指定一位會員或一位來賓');
+  }
+
+  assertParticipantMutationAllowed(context.booking);
+  const players = Array.isArray(context.booking.players) ?
+    context.booking.players.slice() : [];
+  const guests = Array.isArray(context.booking.guests) ?
+    context.booking.guests.slice() : [];
+
+  const update = {updatedAt: SERVER_TS()};
+  let auditTargetUid = '';
+  let auditTargetLabel = '';
+  if (targetUid) {
+    if (targetUid === context.booking.createdBy) {
+      throw new HttpsError('failed-precondition', '不可移除預約建立者');
+    }
+    if (!players.includes(targetUid)) {
+      throw new HttpsError('not-found', '此會員不在預約中');
+    }
+    update.players = admin.firestore.FieldValue.arrayRemove(targetUid);
+    auditTargetUid = targetUid;
+  } else {
+    if (guestIndex < 0 || guestIndex >= guests.length) {
+      throw new HttpsError('not-found', '找不到此來賓');
+    }
+    auditTargetLabel = guests[guestIndex];
+    guests.splice(guestIndex, 1);
+    update.guests = guests;
+  }
+
+  const batch = bookingDb.batch();
+  batch.update(context.bookingRef, update);
+  addAuditWrite(
+    batch,
+    context,
+    'participant_removed',
+    auditTargetUid,
+    reason,
+    auditTargetLabel,
+  );
+  await batch.commit();
+  return {ok: true};
+});
+
+exports.cancelBooking = onCall({region: 'asia-east1'}, async (request) => {
+  const context = await getBookingActorContext(request);
+  const reason = cleanString((request.data || {}).reason, 300);
+  if (ADMIN_ROLES.has(context.actorRole) && !reason) {
+    throw new HttpsError('invalid-argument', '管理員取消預約必須填寫原因');
+  }
+  if (!isActiveBooking(context.booking)) {
+    throw new HttpsError('failed-precondition', '此預約已取消或作廢');
+  }
+
+  const startMs = bookingStartMs(context.booking);
+  if (!Number.isFinite(startMs)) {
+    throw new HttpsError('failed-precondition', '預約時間資料不完整');
+  }
+  const isOwner = context.actorRole === 'owner';
+  if (Date.now() >= startMs && !isOwner) {
+    throw new HttpsError('failed-precondition', '預約已開始，無法取消');
+  }
+  if (Date.now() < startMs && startMs - Date.now() < 30 * 60 * 1000) {
+    throw new HttpsError('failed-precondition', '距開始不足 30 分鐘，無法取消');
+  }
+
+  const actorName = context.actor.realName ||
+    context.actor.displayName || '';
+  const update = {
+    status: 'cancelled',
+    cancelledBy: context.actorUid,
+    cancelledByUid: context.actorUid,
+    cancelledByName: actorName,
+    cancelledAt: SERVER_TS(),
+    updatedAt: SERVER_TS(),
+  };
+  if (reason) update.cancelReason = reason;
+
+  const batch = bookingDb.batch();
+  batch.update(context.bookingRef, update);
+  addAuditWrite(
+    batch,
+    context,
+    'cancel',
+    context.booking.createdBy || '',
+    reason,
+    '',
+  );
+  await batch.commit();
+  return {ok: true, cancelledByName: actorName};
+});
+
 // ── createManualMember ────────────────────────────────────────────────
 // 管理員手動建立會員（無 LINE 帳號者）。
 // 由 Admin SDK 寫入 Firestore（bypass rules），
