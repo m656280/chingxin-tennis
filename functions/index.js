@@ -14,7 +14,6 @@
 
 'use strict';
 
-const functions = require('firebase-functions');
 const admin     = require('firebase-admin');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 
