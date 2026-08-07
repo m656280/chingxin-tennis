@@ -159,14 +159,8 @@ service cloud.firestore {
       // 讀：全員可讀（場地日曆需要顯示所有預約）
       allow read: if true;
 
-      // 建立：驗證必要欄位存在且格式正確
-      allow create: if request.resource.data.keys().hasAll(['date', 'startTime', 'endTime', 'court', 'mode', 'createdBy', 'status'])
-                    && request.resource.data.status == 'active'
-                    && request.resource.data.createdBy is string
-                    && request.resource.data.createdBy.size() > 0
-                    && request.resource.data.date is string
-                    && request.resource.data.startTime is string
-                    && request.resource.data.endTime is string;
+      // 建立：統一由 createBooking Callable 驗證會籍期限及硬地使用限制。
+      allow create: if false;
 
       // 更新：Phase 1A 過渡防護。
       // participants / createdBy / participantCount 與 cancelled 一律改由 Callable 寫入。

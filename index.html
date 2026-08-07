@@ -10522,7 +10522,8 @@ function _executeCancel(id, reason, callback){
       loadCourtBookings(formatDate(selectedDate));
       loadAllBookings();
       /* Send notifications if admin/owner cancelled on behalf of others */
-      if(b && (isAdminLike()) && b.createdBy !== myUid){
+      if(b && (isAdminLike()) && b.createdBy !== myUid &&
+         reason !== '超過繳費會籍有效期限，此預約不成立。'){
         _sendBookingNotifications(b, 'cancelled', reason||'管理員取消', myUid, myName);
       }
       if(callback) callback();
@@ -10715,9 +10716,10 @@ function _renderNotifCard(n){
     createdStr = cd.toLocaleDateString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
   }
   return '<div class="notifCard'+(n.read?'':' unread')+'" onclick="_onNotifTap(\''+n.id+'\')">'
-    +'<div class="notifCardTitle">【預約'+actionLabel+'】</div>'
+    +'<div class="notifCardTitle">'+(n.title?_esc(n.title):'【預約'+actionLabel+'】')+'</div>'
     +'<div class="notifCardTime">'+_esc(n.date||'')+'　'+_esc(timeStr)+'　'+_esc(n.courtLabel||n.court||'')+'</div>'
     +(metaParts.length?'<div class="notifCardMeta">'+metaParts.join('　')+'</div>':'')
+    +(n.hint?'<div class="notifCardMeta">'+_esc(n.hint)+'</div>':'')
     +(createdStr?'<div class="notifCardMeta" style="opacity:0.7;margin-top:2px">'+createdStr+'</div>':'')
     +'</div>';
 }
@@ -11633,7 +11635,10 @@ function submitBooking(){
           if(btn){ btn.disabled=false; btn.textContent='確認預約'; }
           return;
         }
-        return db.collection('bookings').add(newDoc).then(function(){
+        var _createPayload = Object.assign({}, newDoc);
+        delete _createPayload.createdAt;
+        delete _createPayload.updatedAt;
+        return _callBookingFunction('createBooking', {booking:_createPayload}).then(function(){
           showToast('預約成功 · '+courtShortLabel+' '+start);
           teachingBookings = null;       /* invalidate coach stats cache */
           allBookingsCache = null;       /* invalidate admin 預約管理 cache */
@@ -11651,7 +11656,13 @@ function submitBooking(){
     })
     .catch(function(e){
       console.error('submitBooking error:',e);
-      showToast('預約失敗：'+e.message);
+      var _createErr = e && e.message ? e.message : '';
+      if(_createErr.indexOf('您的會籍有效期限至 ')===0 ||
+         _createErr.indexOf('硬地每人連續預約最多 2 小時')===0){
+        showToast(_createErr);
+      } else {
+        showToast('預約失敗：'+_createErr);
+      }
     })
     .finally(function(){
       if(btn){ btn.disabled=false; btn.textContent='確認預約'; }
