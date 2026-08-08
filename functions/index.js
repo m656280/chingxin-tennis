@@ -202,6 +202,13 @@ exports.createBooking = onCall({region: 'asia-east1'}, async (request) => {
       timeToMinutes(endTime) <= timeToMinutes(startTime)) {
     throw new HttpsError('invalid-argument', '預約日期或時間格式不正確');
   }
+  if (mode === 'general' &&
+      timeToMinutes(endTime) - timeToMinutes(startTime) > 60) {
+    throw new HttpsError(
+      'failed-precondition',
+      '一般會員預約每次以 1 小時為限。',
+    );
+  }
   if (!['hard_a', 'hard_b', 'clay_a', 'clay_b'].includes(court)) {
     throw new HttpsError('invalid-argument', '場地資料不正確');
   }

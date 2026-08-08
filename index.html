@@ -11393,6 +11393,7 @@ function _submitBookingEdit(){
   if(!date||!start||!end){ showToast('請填寫完整資料'); return; }
   if((court==='clay_a'||court==='clay_b')&&!isAdminLike()){ showToast('紅土場地僅限管理員預約'); return; }
   if(timeToMin(end)<=timeToMin(start)){ showToast('結束時間需晚於開始時間'); return; }
+  if(normMode==='general' && timeToMin(end)-timeToMin(start)>60){ showToast('一般會員預約每次以 1 小時為限。'); return; }
 
   var btn = document.getElementById('submitBookingBtn');
   if(btn){ btn.disabled=true; btn.textContent='儲存中…'; }
@@ -11527,6 +11528,7 @@ function submitBooking(){
   if(mode==='groupClass'  && !isAdminLike()){ showToast('公益團課僅管理員可建立'); return; }
   if(mode==='event_lock'  && !isAdminLike()){ showToast('活動模式僅管理員可建立'); return; }
   if(timeToMin(end)<=timeToMin(start)){ showToast('結束時間需晚於開始時間'); return; }
+  if(_normaliseMode(mode)==='general' && timeToMin(end)-timeToMin(start)>60){ showToast('一般會員預約每次以 1 小時為限。'); return; }
   /* Validate start time against the date's open hours */
   var _fp=date.split('-');
   var _fd=new Date(parseInt(_fp[0],10),parseInt(_fp[1],10)-1,parseInt(_fp[2],10));

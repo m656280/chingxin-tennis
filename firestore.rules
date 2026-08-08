@@ -56,6 +56,20 @@ service cloud.firestore {
       return s in ['active', 'cancelled', 'void', 'auto_moved'];
     }
 
+    function isGeneralBookingDurationAllowed(data) {
+      return !('mode' in data)
+        || !(data.mode in ['general', 'normal'])
+        || (
+          data.startTime is string
+          && data.endTime is string
+          && data.startTime.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')
+          && data.endTime.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')
+          && timestamp.value('1970-01-01T' + data.endTime + ':00Z')
+               - timestamp.value('1970-01-01T' + data.startTime + ':00Z')
+               <= duration.value(60, 'm')
+        );
+    }
+
     // 合法的 financialRecord type 值
     // v1.2 修正：前端實際使用 snake_case（day_pass / coaching_fee），
     //   原白名單誤寫駝峰（dayPass / coach）導致臨打 create 被拒（permission-denied）。
@@ -167,6 +181,7 @@ service cloud.firestore {
       // 保留 creator/admin 的一般編輯、既有自行退出、出席與 owner 修復/作廢流程。
       allow update: if (
           isSignedIn()
+          && isGeneralBookingDurationAllowed(request.resource.data)
           && (
             (
               (
