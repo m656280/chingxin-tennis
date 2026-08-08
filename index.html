@@ -11290,6 +11290,34 @@ function _bookingParticipantUids(b){
      {queryError:true} — Firestore query failed; caller MUST block (fail-closed)
    ─────────────────────────────────────────────────────────────────────────── */
 var _CONFLICT_QUERY_ERROR = {queryError: true};
+var _GENERAL_DAILY_LIMIT_START = '2026-08-11';
+var _GENERAL_DAILY_LIMIT_MESSAGE = '一般會員每日最多可預約 2 小時（Hard A、Hard B 合併計算）。';
+function hasGeneralDailyLimitExceeded(draft, excludeId){
+  if(_normaliseMode(draft.mode)!=='general' ||
+     draft.date<_GENERAL_DAILY_LIMIT_START ||
+     (draft.court!=='hard_a'&&draft.court!=='hard_b')) return Promise.resolve(false);
+  var subjectUid = (Array.isArray(draft.players)&&draft.players.length ? draft.players[0] : draft.createdBy)||'';
+  if(!db || !subjectUid) return Promise.resolve(_CONFLICT_QUERY_ERROR);
+  var draftMinutes = timeToMin(draft.endTime)-timeToMin(draft.startTime);
+  if(draftMinutes>120) return Promise.resolve(true);
+  return db.collection('bookings').where('date','==',draft.date).get()
+    .then(function(snap){
+      var total = draftMinutes;
+      snap.docs.forEach(function(doc){
+        if(doc.id===excludeId) return;
+        var b = doc.data()||{};
+        if(!_isActiveBooking(b) || _normaliseMode(b.mode)!=='general' ||
+           (b.court!=='hard_a'&&b.court!=='hard_b')) return;
+        var existingUid = (Array.isArray(b.players)&&b.players.length ? b.players[0] : b.createdBy)||'';
+        if(existingUid===subjectUid) total += timeToMin(b.endTime)-timeToMin(b.startTime);
+      });
+      return total>120;
+    })
+    .catch(function(e){
+      console.error('[generalDailyLimit] query error:',e);
+      return _CONFLICT_QUERY_ERROR;
+    });
+}
 function hasParticipantTimeConflict(draft, excludeId){
   // No db connection → cannot verify → block (fail-closed)
   if(!db) return Promise.resolve(_CONFLICT_QUERY_ERROR);
@@ -11393,7 +11421,7 @@ function _submitBookingEdit(){
   if(!date||!start||!end){ showToast('請填寫完整資料'); return; }
   if((court==='clay_a'||court==='clay_b')&&!isAdminLike()){ showToast('紅土場地僅限管理員預約'); return; }
   if(timeToMin(end)<=timeToMin(start)){ showToast('結束時間需晚於開始時間'); return; }
-  if(normMode==='general' && timeToMin(end)-timeToMin(start)>60){ showToast('一般會員預約每次以 1 小時為限。'); return; }
+  if(normMode==='general' && date<_GENERAL_DAILY_LIMIT_START && timeToMin(end)-timeToMin(start)>60){ showToast('一般會員預約每次以 1 小時為限。'); return; }
 
   var btn = document.getElementById('submitBookingBtn');
   if(btn){ btn.disabled=true; btn.textContent='儲存中…'; }
@@ -11480,7 +11508,24 @@ function _submitBookingEdit(){
           if(btn){ btn.disabled=false; btn.textContent='儲存變更'; }
           return;
         }
-        return db.collection('bookings').doc(editId).update(upd);
+        var _editBooking4 = Object.assign({},origBk||{},upd);
+        return hasGeneralDailyLimitExceeded(_editBooking4,editId).then(function(_dailyExceeded4){
+          if(_dailyExceeded4&&_dailyExceeded4.queryError){
+            showToast('目前無法確認每日預約時數，請稍後再試');
+            if(btn){ btn.disabled=false; btn.textContent='儲存變更'; }
+            return Promise.reject({_bookingHandled:true});
+          }
+          if(_dailyExceeded4){
+            showToast(_GENERAL_DAILY_LIMIT_MESSAGE);
+            if(btn){ btn.disabled=false; btn.textContent='儲存變更'; }
+            return Promise.reject({_bookingHandled:true});
+          }
+          var _updatePayload4 = Object.assign({},upd);
+          delete _updatePayload4.updatedAt;
+          delete _updatePayload4.updatedBy;
+          delete _updatePayload4.updatedByName;
+          return _callBookingFunction('updateBooking',{bookingId:editId,booking:_updatePayload4});
+        });
       });
     })
     .then(function(){
@@ -11496,8 +11541,10 @@ function _submitBookingEdit(){
       loadMonthBookings();
     })
     .catch(function(e){
+      if(e&&e._bookingHandled) return;
       console.error('_submitBookingEdit error:', e);
-      showToast('儲存失敗：'+e.message);
+      if(e&&e.message===_GENERAL_DAILY_LIMIT_MESSAGE) showToast(e.message);
+      else showToast('儲存失敗：'+e.message);
     })
     .finally(function(){
       if(btn){ btn.disabled=false; btn.textContent='儲存變更'; }
@@ -11528,7 +11575,7 @@ function submitBooking(){
   if(mode==='groupClass'  && !isAdminLike()){ showToast('公益團課僅管理員可建立'); return; }
   if(mode==='event_lock'  && !isAdminLike()){ showToast('活動模式僅管理員可建立'); return; }
   if(timeToMin(end)<=timeToMin(start)){ showToast('結束時間需晚於開始時間'); return; }
-  if(_normaliseMode(mode)==='general' && timeToMin(end)-timeToMin(start)>60){ showToast('一般會員預約每次以 1 小時為限。'); return; }
+  if(_normaliseMode(mode)==='general' && date<_GENERAL_DAILY_LIMIT_START && timeToMin(end)-timeToMin(start)>60){ showToast('一般會員預約每次以 1 小時為限。'); return; }
   /* Validate start time against the date's open hours */
   var _fp=date.split('-');
   var _fd=new Date(parseInt(_fp[0],10),parseInt(_fp[1],10)-1,parseInt(_fp[2],10));
@@ -11631,7 +11678,18 @@ function submitBooking(){
       // Build full participant UID list for cross-court conflict check
       var _newUids = _bookingParticipantUids(newDoc);  // uses players/students/coachId already on newDoc
       var _newDraft = {date:date, startTime:start, endTime:end, court:court, participantUids:_newUids};
-      return hasParticipantTimeConflict(_newDraft, null).then(function(_newConflict){
+      return hasGeneralDailyLimitExceeded(newDoc,null).then(function(_dailyExceeded){
+        if(_dailyExceeded&&_dailyExceeded.queryError){
+          showToast('目前無法確認每日預約時數，請稍後再試');
+          if(btn){ btn.disabled=false; btn.textContent='確認預約'; }
+          return;
+        }
+        if(_dailyExceeded){
+          showToast(_GENERAL_DAILY_LIMIT_MESSAGE);
+          if(btn){ btn.disabled=false; btn.textContent='確認預約'; }
+          return;
+        }
+        return hasParticipantTimeConflict(_newDraft, null).then(function(_newConflict){
         if(_newConflict){
           showToast(_bookingConflictMsg(_newConflict));
           if(btn){ btn.disabled=false; btn.textContent='確認預約'; }
@@ -11654,12 +11712,14 @@ function submitBooking(){
           loadMyBookings();
           loadMonthBookings();
         });
+        });
       });
     })
     .catch(function(e){
       console.error('submitBooking error:',e);
       var _createErr = e && e.message ? e.message : '';
-      if(_createErr.indexOf('您的會籍有效期限至 ')===0 ||
+      if(_createErr===_GENERAL_DAILY_LIMIT_MESSAGE ||
+         _createErr.indexOf('您的會籍有效期限至 ')===0 ||
          _createErr.indexOf('硬地每人連續預約最多 2 小時')===0){
         showToast(_createErr);
       } else {

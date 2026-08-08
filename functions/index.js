@@ -22,6 +22,9 @@ admin.initializeApp();
 const bookingDb = admin.firestore();
 const SERVER_TS = admin.firestore.FieldValue.serverTimestamp;
 const ADMIN_ROLES = new Set(['owner', 'admin']);
+const GENERAL_DAILY_LIMIT_START = '2026-08-11';
+const GENERAL_DAILY_LIMIT_MESSAGE =
+  '一般會員每日最多可預約 2 小時（Hard A、Hard B 合併計算）。';
 const MEMBERSHIP_EXPIRY_CANCEL_REASON =
   '超過繳費會籍有效期限，此預約不成立。';
 
@@ -89,10 +92,40 @@ function timeToMinutes(value) {
   return Number(match[1]) * 60 + Number(match[2]);
 }
 
-function assertHardCourtUsageAllowed(bookings, subjectUid, startTime, endTime) {
+function assertGeneralDailyLimitAllowed(bookings, booking, subjectUid, excludeId) {
+  if (booking.date < GENERAL_DAILY_LIMIT_START ||
+      normaliseBookingMode(booking.mode) !== 'general' ||
+      (booking.court !== 'hard_a' && booking.court !== 'hard_b')) {
+    return;
+  }
+  const duration = timeToMinutes(booking.endTime) -
+    timeToMinutes(booking.startTime);
+  const existingMinutes = bookings
+    .filter((existing) => {
+      return existing.id !== excludeId &&
+        isActiveBooking(existing) &&
+        normaliseBookingMode(existing.mode) === 'general' &&
+        (existing.court === 'hard_a' || existing.court === 'hard_b') &&
+        bookingSubjectUid(existing) === subjectUid;
+    })
+    .reduce((total, existing) => {
+      return total + timeToMinutes(existing.endTime) -
+        timeToMinutes(existing.startTime);
+    }, 0);
+  if (!Number.isFinite(duration) || !Number.isFinite(existingMinutes) ||
+      duration <= 0 ||
+      existingMinutes + duration > 120) {
+    throw new HttpsError('failed-precondition', GENERAL_DAILY_LIMIT_MESSAGE);
+  }
+}
+
+function assertHardCourtUsageAllowed(
+  bookings, subjectUid, startTime, endTime, excludeId,
+) {
   const intervals = bookings
     .filter((booking) => {
-      return isActiveBooking(booking) &&
+      return booking.id !== excludeId &&
+        isActiveBooking(booking) &&
         (booking.court === 'hard_a' || booking.court === 'hard_b') &&
         bookingSubjectUid(booking) === subjectUid;
     })
@@ -202,7 +235,7 @@ exports.createBooking = onCall({region: 'asia-east1'}, async (request) => {
       timeToMinutes(endTime) <= timeToMinutes(startTime)) {
     throw new HttpsError('invalid-argument', '預約日期或時間格式不正確');
   }
-  if (mode === 'general' &&
+  if (mode === 'general' && date < GENERAL_DAILY_LIMIT_START &&
       timeToMinutes(endTime) - timeToMinutes(startTime) > 60) {
     throw new HttpsError(
       'failed-precondition',
@@ -297,23 +330,164 @@ exports.createBooking = onCall({region: 'asia-east1'}, async (request) => {
       }
 
     }
-    if (subjectRole !== 'coach' &&
-        (court === 'hard_a' || court === 'hard_b')) {
+    if (court === 'hard_a' || court === 'hard_b') {
       const sameDateSnap = await bookingDb.collection('bookings')
         .where('date', '==', date)
         .get();
-      assertHardCourtUsageAllowed(
-        sameDateSnap.docs.map((doc) => doc.data() || {}),
-        subjectUid,
-        startTime,
-        endTime,
+      const sameDateBookings = sameDateSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() || {}),
+      }));
+      assertGeneralDailyLimitAllowed(
+        sameDateBookings, booking, subjectUid, '',
       );
+      if (subjectRole !== 'coach') {
+        assertHardCourtUsageAllowed(
+          sameDateBookings, subjectUid, startTime, endTime, '',
+        );
+      }
     }
   }
 
   const bookingRef = bookingDb.collection('bookings').doc();
   await bookingRef.set(booking);
   return {ok: true, bookingId: bookingRef.id};
+});
+
+exports.updateBooking = onCall({region: 'asia-east1'}, async (request) => {
+  const context = await getBookingActorContext(request);
+  if (!isActiveBooking(context.booking)) {
+    throw new HttpsError('failed-precondition', '此預約已取消或作廢');
+  }
+  const originalStartMs = bookingStartMs(context.booking);
+  if (!Number.isFinite(originalStartMs) || Date.now() >= originalStartMs) {
+    throw new HttpsError('failed-precondition', '預約已開始，無法修改');
+  }
+  if (!ADMIN_ROLES.has(context.actorRole) &&
+      originalStartMs - Date.now() < 30 * 60 * 1000) {
+    throw new HttpsError(
+      'failed-precondition',
+      '預約開始前 30 分鐘內無法自行修改，請聯絡管理員。',
+    );
+  }
+  const input = (request.data || {}).booking || {};
+  const date = cleanString(input.date, 10);
+  const startTime = cleanString(input.startTime, 5);
+  const endTime = cleanString(input.endTime, 5);
+  const court = cleanString(input.court, 20);
+  const mode = normaliseBookingMode(cleanString(input.mode, 30));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+      !Number.isFinite(timeToMinutes(startTime)) ||
+      !Number.isFinite(timeToMinutes(endTime)) ||
+      timeToMinutes(endTime) <= timeToMinutes(startTime)) {
+    throw new HttpsError('invalid-argument', '預約日期或時間格式不正確');
+  }
+  if (mode === 'general' && date < GENERAL_DAILY_LIMIT_START &&
+      timeToMinutes(endTime) - timeToMinutes(startTime) > 60) {
+    throw new HttpsError(
+      'failed-precondition',
+      '一般會員預約每次以 1 小時為限。',
+    );
+  }
+  if (!['hard_a', 'hard_b', 'clay_a', 'clay_b'].includes(court)) {
+    throw new HttpsError('invalid-argument', '場地資料不正確');
+  }
+  if ((court === 'clay_a' || court === 'clay_b') &&
+      !ADMIN_ROLES.has(context.actorRole)) {
+    throw new HttpsError('permission-denied', '紅土場地僅限管理員預約');
+  }
+  if ((mode === 'groupClass' || mode === 'event_lock') &&
+      !ADMIN_ROLES.has(context.actorRole)) {
+    throw new HttpsError('permission-denied', '此預約模式僅限管理員建立');
+  }
+  if (mode === 'teaching' && context.actorRole !== 'coach' &&
+      !ADMIN_ROLES.has(context.actorRole)) {
+    throw new HttpsError('permission-denied', '教學預約僅限教練或管理員建立');
+  }
+
+  const update = {
+    date,
+    startTime,
+    endTime,
+    court,
+    mode,
+    note: cleanString(input.note, 300),
+    updatedAt: SERVER_TS(),
+    updatedBy: context.actorUid,
+    updatedByName: context.actor.realName ||
+      context.actor.displayName || '',
+  };
+  if (mode === 'teaching') {
+    update.coachId = context.actorRole === 'coach' ? context.actorUid :
+      cleanString(input.coachId, 128);
+    if (!update.coachId) {
+      throw new HttpsError('invalid-argument', '請選擇教練');
+    }
+    update.coachName = cleanString(input.coachName, 100);
+    update.students = Array.isArray(input.students) ?
+      input.students.filter((uid) => typeof uid === 'string' && uid)
+        .slice(0, 100) : [];
+  } else if (mode === 'groupClass') {
+    update.coachId = cleanString(input.coachId, 128);
+    update.coachName = cleanString(input.coachName, 100);
+    update.students = Array.isArray(input.students) ?
+      input.students.filter((uid) => typeof uid === 'string' && uid)
+        .slice(0, 100) : [];
+    update.title = cleanString(input.title, 100);
+  } else if (mode === 'event_lock') {
+    update.title = cleanString(input.title, 100) || '其他';
+  }
+
+  const booking = Object.assign({}, context.booking, update);
+  const subjectUid = bookingSubjectUid(booking);
+  if (subjectUid) {
+    const subjectSnap = await bookingDb.collection('members').doc(subjectUid).get();
+    if (!subjectSnap.exists) {
+      throw new HttpsError('failed-precondition', '找不到預約會員資料');
+    }
+    const subject = subjectSnap.data() || {};
+    const subjectRole = subject.role || '';
+    if (!ADMIN_ROLES.has(subjectRole)) {
+      const expiryRaw = subject.membershipExpiry || subject.expireDate || '';
+      const expiry = normaliseExpiryDate(expiryRaw);
+      if (!expiry) {
+        throw new HttpsError(
+          'failed-precondition',
+          '找不到預約會員的會籍有效期限，請聯絡管理員確認。',
+        );
+      }
+      if (date > expiry) {
+        throw new HttpsError(
+          'failed-precondition',
+          `您的會籍有效期限至 ${expiry.replace(/-/g, '/')}，續費後方可預約此日期。`,
+        );
+      }
+    }
+    if (court === 'hard_a' || court === 'hard_b') {
+      const sameDateSnap = await bookingDb.collection('bookings')
+        .where('date', '==', date)
+        .get();
+      const sameDateBookings = sameDateSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() || {}),
+      }));
+      assertGeneralDailyLimitAllowed(
+        sameDateBookings, booking, subjectUid, context.bookingId,
+      );
+      if (subjectRole !== 'coach') {
+        assertHardCourtUsageAllowed(
+          sameDateBookings,
+          subjectUid,
+          startTime,
+          endTime,
+          context.bookingId,
+        );
+      }
+    }
+  }
+
+  await context.bookingRef.update(update);
+  return {ok: true};
 });
 
 function assertParticipantMutationAllowed(booking) {

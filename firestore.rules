@@ -64,10 +64,55 @@ service cloud.firestore {
           && data.endTime is string
           && data.startTime.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')
           && data.endTime.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')
-          && timestamp.value('1970-01-01T' + data.endTime + ':00Z')
-               - timestamp.value('1970-01-01T' + data.startTime + ':00Z')
-               <= duration.value(60, 'm')
+          && (
+            (
+              ('date' in data)
+              && data.date is string
+              && data.date >= '2026-08-11'
+              && timestamp.value('1970-01-01T' + data.endTime + ':00Z')
+                   - timestamp.value('1970-01-01T' + data.startTime + ':00Z')
+                   <= duration.value(120, 'm')
+            )
+            || (
+              (
+                !('date' in data)
+                || !(data.date is string)
+                || data.date < '2026-08-11'
+              )
+              && timestamp.value('1970-01-01T' + data.endTime + ':00Z')
+                   - timestamp.value('1970-01-01T' + data.startTime + ':00Z')
+                   <= duration.value(60, 'm')
+            )
+          )
         );
+    }
+
+    function isGeneralDailyLimitBooking(data) {
+      return ('date' in data)
+        && data.date is string
+        && data.date >= '2026-08-11'
+        && (!('mode' in data) || data.mode in ['general', 'normal'])
+        && ('court' in data)
+        && data.court in ['hard_a', 'hard_b'];
+    }
+
+    function isOwnerOverlapRepair() {
+      return isOwner()
+        && ('movedReason' in request.resource.data)
+        && request.resource.data.movedReason == 'overlap_conflict_auto_fix'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'court', 'movedFromCourt', 'movedReason', 'movedAt', 'movedBy', 'history'
+        ]);
+    }
+
+    function isGeneralScheduleUpdateAllowed() {
+      return (
+          !isGeneralDailyLimitBooking(resource.data)
+          && !isGeneralDailyLimitBooking(request.resource.data)
+        )
+        || !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['date', 'startTime', 'endTime', 'court', 'mode'])
+        || isOwnerOverlapRepair();
     }
 
     // 合法的 financialRecord type 值
@@ -182,6 +227,7 @@ service cloud.firestore {
       allow update: if (
           isSignedIn()
           && isGeneralBookingDurationAllowed(request.resource.data)
+          && isGeneralScheduleUpdateAllowed()
           && (
             (
               (
