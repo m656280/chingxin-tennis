@@ -11225,6 +11225,25 @@ function _createGroupClassAnnouncement(coachUid, coachName, date, startTime, end
   }).catch(function(e){ console.error('groupClass announcement error:',e); });
 }
 
+function _teachingStudentEligibilityMessage(studentUids,date){
+  var invalidNames=[];
+  (studentUids||[]).filter(function(uid,i,all){ return uid&&all.indexOf(uid)===i; }).forEach(function(uid){
+    var member=usersCache[uid]||{};
+    var status=member.status||'';
+    var role=member.role||'';
+    var eligible=(role==='owner'||role==='admin')
+      ? status!=='deleted'&&status!=='blocked'
+      : status==='active'||status==='approved'||member.approved===true;
+    if(status==='deleted'||status==='blocked'||status==='resigned'||status==='rejected'||status==='pending') eligible=false;
+    var expiry=String(member.membershipExpiry||member.expireDate||'').trim().replace(/\//g,'-').slice(0,10);
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(expiry)||date>expiry) eligible=false;
+    if(!eligible) invalidNames.push(_mName(member)||uid);
+  });
+  return invalidNames.length
+    ? invalidNames.join('、')+' 目前無有效會籍，無法建立教學預約。\n\n請先完成繳費並聯繫協會更新會籍。'
+    : '';
+}
+
 /* ── Booking form: refresh student list based on selected coach's coachStudents ── */
 function _refreshFormStudentList(coachUid){
   var studentList=document.getElementById('formStudentList');
@@ -11290,7 +11309,7 @@ function _bookingParticipantUids(b){
      {queryError:true} — Firestore query failed; caller MUST block (fail-closed)
    ─────────────────────────────────────────────────────────────────────────── */
 var _CONFLICT_QUERY_ERROR = {queryError: true};
-var _GENERAL_DAILY_LIMIT_START = '2026-08-11';
+var _GENERAL_DAILY_LIMIT_START = '2026-08-10';
 var _GENERAL_DAILY_LIMIT_MESSAGE = '一般會員每日最多可預約 2 小時（Hard A、Hard B 合併計算）。';
 function hasGeneralDailyLimitExceeded(draft, excludeId){
   if(_normaliseMode(draft.mode)!=='general' ||
@@ -11421,7 +11440,7 @@ function _submitBookingEdit(){
   if(!date||!start||!end){ showToast('請填寫完整資料'); return; }
   if((court==='clay_a'||court==='clay_b')&&!isAdminLike()){ showToast('紅土場地僅限管理員預約'); return; }
   if(timeToMin(end)<=timeToMin(start)){ showToast('結束時間需晚於開始時間'); return; }
-  if(normMode==='general' && date<_GENERAL_DAILY_LIMIT_START && timeToMin(end)-timeToMin(start)>60){ showToast('一般會員預約每次以 1 小時為限。'); return; }
+  if(normMode==='general' && timeToMin(end)-timeToMin(start)>60){ showToast('一般會員預約每次以 1 小時為限。'); return; }
 
   var btn = document.getElementById('submitBookingBtn');
   if(btn){ btn.disabled=true; btn.textContent='儲存中…'; }
@@ -11460,6 +11479,12 @@ function _submitBookingEdit(){
     upd.coachId   = _coachId4;
     upd.coachName = (usersCache[_coachId4] ? _mName(usersCache[_coachId4]) : '') || (origBk && origBk.coachName) || '';
     upd.students  = _studs4;
+    var _studentEligibilityError4=_teachingStudentEligibilityMessage(_studs4,date);
+    if(_studentEligibilityError4){
+      if(btn){ btn.disabled=false; btn.textContent='儲存變更'; }
+      showToast(_studentEligibilityError4);
+      return;
+    }
 
   } else if(normMode === 'groupClass'){
     var _gcId4 = ((document.getElementById('formGroupCoach')||{}).value||'')
@@ -11543,7 +11568,8 @@ function _submitBookingEdit(){
     .catch(function(e){
       if(e&&e._bookingHandled) return;
       console.error('_submitBookingEdit error:', e);
-      if(e&&e.message===_GENERAL_DAILY_LIMIT_MESSAGE) showToast(e.message);
+      if(e&&e.message&&e.message.indexOf('目前無有效會籍，無法建立教學預約。')>=0) showToast(e.message);
+      else if(e&&e.message===_GENERAL_DAILY_LIMIT_MESSAGE) showToast(e.message);
       else showToast('儲存失敗：'+e.message);
     })
     .finally(function(){
@@ -11575,7 +11601,7 @@ function submitBooking(){
   if(mode==='groupClass'  && !isAdminLike()){ showToast('公益團課僅管理員可建立'); return; }
   if(mode==='event_lock'  && !isAdminLike()){ showToast('活動模式僅管理員可建立'); return; }
   if(timeToMin(end)<=timeToMin(start)){ showToast('結束時間需晚於開始時間'); return; }
-  if(_normaliseMode(mode)==='general' && date<_GENERAL_DAILY_LIMIT_START && timeToMin(end)-timeToMin(start)>60){ showToast('一般會員預約每次以 1 小時為限。'); return; }
+  if(_normaliseMode(mode)==='general' && timeToMin(end)-timeToMin(start)>60){ showToast('一般會員預約每次以 1 小時為限。'); return; }
   /* Validate start time against the date's open hours */
   var _fp=date.split('-');
   var _fd=new Date(parseInt(_fp[0],10),parseInt(_fp[1],10)-1,parseInt(_fp[2],10));
@@ -11603,6 +11629,8 @@ function submitBooking(){
   var students = [];
   if(mode==='teaching'){
     document.querySelectorAll('.formStudentCheck:checked').forEach(function(cb){ students.push(cb.value); });
+    var _studentEligibilityError=_teachingStudentEligibilityMessage(students,date);
+    if(_studentEligibilityError){ showToast(_studentEligibilityError); return; }
   }
 
   var myUid     = currentUser ? (currentUser.userId||currentUser.uid||currentUser.id||'') : '';
@@ -11718,7 +11746,8 @@ function submitBooking(){
     .catch(function(e){
       console.error('submitBooking error:',e);
       var _createErr = e && e.message ? e.message : '';
-      if(_createErr===_GENERAL_DAILY_LIMIT_MESSAGE ||
+      if(_createErr.indexOf('目前無有效會籍，無法建立教學預約。')>=0 ||
+         _createErr===_GENERAL_DAILY_LIMIT_MESSAGE ||
          _createErr.indexOf('您的會籍有效期限至 ')===0 ||
          _createErr.indexOf('硬地每人連續預約最多 2 小時')===0){
         showToast(_createErr);

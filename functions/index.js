@@ -22,7 +22,7 @@ admin.initializeApp();
 const bookingDb = admin.firestore();
 const SERVER_TS = admin.firestore.FieldValue.serverTimestamp;
 const ADMIN_ROLES = new Set(['owner', 'admin']);
-const GENERAL_DAILY_LIMIT_START = '2026-08-11';
+const GENERAL_DAILY_LIMIT_START = '2026-08-10';
 const GENERAL_DAILY_LIMIT_MESSAGE =
   '一般會員每日最多可預約 2 小時（Hard A、Hard B 合併計算）。';
 const MEMBERSHIP_EXPIRY_CANCEL_REASON =
@@ -84,6 +84,40 @@ function bookingSubjectUid(booking) {
 function normaliseExpiryDate(value) {
   const expiry = cleanString(value, 10).replace(/\//g, '-');
   return /^\d{4}-\d{2}-\d{2}$/.test(expiry) ? expiry : '';
+}
+
+function hasValidMembershipForBooking(member, date) {
+  const status = member.status || '';
+  if (['deleted', 'blocked', 'resigned', 'rejected', 'pending'].includes(status) ||
+      !isEligibleMember(member)) {
+    return false;
+  }
+  const expiry = normaliseExpiryDate(
+    member.membershipExpiry || member.expireDate || '',
+  );
+  return Boolean(expiry && date <= expiry);
+}
+
+async function assertSelectedTeachingStudentsEligible(studentUids, date) {
+  const selected = [...new Set((studentUids || []).filter(Boolean))];
+  if (!selected.length) return;
+  const snaps = await bookingDb.getAll(...selected.map((uid) =>
+    bookingDb.collection('members').doc(uid)));
+  const invalidNames = snaps.reduce((names, snap, index) => {
+    const member = snap.exists ? snap.data() || {} : {};
+    if (!snap.exists || !hasValidMembershipForBooking(member, date)) {
+      names.push(member.realName || member.name ||
+        member.displayName || selected[index]);
+    }
+    return names;
+  }, []);
+  if (invalidNames.length) {
+    throw new HttpsError(
+      'failed-precondition',
+      `${invalidNames.join('、')} 目前無有效會籍，無法建立教學預約。\n\n` +
+        '請先完成繳費並聯繫協會更新會籍。',
+    );
+  }
 }
 
 function timeToMinutes(value) {
@@ -235,7 +269,7 @@ exports.createBooking = onCall({region: 'asia-east1'}, async (request) => {
       timeToMinutes(endTime) <= timeToMinutes(startTime)) {
     throw new HttpsError('invalid-argument', '預約日期或時間格式不正確');
   }
-  if (mode === 'general' && date < GENERAL_DAILY_LIMIT_START &&
+  if (mode === 'general' &&
       timeToMinutes(endTime) - timeToMinutes(startTime) > 60) {
     throw new HttpsError(
       'failed-precondition',
@@ -298,6 +332,9 @@ exports.createBooking = onCall({region: 'asia-east1'}, async (request) => {
   }
   if (mode === 'teaching' && !booking.coachId) {
     throw new HttpsError('invalid-argument', '請選擇教練');
+  }
+  if (mode === 'teaching') {
+    await assertSelectedTeachingStudentsEligible(booking.students || [], date);
   }
   if (mode === 'general' &&
       (!booking.players || booking.players.length === 0 ||
@@ -382,7 +419,7 @@ exports.updateBooking = onCall({region: 'asia-east1'}, async (request) => {
       timeToMinutes(endTime) <= timeToMinutes(startTime)) {
     throw new HttpsError('invalid-argument', '預約日期或時間格式不正確');
   }
-  if (mode === 'general' && date < GENERAL_DAILY_LIMIT_START &&
+  if (mode === 'general' &&
       timeToMinutes(endTime) - timeToMinutes(startTime) > 60) {
     throw new HttpsError(
       'failed-precondition',
@@ -439,6 +476,9 @@ exports.updateBooking = onCall({region: 'asia-east1'}, async (request) => {
   }
 
   const booking = Object.assign({}, context.booking, update);
+  if (mode === 'teaching') {
+    await assertSelectedTeachingStudentsEligible(booking.students || [], date);
+  }
   const subjectUid = bookingSubjectUid(booking);
   if (subjectUid) {
     const subjectSnap = await bookingDb.collection('members').doc(subjectUid).get();

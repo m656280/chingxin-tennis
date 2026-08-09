@@ -64,33 +64,16 @@ service cloud.firestore {
           && data.endTime is string
           && data.startTime.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')
           && data.endTime.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')
-          && (
-            (
-              ('date' in data)
-              && data.date is string
-              && data.date >= '2026-08-11'
-              && timestamp.value('1970-01-01T' + data.endTime + ':00Z')
-                   - timestamp.value('1970-01-01T' + data.startTime + ':00Z')
-                   <= duration.value(120, 'm')
-            )
-            || (
-              (
-                !('date' in data)
-                || !(data.date is string)
-                || data.date < '2026-08-11'
-              )
-              && timestamp.value('1970-01-01T' + data.endTime + ':00Z')
-                   - timestamp.value('1970-01-01T' + data.startTime + ':00Z')
-                   <= duration.value(60, 'm')
-            )
-          )
+          && timestamp.value('1970-01-01T' + data.endTime + ':00Z')
+               - timestamp.value('1970-01-01T' + data.startTime + ':00Z')
+               <= duration.value(60, 'm')
         );
     }
 
     function isGeneralDailyLimitBooking(data) {
       return ('date' in data)
         && data.date is string
-        && data.date >= '2026-08-11'
+        && data.date >= '2026-08-10'
         && (!('mode' in data) || data.mode in ['general', 'normal'])
         && ('court' in data)
         && data.court in ['hard_a', 'hard_b'];
@@ -112,6 +95,22 @@ service cloud.firestore {
         )
         || !request.resource.data.diff(resource.data).affectedKeys()
               .hasAny(['date', 'startTime', 'endTime', 'court', 'mode'])
+        || isOwnerOverlapRepair();
+    }
+
+    function isTeachingBooking(data) {
+      return ('mode' in data)
+        && data.mode in ['teaching', 'lesson', 'coaching'];
+    }
+
+    function isTeachingScheduleUpdateAllowed() {
+      return (
+          !isTeachingBooking(resource.data)
+          && !isTeachingBooking(request.resource.data)
+        )
+        || !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['date', 'startTime', 'endTime', 'court', 'mode',
+                       'students', 'coachId'])
         || isOwnerOverlapRepair();
     }
 
@@ -228,6 +227,7 @@ service cloud.firestore {
           isSignedIn()
           && isGeneralBookingDurationAllowed(request.resource.data)
           && isGeneralScheduleUpdateAllowed()
+          && isTeachingScheduleUpdateAllowed()
           && (
             (
               (
