@@ -2038,6 +2038,12 @@ button {
     <span class="subSheetTitle" id="finCategoryTitle"></span>
     <span style="width:32px"></span>
   </div>
+  <div style="padding:0 20px">
+    <input class="finSearchBar" id="finCategorySearch" type="search" placeholder="搜尋會員姓名"
+      oncompositionstart="startFinCategoryComposition()"
+      oncompositionend="endFinCategoryComposition(this)"
+      oninput="handleFinCategoryInput(this,event)">
+  </div>
   <div id="finCategoryContent"></div>
 </div>
 
@@ -3061,6 +3067,7 @@ let _finChartMode = 'income'; // 'income' | 'expense' | 'member'
 let _finShowVoided = false;   // detail view: toggle to show/hide voided records
 let _finCategoryType = '';
 let _finCategoryQuery = '';
+let _finCategoryComposing = false;
 var _finIgnorePairSet = null; // null = not loaded; object keyed by sorted "idA|idB" for name-dup ignore
 
 /* ── Finance Chart Colors (club palette, low-saturation) ── */
@@ -6532,20 +6539,42 @@ function _statCard(label, type, amt, isOut){
 function openFinCategory(type){
   _finCategoryType = type;
   _finCategoryQuery = '';
+  _finCategoryComposing = false;
+  var searchInput = document.getElementById('finCategorySearch');
+  if(searchInput) searchInput.value = '';
   _renderFinCategory();
   document.getElementById('finCategoryTitle').textContent = (FIN_TYPE_LABEL[type]||type)+'明細';
   document.getElementById('sheetBackdrop').classList.add('open');
   document.getElementById('finCategorySheet').classList.add('open');
 }
 
+function startFinCategoryComposition(){
+  _finCategoryComposing = true;
+}
+
+function endFinCategoryComposition(input){
+  _finCategoryComposing = false;
+  filterFinCategory(input ? input.value : '');
+}
+
+function handleFinCategoryInput(input, event){
+  if(_finCategoryComposing || (event && event.isComposing)) return;
+  filterFinCategory(input ? input.value : '');
+}
+
 function filterFinCategory(q){
+  var inp = document.getElementById('finCategorySearch');
+  var hadFocus = inp && document.activeElement === inp;
+  var cursorStart = inp && typeof inp.selectionStart === 'number' ? inp.selectionStart : null;
+  var cursorEnd = inp && typeof inp.selectionEnd === 'number' ? inp.selectionEnd : null;
   _finCategoryQuery = q || '';
   _renderFinCategory();
-  var inp = document.getElementById('finCategorySearch');
   if(inp){
-    inp.value = _finCategoryQuery;
-    inp.focus();
-    inp.setSelectionRange(inp.value.length, inp.value.length);
+    if(inp.value !== _finCategoryQuery) inp.value = _finCategoryQuery;
+    if(hadFocus && document.activeElement !== inp) inp.focus();
+    if(hadFocus && cursorStart !== null && cursorEnd !== null){
+      inp.setSelectionRange(cursorStart, cursorEnd);
+    }
   }
 }
 
@@ -6574,9 +6603,7 @@ function _renderFinCategory(){
     return (r.status||'active') === 'refund' ? a - r.amount : a + r.amount;
   }, 0);
 
-  let html = '<div style="padding:0 20px">'
-    + '<input class="finSearchBar" id="finCategorySearch" type="search" placeholder="搜尋會員姓名" oninput="filterFinCategory(this.value)">'
-    + '</div><div class="finCategorySummary">';
+  let html = '<div class="finCategorySummary">';
   html += '<span style="font-size:11px;color:var(--color-text-muted);letter-spacing:0.06em">共 '+activeRecords.length+' 筆</span>';
   html += '<span style="font-family:var(--font-body);font-size:19px;font-weight:600;letter-spacing:0">'+fmt(total)+'</span>';
   html += '</div>';
@@ -6610,6 +6637,7 @@ function _renderFinCategory(){
 }
 
 function closeFinCategory(){
+  _finCategoryComposing = false;
   document.getElementById('finCategorySheet').classList.remove('open');
   document.getElementById('sheetBackdrop').classList.remove('open');
 }
