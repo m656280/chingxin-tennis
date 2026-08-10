@@ -6542,7 +6542,7 @@ function openFinCategory(type){
   _finCategoryComposing = false;
   var searchInput = document.getElementById('finCategorySearch');
   if(searchInput) searchInput.value = '';
-  _renderFinCategory();
+  _renderFinCategory('');
   document.getElementById('finCategoryTitle').textContent = (FIN_TYPE_LABEL[type]||type)+'明細';
   document.getElementById('sheetBackdrop').classList.add('open');
   document.getElementById('finCategorySheet').classList.add('open');
@@ -6567,8 +6567,8 @@ function filterFinCategory(q){
   var hadFocus = inp && document.activeElement === inp;
   var cursorStart = inp && typeof inp.selectionStart === 'number' ? inp.selectionStart : null;
   var cursorEnd = inp && typeof inp.selectionEnd === 'number' ? inp.selectionEnd : null;
-  _finCategoryQuery = q || '';
-  _renderFinCategory();
+  _finCategoryQuery = String(q || '');
+  _renderFinCategory(_finCategoryQuery);
   if(inp){
     if(inp.value !== _finCategoryQuery) inp.value = _finCategoryQuery;
     if(hadFocus && document.activeElement !== inp) inp.focus();
@@ -6578,8 +6578,13 @@ function filterFinCategory(q){
   }
 }
 
-function _renderFinCategory(){
+function _renderFinCategory(query){
   var type = _finCategoryType;
+  var searchInput = document.getElementById('finCategorySearch');
+  var queryValue = typeof query === 'string'
+    ? query
+    : (searchInput ? searchInput.value : _finCategoryQuery);
+  _finCategoryQuery = String(queryValue || '');
   const allRecs = financeRecords;
   const categoryRecords = allRecs.filter(function(r){
     return r.type === type
@@ -6589,16 +6594,17 @@ function _renderFinCategory(){
   const records = categoryRecords.filter(function(r){
     return _finShowVoided || (r.status||'active') !== 'void';
   });
-  var q = _finCategoryQuery.toLowerCase().trim();
+  var q = _finCategoryQuery.normalize('NFKC').toLowerCase().trim();
   const filtered = q ? records.filter(function(r){
-    var name = _finRecName(r).toLowerCase();
-    if(name.indexOf(q) >= 0) return true;
+    var name = String(_finRecName(r)||'').normalize('NFKC').toLowerCase();
+    if(name.includes(q)) return true;
     return r.type === 'day_pass' && !r.memberId &&
-      String(r.note||r.description||r.remark||'').toLowerCase().indexOf(q) >= 0;
+      String(r.note||r.description||r.remark||'')
+        .normalize('NFKC').toLowerCase().includes(q);
   }) : records;
   const fmt = function(n){ return 'NT$ '+(n).toLocaleString(); };
   // void 不列入統計；refund 扣除
-  const activeRecords = categoryRecords.filter(function(r){ return (r.status||'active') !== 'void'; });
+  const activeRecords = filtered.filter(function(r){ return (r.status||'active') !== 'void'; });
   const total = activeRecords.reduce(function(a,r){
     return (r.status||'active') === 'refund' ? a - r.amount : a + r.amount;
   }, 0);
