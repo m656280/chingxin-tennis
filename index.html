@@ -6229,7 +6229,8 @@ function _renderFinDetail(source, isAdmin, fmt){
     if(isAdmin && !isVoid){
       delIcon = '<button class="finActBtn void-btn" onclick="event.stopPropagation();deleteFinanceRecord(\''+r.id+'\')">作廢</button>';
     } else if(_isOwnerRole && isVoid){
-      delIcon = '<button class="finActBtn perm-del-btn" onclick="event.stopPropagation();permanentDeleteFinanceRecordById(\''+r.id+'\')">永久刪除</button>';
+      delIcon = '<button class="finActBtn" onclick="event.stopPropagation();restoreFinanceRecord(\''+r.id+'\')">恢復</button>'
+        + '<button class="finActBtn perm-del-btn" onclick="event.stopPropagation();permanentDeleteFinanceRecordById(\''+r.id+'\')">永久刪除</button>';
     }
     var _canEditRow = isAdmin && !isVoid;
     html += '<div class="financeRecord'+(isVoid?' finRecordVoid':'')+'" style="align-items:flex-start">'
@@ -6623,9 +6624,38 @@ function deleteFinanceRecord(id){
   if(!isAdminLike()){ showToast('僅管理員可作廢紀錄'); return; }
   _showFinConfirm(
     '作廢財務紀錄？',
-    '此筆資料會保留在稽核紀錄中，但不會列入總覽、統計與 CSV 匯出。',
+    '確定要作廢這筆收費紀錄嗎？作廢後僅 Owner 可恢復。',
     '確認作廢', false,
     function(){ _doVoidFinRecord(id, 'manual', '', null); }
+  );
+}
+
+function restoreFinanceRecord(id){
+  if(_currentRole() !== 'owner'){ showToast('僅 Owner 可恢復財務紀錄'); return; }
+  var rec = financeRecords.find(function(r){ return r.id===id; });
+  if(!rec){ showToast('找不到紀錄'); return; }
+  if((rec.status || 'active') !== 'void'){ showToast('只能恢復已作廢的財務紀錄'); return; }
+  _showFinConfirm(
+    '恢復財務紀錄？',
+    '將恢復此筆原始財務紀錄並重新納入列表與統計。',
+    '確認恢復', false,
+    function(){
+      ensureFirebaseAuth().then(function(fbUser){
+        if(!fbUser) throw new Error('Firebase 身份驗證失敗，請重新登入 LINE');
+        return firebase.app().functions('asia-east1').httpsCallable('restoreFinancialRecord')({recordId:id});
+      }).then(function(){
+        rec.status = 'active';
+        closeFinanceDetail();
+        renderFinance();
+        _updateManageNavBadge();
+        var manScreen = document.getElementById('screen-manage');
+        if(manScreen && manScreen.classList.contains('active')){ renderManage(); }
+        showToast('財務紀錄已恢復');
+      }).catch(function(e){
+        console.error('restoreFinanceRecord error:', e);
+        showToast(e && e.message ? e.message : '恢復失敗，請稍後再試');
+      });
+    }
   );
 }
 

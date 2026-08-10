@@ -791,6 +791,51 @@ exports.cancelBooking = onCall({region: 'asia-east1'}, async (request) => {
   return {ok: true, cancelledByName: actorName};
 });
 
+exports.restoreFinancialRecord = onCall({region: 'asia-east1'}, async (request) => {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError('unauthenticated', '請重新登入 LINE 後再試');
+  }
+
+  const actorUid = request.auth.uid;
+  const actorSnap = await bookingDb.collection('members').doc(actorUid).get();
+  const actor = actorSnap.exists ? actorSnap.data() || {} : {};
+  if (!actorSnap.exists || actor.role !== 'owner') {
+    throw new HttpsError('permission-denied', '僅 Owner 可恢復財務紀錄');
+  }
+  const actorName = cleanString(
+    actor.realName || actor.name || actor.displayName,
+    100,
+  );
+  if (!actorName) {
+    throw new HttpsError('failed-precondition', '找不到 Owner 正式姓名');
+  }
+
+  const recordId = cleanString(request.data && request.data.recordId, 200);
+  if (!recordId) {
+    throw new HttpsError('invalid-argument', '缺少財務紀錄 ID');
+  }
+  const recordRef = bookingDb.collection('financialRecords').doc(recordId);
+  const recordSnap = await recordRef.get();
+  if (!recordSnap.exists) {
+    throw new HttpsError('not-found', '找不到財務紀錄');
+  }
+  if ((recordSnap.data().status || 'active') !== 'void') {
+    throw new HttpsError('failed-precondition', '只能恢復已作廢的財務紀錄');
+  }
+
+  const batch = bookingDb.batch();
+  batch.update(recordRef, {status: 'active'});
+  batch.set(bookingDb.collection('financialAuditLogs').doc(), {
+    recordId,
+    action: 'restore',
+    restoredByUid: actorUid,
+    restoredByName: actorName,
+    restoredAt: SERVER_TS(),
+  });
+  await batch.commit();
+  return {ok: true, recordId};
+});
+
 // ── createManualMember ────────────────────────────────────────────────
 // 管理員手動建立會員（無 LINE 帳號者）。
 // 由 Admin SDK 寫入 Firestore（bypass rules），

@@ -332,13 +332,19 @@ service cloud.firestore {
 
       // 更新：允許（admin 修改金額/作廢/合併等操作）
       // TODO [L2]: 改為 isAdmin 後限制
-      allow update: if isValidFinanceStatus(request.resource.data.status)
+      allow update: if resource.data.status != 'void'
+                    && isValidFinanceStatus(request.resource.data.status)
                     && request.resource.data.amount is number
                     && request.resource.data.amount > 0;
 
-      // 刪除：允許（admin 永久刪除誤新增資料，前端有確認對話框）
-      // TODO [L2]: 改為 isAdmin 後限制
-      allow delete: if true;
+      // 永久刪除：僅 owner。
+      allow delete: if isOwner();
+    }
+
+    // 財務恢復 audit：僅 Admin SDK / Callable 可寫。
+    match /financialAuditLogs/{auditId} {
+      allow read: if isOwner();
+      allow create, update, delete: if false;
     }
 
     // ──────────────────────────────────────────────────────────────────────
