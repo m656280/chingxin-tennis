@@ -3059,6 +3059,8 @@ let _finConfirmCallback = null; // pending callback for finConfirmDlg
 let _finViewTab = 'overview'; // 'overview' | 'detail' | 'chart'
 let _finChartMode = 'income'; // 'income' | 'expense' | 'member'
 let _finShowVoided = false;   // detail view: toggle to show/hide voided records
+let _finCategoryType = '';
+let _finCategoryQuery = '';
 var _finIgnorePairSet = null; // null = not loaded; object keyed by sorted "idA|idB" for name-dup ignore
 
 /* ── Finance Chart Colors (club palette, low-saturation) ── */
@@ -6271,10 +6273,10 @@ function _renderFinChart(source, income, expense, annual, monthly, dayPass, dona
 /* ── Finance: Income donut ── */
 function _finChartIncome(source, income, annual, monthly, dayPass, donate, fmt){
   var segs = [
-    {value:annual,   color:FIN_CHART_COLORS.annual,    label:'年費'},
-    {value:monthly,  color:FIN_CHART_COLORS.monthly,   label:'月費'},
-    {value:dayPass,  color:FIN_CHART_COLORS.day_pass,  label:'臨打'},
-    {value:donate,   color:FIN_CHART_COLORS.donate,    label:'抖內'},
+    {type:'annual',   value:annual,  color:FIN_CHART_COLORS.annual,   label:'年費'},
+    {type:'monthly',  value:monthly, color:FIN_CHART_COLORS.monthly,  label:'月費'},
+    {type:'day_pass', value:dayPass, color:FIN_CHART_COLORS.day_pass, label:'臨打'},
+    {type:'donate',   value:donate,  color:FIN_CHART_COLORS.donate,   label:'抖內'},
   ].filter(function(s){return s.value>0;});
   if(!segs.length) return '<div class="emptyState" style="padding:32px 0">本年度尚無收入紀錄</div>';
   var html = '<div class="finChartDonutWrap">';
@@ -6289,7 +6291,7 @@ function _finChartIncome(source, income, annual, monthly, dayPass, donate, fmt){
   html += '<div class="finChartRanking">';
   sorted.forEach(function(s,i){
     var pct = income>0?Math.round(s.value/income*100):0;
-    html += '<div class="finChartRankRow">'
+    html += '<div class="finChartRankRow" style="cursor:pointer" onclick="openFinCategory(\''+s.type+'\')">'
       +'<span class="finChartRankNum">'+(i+1)+'</span>'
       +'<div class="finChartLegendDot" style="background:'+s.color+';margin:0 2px"></div>'
       +'<span class="finChartRankName">'+s.label+'</span>'
@@ -6387,8 +6389,11 @@ function _donutSVG(segs, size, hole){
   // Single-segment case: SVG arc is degenerate for a full 360° sweep → use two circles instead
   var activeSegs = segs.filter(function(s){ return s.value>0; });
   if(activeSegs.length === 1){
+    var singleClick = activeSegs[0].type
+      ? ' style="cursor:pointer" onclick="openFinCategory(\''+activeSegs[0].type+'\')"'
+      : '';
     return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'" xmlns="http://www.w3.org/2000/svg">'
-      +'<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="'+activeSegs[0].color+'" opacity="0.88"/>'
+      +'<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="'+activeSegs[0].color+'" opacity="0.88"'+singleClick+'/>'
       +'<circle cx="'+cx+'" cy="'+cy+'" r="'+ir+'" fill="var(--color-bg)"/>'
       +'</svg>';
   }
@@ -6406,7 +6411,10 @@ function _donutSVG(segs, size, hole){
       +' L '+f(cx+ir*Math.cos(ea))+' '+f(cy+ir*Math.sin(ea))
       +' A '+ir+' '+ir+' 0 '+la+' 0 '+f(cx+ir*Math.cos(sa))+' '+f(cy+ir*Math.sin(sa))
       +' Z';
-    paths+='<path d="'+d+'" fill="'+seg.color+'" opacity="0.88"/>';
+    var segClick = seg.type
+      ? ' style="cursor:pointer" onclick="openFinCategory(\''+seg.type+'\')"'
+      : '';
+    paths+='<path d="'+d+'" fill="'+seg.color+'" opacity="0.88"'+segClick+'/>';
     sa+=por*2*Math.PI;
   });
   function f(n){return n.toFixed(2);}
@@ -6522,40 +6530,74 @@ function _statCard(label, type, amt, isOut){
 
 /* ── Finance: Category Sheet ── */
 function openFinCategory(type){
+  _finCategoryType = type;
+  _finCategoryQuery = '';
+  _renderFinCategory();
+  document.getElementById('finCategoryTitle').textContent = (FIN_TYPE_LABEL[type]||type)+'明細';
+  document.getElementById('sheetBackdrop').classList.add('open');
+  document.getElementById('finCategorySheet').classList.add('open');
+}
+
+function filterFinCategory(q){
+  _finCategoryQuery = q || '';
+  _renderFinCategory();
+  var inp = document.getElementById('finCategorySearch');
+  if(inp){
+    inp.value = _finCategoryQuery;
+    inp.focus();
+    inp.setSelectionRange(inp.value.length, inp.value.length);
+  }
+}
+
+function _renderFinCategory(){
+  var type = _finCategoryType;
   const allRecs = financeRecords;
-  const records = allRecs.filter(function(r){
+  const categoryRecords = allRecs.filter(function(r){
     return r.type === type
-        && (r.year || parseInt(r.date.slice(0,4),10)) === _finYear;
+        && (r.year || parseInt(r.date.slice(0,4),10)) === _finYear
+        && (_finMonth === 0 || parseInt((r.date||'').slice(5,7),10) === _finMonth);
   });
+  const records = categoryRecords.filter(function(r){
+    return _finShowVoided || (r.status||'active') !== 'void';
+  });
+  var q = _finCategoryQuery.toLowerCase().trim();
+  const filtered = q ? records.filter(function(r){
+    var name = _finRecName(r).toLowerCase();
+    if(name.indexOf(q) >= 0) return true;
+    return r.type === 'day_pass' && !r.memberId &&
+      String(r.note||r.description||r.remark||'').toLowerCase().indexOf(q) >= 0;
+  }) : records;
   const fmt = function(n){ return 'NT$ '+(n).toLocaleString(); };
   // void 不列入統計；refund 扣除
-  const activeRecords = records.filter(function(r){ return (r.status||'active') !== 'void'; });
+  const activeRecords = categoryRecords.filter(function(r){ return (r.status||'active') !== 'void'; });
   const total = activeRecords.reduce(function(a,r){
     return (r.status||'active') === 'refund' ? a - r.amount : a + r.amount;
   }, 0);
 
-  let html = '<div class="finCategorySummary">';
+  let html = '<div style="padding:0 20px">'
+    + '<input class="finSearchBar" id="finCategorySearch" type="search" placeholder="搜尋會員姓名" oninput="filterFinCategory(this.value)">'
+    + '</div><div class="finCategorySummary">';
   html += '<span style="font-size:11px;color:var(--color-text-muted);letter-spacing:0.06em">共 '+activeRecords.length+' 筆</span>';
   html += '<span style="font-family:var(--font-body);font-size:19px;font-weight:600;letter-spacing:0">'+fmt(total)+'</span>';
   html += '</div>';
 
-  if(!records.length){
-    html += '<div class="emptyState">此分類尚無紀錄</div>';
+  if(!filtered.length){
+    html += '<div class="emptyState">'+(q?'找不到符合的會員姓名':'此分類尚無紀錄')+'</div>';
   } else {
-    const sorted = records.slice().sort(function(a,b){ return b.date.localeCompare(a.date); });
+    const sorted = filtered.slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
     sorted.forEach(function(r){
       var rSt = r.status || 'active';
+      var displayName = _finRecName(r) || '—';
       var catStatusBadge = rSt === 'void'
         ? '<span class="finStatusBadge void">已作廢</span> '
         : rSt === 'refund'
         ? '<span class="finStatusBadge refund">已退費</span> '
         : '';
-      var _catCanEdit = isAdminLike() && rSt !== 'void' && rSt !== 'deleted' && rSt !== 'archived';
-      html += '<div class="finCategoryRecord'+(rSt==='void'?' finRecordVoid':'')+'">'
-        + '<div class="financeRecordLeft finRecordLeft" onclick="closeFinCategory();openFinanceDetail(\''+r.id+'\')">'
-          + '<div class="financeRecordName">'+catStatusBadge+(r.member||'—')+'</div>'
-          + '<div class="financeRecordMeta">'+r.date+(r.note?' · '+r.note:'')+'</div>'
-          + (r.createdByName ? '<div class="financeRecordMeta" style="opacity:0.65">登記：'+r.createdByName+'</div>' : '')
+      html += '<div class="finCategoryRecord'+(rSt==='void'?' finRecordVoid':'')+'" style="cursor:pointer" onclick="closeFinCategory();openFinanceDetail(\''+r.id+'\')">'
+        + '<div class="financeRecordLeft finRecordLeft">'
+          + '<div class="financeRecordName">'+catStatusBadge+_esc(displayName)+'</div>'
+          + '<div class="financeRecordMeta">'+_esc(r.date||'—')+' · '+_esc(FIN_TYPE_LABEL[r.type]||r.type||'')+'</div>'
+          + (r.createdByName ? '<div class="financeRecordMeta" style="opacity:0.65">登記：'+_esc(r.createdByName)+'</div>' : '')
         + '</div>'
         + '<div class="financeRecordAmt" style="font-size:16px">'+fmt(r.amount)+'</div>'
       + '</div>';
@@ -6565,9 +6607,6 @@ function openFinCategory(type){
   }
 
   document.getElementById('finCategoryContent').innerHTML = html;
-  document.getElementById('finCategoryTitle').textContent = (FIN_TYPE_LABEL[type]||type)+'明細';
-  document.getElementById('sheetBackdrop').classList.add('open');
-  document.getElementById('finCategorySheet').classList.add('open');
 }
 
 function closeFinCategory(){
