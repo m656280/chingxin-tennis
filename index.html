@@ -6303,7 +6303,7 @@ function _finChartIncome(source, income, annual, monthly, dayPass, donate, fmt){
 
 /* ── Finance: Expense donut ── */
 function _finChartExpense(source, expense, fmt){
-  var expRecs = source.filter(function(r){return r.type==='expense';});
+  var expRecs = source.filter(function(r){return r.type==='expense' && (r.status||'active')!=='void';});
   if(!expRecs.length) return '<div class="emptyState" style="padding:32px 0">本年度尚無支出紀錄</div>';
   var catMap = {};
   expRecs.forEach(function(r){
