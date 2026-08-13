@@ -4615,18 +4615,18 @@ function _renderMembersTab(el){
       unpaidMembers.forEach(function(m){
         var fs   = _calcMemberFeeStatus(m);
         var mUid = m.userId || m.uid || '';
+        var canLeave = mUid && mUid !== _myId && m.role !== 'owner'
+          && !(_cuRole === 'admin' && m.role === 'admin');
         html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;gap:8px">';
         html += '<span style="font-size:13px;color:var(--color-text-primary);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_esc(m.realName||m.displayName||'未知')+'</span>';
-        if(fs.status === 'none'){
-          html += '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid rgba(184,92,74,0.55);background:transparent;color:#8C4637;cursor:pointer;white-space:nowrap" '
-                + 'onclick="openFinanceFormForMember(\''+mUid+'\')">建立繳費紀錄</button>';
-        } else if(fs.status === 'overdue'){
-          html += '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">'
-                + '<span class="feeStatusBadge '+fs.status+'">'+fs.statusLabel+'</span>'
-                + '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid rgba(184,92,74,0.55);background:transparent;color:#8C4637;cursor:pointer;white-space:nowrap" '
-                + 'onclick="openFinanceFormForMember(\''+mUid+'\')">建立繳費紀錄</button>'
-                + '</div>';
-        }
+        html += '<div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;flex-shrink:0">'
+              + '<span class="feeStatusBadge '+fs.status+'">'+fs.statusLabel+'</span>'
+              + '<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid rgba(184,92,74,0.55);background:transparent;color:#8C4637;cursor:pointer;white-space:nowrap" '
+              + 'onclick="openFinanceFormForMember(\''+mUid+'\')">建立繳費紀錄</button>'
+              + (canLeave
+                ? '<button style="font-size:11px;padding:4px 9px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer;white-space:nowrap" onclick="removeMember(\''+mUid+'\')">離會</button>'
+                : '')
+              + '</div>';
         html += '</div>';
       });
       html += '</div>';
@@ -5386,12 +5386,15 @@ function reOpenRejected(userId){
 /* ── Remove Member (離會) ── */
 function removeMember(userId){
   if(!db){showToast('無法連線，請稍後再試');return;}
+  if(!isAdminLike()){showToast('無權限執行此操作');return;}
   var target=usersCache[userId];
   if(!target){showToast('找不到此會員');return;}
+  var myUid=currentUser?(currentUser.uid||currentUser.userId||''):'';
+  if(userId===myUid){showToast('不可將自己設為離會');return;}
   if(target.role==='owner'){showToast('開發者無法離會');return;}
   var operator=_currentRole();
   if(operator==='admin'&&(target.role==='owner'||target.role==='admin')){showToast('管理員無法操作此身份');return;}
-  if(!confirm('確定讓「'+(_mName(target)||userId)+'」離會？\n（資料保留，可隨時恢復）'))return;
+  if(!confirm('確定要將『'+(_mName(target)||userId)+'』設為離會嗎？\n離會後將失去有效會員資格，但歷史財務、預約與教練認領資料會保留。'))return;
   db.collection('members').doc(userId).update({status:'deleted',approved:false,deletedAt:TS()})
     .then(function(){
       if(usersCache[userId]){usersCache[userId].status='deleted';usersCache[userId].approved=false;}
@@ -5437,8 +5440,10 @@ function unblockMember(userId){
 /* ── Restore Member (恢復會員) ── */
 function restoreMember(userId){
   if(!db){showToast('無法連線，請稍後再試');return;}
+  if(!isAdminLike()){showToast('無權限執行此操作');return;}
   var target=usersCache[userId];
   if(!target){showToast('找不到此會員');return;}
+  if((target.status||'')!=='deleted'){showToast('僅可恢復已離會會員');return;}
   if(!confirm('確定恢復「'+(_mName(target)||userId)+'」的會員資格？'))return;
   db.collection('members').doc(userId).update({status:'approved',approved:true,restoredAt:TS()})
     .then(function(){

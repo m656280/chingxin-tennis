@@ -201,7 +201,35 @@ service cloud.firestore {
         )
         // owner 帳號的 role 不可被任何 client 端請求修改
         && (resource.data.role != 'owner'
-            || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']));
+            || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']))
+        // 離會沿用前端既有權限：admin 不可操作 owner/admin，owner 不可被離會。
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])
+          || (
+            request.resource.data.status == 'deleted'
+            && isAdminLike()
+            && request.auth.uid != userId
+            && resource.data.role != 'owner'
+            && (actorRole() == 'owner' || resource.data.role != 'admin')
+            && request.resource.data.approved == false
+            && request.resource.data.deletedAt is timestamp
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['status', 'approved', 'deletedAt'])
+          )
+          || (
+            resource.data.status == 'deleted'
+            && request.resource.data.status == 'approved'
+            && isAdminLike()
+            && request.resource.data.approved == true
+            && request.resource.data.restoredAt is timestamp
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['status', 'approved', 'restoredAt'])
+          )
+          || (
+            resource.data.status != 'deleted'
+            && request.resource.data.status != 'deleted'
+          )
+        );
 
       // 刪除：全部封鎖。
       // permanentDeleteMember 是 owner-only 且極少使用，

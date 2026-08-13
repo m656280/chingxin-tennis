@@ -39,6 +39,7 @@ function isActiveBooking(booking) {
 
 function isEligibleMember(member) {
   if (!member) return false;
+  if (member.status === 'deleted') return false;
   if (ADMIN_ROLES.has(member.role || '')) {
     return member.status !== 'deleted' && member.status !== 'blocked';
   }
@@ -349,6 +350,9 @@ exports.createBooking = onCall({region: 'asia-east1'}, async (request) => {
       throw new HttpsError('failed-precondition', '找不到預約會員資料');
     }
     const subject = subjectSnap.data() || {};
+    if (!isEligibleMember(subject)) {
+      throw new HttpsError('failed-precondition', '此會員已離會或不具有效會員資格，無法預約');
+    }
     const subjectRole = subject.role || '';
     if (!ADMIN_ROLES.has(subjectRole)) {
       const expiryRaw = subject.membershipExpiry || subject.expireDate || '';
@@ -486,6 +490,9 @@ exports.updateBooking = onCall({region: 'asia-east1'}, async (request) => {
       throw new HttpsError('failed-precondition', '找不到預約會員資料');
     }
     const subject = subjectSnap.data() || {};
+    if (!isEligibleMember(subject)) {
+      throw new HttpsError('failed-precondition', '此會員已離會或不具有效會員資格，無法預約');
+    }
     const subjectRole = subject.role || '';
     if (!ADMIN_ROLES.has(subjectRole)) {
       const expiryRaw = subject.membershipExpiry || subject.expireDate || '';
