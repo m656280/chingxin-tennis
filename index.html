@@ -6217,9 +6217,8 @@ function _renderFinDetail(source, isAdmin, fmt){
       ? (usersCache[r.memberId] || null)
       : (r.member ? Object.values(usersCache).find(function(x){ return (x.displayName||'')===r.member; }) : null);
     var _ms=memberObj?memberObj.status:null;
-    // live name — 優先 usersCache，fallback 到寫入時快照
-    var _liveN = memberObj ? (memberObj.realName || memberObj.displayName || '') : '';
-    var _dispN = _liveN || r.memberRealName || r.member || '—';
+    var _memberN = _finRecName(r);
+    var _dispN = _finRecDisplayName(r);
     var resignedTag = (_ms==='resigned')
       ? '<span style="font-size:9.5px;letter-spacing:0.05em;color:#8C4637;background:rgba(130,65,52,0.09);padding:2px 7px;border-radius:99px;margin-left:6px;vertical-align:middle">已退會</span>'
       : (_ms==='deleted')
@@ -6246,7 +6245,7 @@ function _renderFinDetail(source, isAdmin, fmt){
       + '<div class="finRecordLeft financeRecordLeft"'
       + ' onclick="openFinanceDetail(\''+r.id+'\')">'
         + '<div class="financeRecordName">'+_dispN+resignedTag+'</div>'
-        + (r.note?'<div class="finRecordNote">'+r.note+'</div>':'')
+        + (r.note && _memberN?'<div class="finRecordNote">'+r.note+'</div>':'')
         + '<div class="finRecordDateMeta">'+dateMeta+'</div>'
         + statusBadge
       + '</div>'
@@ -6558,7 +6557,16 @@ function endFinCategoryComposition(input){
 }
 
 function handleFinCategoryInput(input, event){
-  if(_finCategoryComposing || (event && event.isComposing)) return;
+  if(_finCategoryComposing || (event && event.isComposing)){
+    var composingValue = String(input ? input.value : '');
+    var hasBopomofo = /[\u3100-\u312f\u31a0-\u31bf]/.test(composingValue);
+    var hasChinese = /[\u3400-\u9fff\uf900-\ufaff]/.test(composingValue);
+    if(hasChinese && !hasBopomofo){
+      _finCategoryQuery = composingValue;
+      _renderFinCategory(composingValue);
+    }
+    return;
+  }
   filterFinCategory(input ? input.value : '');
 }
 
@@ -6620,7 +6628,7 @@ function _renderFinCategory(query){
     const sorted = filtered.slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
     sorted.forEach(function(r){
       var rSt = r.status || 'active';
-      var displayName = _finRecName(r) || '—';
+      var displayName = _finRecDisplayName(r);
       var catStatusBadge = rSt === 'void'
         ? '<span class="finStatusBadge void">已作廢</span> '
         : rSt === 'refund'
@@ -7061,6 +7069,13 @@ function _finRecName(r){
       || r.name
       || r.member
       || '';
+}
+
+function _finRecDisplayName(r){
+  var memberName = String(_finRecName(r) || '').trim();
+  if(memberName) return memberName;
+  var note = String(r.note || '').trim();
+  return note || '未指定會員';
 }
 
 /* ── Finance: export-only name resolver — same priority but flags unlinked records ──
@@ -9052,11 +9067,7 @@ function openFinanceDetail(id){
   }
 
   var html = detailRow('類型', _finPeriodLabel(rec));
-  // live lookup — 優先 usersCache，fallback 到快照
-  var _rdCu = rec.memberId ? (usersCache[rec.memberId] || null) : null;
-  var _rdN  = (_rdCu ? (_rdCu.realName || _rdCu.displayName || '') : '')
-           || rec.memberRealName || rec.memberDisplayName || rec.member || '';
-  html += detailRow('會員', _rdN);
+  html += detailRow('會員', _finRecDisplayName(rec));
   html += detailRow('日期', rec.date||'');
   html += detailRow('金額', rec.amount != null ? 'NT$ '+Number(rec.amount).toLocaleString() : '');
   if(rec.note) html += detailRow('備註', rec.note);
