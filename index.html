@@ -730,6 +730,8 @@ button {
 }
 .primaryBtn:active { opacity:0.7; }
 .primaryBtn:disabled { opacity:0.4; cursor:not-allowed; }
+.extensionRequestBtn { width:100%; padding:12px; margin-top:8px; border-radius:12px; border:1px solid var(--color-text-primary); background:transparent; color:var(--color-text-primary); font-size:13px; cursor:pointer; }
+.extensionRequestBtn:disabled { opacity:0.45; cursor:not-allowed; }
 
 /* ── Pending Card (管理) ── */
 .pendingCard {
@@ -1892,6 +1894,7 @@ button {
       ⚠️ 請注意：預約開始前 30 分鐘後即無法自行取消，請確認時段後再送出。
     </div>
     <button class="primaryBtn" id="submitBookingBtn" onclick="submitBooking()">確認預約</button>
+    <button class="extensionRequestBtn" id="submitExtensionRequestBtn" type="button" onclick="submitBookingExtensionRequest()" style="display:none">申請加時 1 小時</button>
   </div>
 </div>
 
@@ -2162,6 +2165,7 @@ function _showMainApp(){
   loadUsersCache();
   loadMyBookings();
   loadMyNotifications();  // personal notifications (booking cancelled by admin etc.)
+  loadBookingExtensionRequests();
 }
 
 /* ── Profile Sheet: auth-aware renderer ────────────────────────────────
@@ -3025,6 +3029,9 @@ var _formBuddyMembers = [];  /* uid strings of added member buddies */
 var _formBuddyGuests  = [];  /* guest name strings */
 let pendingUsersFirestore = [];
 let unsubMyBookings = null;
+let bookingExtensionRequestsCache = [];
+let _extensionRequestUnsubscribe = null;
+let _extensionRequestAdminMode = null;
 /* ── NTRP 等級定義（全站共用）── */
 var NTRP_OPTIONS=[
   {v:'2.0',label:'新手'},
@@ -3120,6 +3127,7 @@ function canEditBooking(b){
   if(!b) return {can:false, reason:null};
   var s = b.status || 'active';
   if(s==='cancelled'||s==='void'||s==='deleted') return {can:false, reason:null};
+  if(b.extensionStatus==='approved') return {can:false, reason:'已核准的加時預約不可修改。'};
   // Lock once booking has ended — applies to ALL roles including Owner/Admin
   if(_bookingHasEnded(b)) return {can:false, reason:null};
   if(_bookingHasStarted(b)) return {can:false, reason:null};
@@ -3802,7 +3810,8 @@ function renderManage(){
   }
 
   // ── Counts ──
-  var pendingCount = Object.values(usersCache).filter(function(m){return m.status==='pending';}).length;
+  var pendingMemberCount = Object.values(usersCache).filter(function(m){return m.status==='pending';}).length;
+  var pendingCount = pendingMemberCount + _pendingExtensionRequests().length;
   var announcCount = _getUnreadAnnounceCount();
 
   /* Proactively load allBookings for admin/owner (background, enables dot without visiting tab) */
@@ -4220,29 +4229,15 @@ function _executeOverlapRepair(idx){
   var r = _repairState.autoMove[idx];
   if(!r){ showToast('找不到修復項目'); return; }
 
-  var now = firebase.firestore.Timestamp.now();
   var expiresAt = new Date(Date.now() + 30*24*60*60*1000);
 
   /* disable button immediately to prevent double-click */
   var btns = document.querySelectorAll('#repairToolInner .abActionBtn.repair');
   btns.forEach(function(b){ b.disabled=true; b.textContent='修復中…'; });
 
-  db.collection('bookings').doc(r.bookingId).update({
-    court:          r.toKey,
-    movedFromCourt: r.fromKey,
-    movedReason:    'overlap_conflict_auto_fix',
-    movedAt:        TS(),
-    movedBy:        'system',
-    history: firebase.firestore.FieldValue.arrayUnion({
-      type:           'court_auto_moved',
-      fromCourt:      r.fromKey,
-      toCourt:        r.toKey,
-      fromCourtLabel: r.originalCourt,
-      toCourtLabel:   r.suggestedCourt,
-      reason:         'overlap_conflict_auto_fix',
-      createdAt:      now,
-      createdBy:      'system',
-    }),
+  _callBookingFunction('repairBookingOverlap',{
+    bookingId:r.bookingId,
+    targetCourt:r.toKey
   })
   .then(function(){
     /* write notifications for all players */
@@ -4465,9 +4460,10 @@ function _toggleAbSection(id){
 function _renderPendingTab(el){
   const pending  = Object.values(usersCache).filter(function(m){ return m.status==='pending'; });
   const rejected = Object.values(usersCache).filter(function(m){ return m.status==='rejected'; });
+  el.innerHTML+='<div style="font-size:12px;color:var(--color-text-muted);margin:4px 0 12px;letter-spacing:0.04em">會員申請</div>';
 
   if(!pending.length){
-    el.innerHTML+='<div class="emptyState"><div class="emptyStateIcon">✓</div>目前沒有待審核申請</div>';
+    el.innerHTML+='<div class="emptyState"><div class="emptyStateIcon">✓</div>目前沒有待審核會員申請</div>';
   } else {
     let html='';
     pending.forEach(function(m){
@@ -4493,6 +4489,31 @@ function _renderPendingTab(el){
       '</div>';
     });
     el.innerHTML+=html;
+  }
+
+  var extensionPending=_pendingExtensionRequests().sort(function(a,b){
+    return _extensionRequestStartMs(a)-_extensionRequestStartMs(b);
+  });
+  el.innerHTML+='<div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--color-border,#e5e0d8);font-size:12px;color:var(--color-text-muted);margin-bottom:12px;letter-spacing:0.04em">加時申請</div>';
+  if(!extensionPending.length){
+    el.innerHTML+='<div class="emptyState"><div class="emptyStateIcon">✓</div>目前沒有待審核加時申請</div>';
+  }else{
+    var extensionHtml='';
+    extensionPending.forEach(function(r){
+      var name=r.requesterName||_mName(usersCache[r.requesterUid]||r.requesterUid);
+      var courtName={hard_a:'Hard A',hard_b:'Hard B'}[r.court]||r.court||'';
+      var requestIdArg=encodeURIComponent(r.id).replace(/'/g,'%27');
+      extensionHtml+='<div class="pendingCard">'+
+        '<div class="pendingCardTop"><div style="flex:1">'+
+          '<div class="pendingCardName">'+_esc(name)+'</div>'+
+          '<div class="pendingCardMeta">'+_esc(r.date||'')+'　'+_esc(courtName)+'　'+_esc(r.startTime||'')+'–'+_esc(r.endTime||'')+'　+1 小時</div>'+
+        '</div></div>'+
+        '<div class="pendingActions">'+
+          '<button class="approveBtn" onclick="approveBookingExtensionRequest(decodeURIComponent(\''+requestIdArg+'\'))">核准</button>'+
+          '<button class="rejectBtn" onclick="rejectBookingExtensionRequest(decodeURIComponent(\''+requestIdArg+'\'))">拒絕</button>'+
+        '</div></div>';
+    });
+    el.innerHTML+=extensionHtml;
   }
 
   // ── 已拒絕申請區塊 ──
@@ -5147,6 +5168,7 @@ function _getUnreadAnnounceCount(){
 }
 function _getManageBadgeCount(){
   var pendingCount = Object.values(usersCache).filter(function(m){ return m.status==='pending'; }).length;
+  pendingCount += isAdminLike() ? _pendingExtensionRequests().length : 0;
   /* 公告相關未讀改為共用 _getUnreadAnnounceCount（單一狀態來源，不再各自維護） */
   return pendingCount + _getUnreadAnnounceCount();
 }
@@ -5325,6 +5347,22 @@ function _renderAnnouncementsTab(el){
   });
   html += '</div>';
   el.innerHTML += html;
+}
+
+function approveBookingExtensionRequest(requestId){
+  if(!isAdminLike()){showToast('僅管理員可核准加時申請');return;}
+  if(!confirm('確定核准這筆加時申請並建立預約嗎？')) return;
+  _callBookingFunction('approveBookingExtensionRequest',{requestId:requestId})
+    .then(function(){showToast('加時申請已核准，預約已建立');})
+    .catch(function(e){showToast('核准失敗：'+(e&&e.message?e.message:e));});
+}
+function rejectBookingExtensionRequest(requestId){
+  if(!isAdminLike()){showToast('僅管理員可拒絕加時申請');return;}
+  var reason=prompt('請輸入拒絕原因（可留空）','');
+  if(reason===null) return;
+  _callBookingFunction('rejectBookingExtensionRequest',{requestId:requestId,reason:reason})
+    .then(function(){showToast('已拒絕加時申請');})
+    .catch(function(e){showToast('拒絕失敗：'+(e&&e.message?e.message:e));});
 }
 
 /* ── Approve Member ── */
@@ -10066,7 +10104,7 @@ function showBookingDetail(id){
   var canLeave  = isActive && !hasStarted && !withinCut && isInPlayers && !isBookingCreator && !isAdminLike() && !isTeach;
 
   /* Participant management: active general bookings that haven't started yet */
-  var canManageParticipants = isGeneral && isActive && !hasStarted && (isBookingCreator || isClubAdmin || isClubOwner);
+  var canManageParticipants = isGeneral && b.extensionStatus!=='approved' && isActive && !hasStarted && (isBookingCreator || isClubAdmin || isClubOwner);
 
   var enc=encodeURIComponent(JSON.stringify({
     name:name, photoURL:photoURL, court:courtLabel, date:b.date,
@@ -10320,6 +10358,7 @@ function loadUsersCache(){
         currentUser.role = usersCache[_myId].role;
       }
     }
+    loadBookingExtensionRequests();
 
     renderMembers('');
     if(currentView==='week') renderWeekGrid();
@@ -10679,7 +10718,7 @@ function _executeVoid(id, reason, callback){
     updatedAt:   TS()
   };
   if(reason) updateObj.voidReason = reason;
-  db.collection('bookings').doc(id).update(updateObj)
+  _callBookingFunction('voidBooking',{bookingId:id,reason:reason||''})
     .then(function(){
       showToast('預約已作廢');
       _dvCloseDetail();
@@ -10769,6 +10808,41 @@ function _sendBookingNotifications(b, action, reason, actorUid, actorName){
   });
 }
 
+function _extensionRequestStartMs(r){
+  if(!r||!/^\d{4}-\d{2}-\d{2}$/.test(r.date||'')||!/^\d{2}:\d{2}$/.test(r.startTime||'')) return NaN;
+  var dp=r.date.split('-'), tp=r.startTime.split(':');
+  return new Date(Number(dp[0]),Number(dp[1])-1,Number(dp[2]),Number(tp[0]),Number(tp[1])).getTime();
+}
+function _extensionEffectiveStatus(r){
+  return r&&r.status==='pending'&&_extensionRequestStartMs(r)<=Date.now()?'expired':(r&&r.status)||'';
+}
+function _pendingExtensionRequests(){
+  return bookingExtensionRequestsCache.filter(function(r){return _extensionEffectiveStatus(r)==='pending';});
+}
+function loadBookingExtensionRequests(){
+  if(!db||!currentUser) return;
+  var myUid=currentUser.uid||currentUser.userId||currentUser.id||'';
+  if(!myUid) return;
+  var adminMode=isAdminLike();
+  if(_extensionRequestUnsubscribe&&_extensionRequestAdminMode===adminMode) return;
+  if(_extensionRequestUnsubscribe) _extensionRequestUnsubscribe();
+  _extensionRequestAdminMode=adminMode;
+  var q=adminMode
+    ?db.collection('bookingExtensionRequests')
+    :db.collection('bookingExtensionRequests').where('requesterUid','==',myUid);
+  _extensionRequestUnsubscribe=q.onSnapshot(function(snap){
+    bookingExtensionRequestsCache=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());});
+    _updateManageNavBadge();
+    _refreshExtensionButton();
+    var manScreen=document.getElementById('screen-manage');
+    if(manScreen&&manScreen.classList.contains('active')) renderManage();
+  },function(e){
+    console.warn('[loadBookingExtensionRequests] error:',e);
+    _extensionRequestUnsubscribe=null;
+    _extensionRequestAdminMode=null;
+  });
+}
+
 /* ── Personal Notifications ── */
 function loadMyNotifications(){
   if(!db || !currentUser) return;
@@ -10829,6 +10903,20 @@ function _renderNotifCard(n){
       +'<div class="notifCardTime">'+_esc(n.date||'')+'　'+_esc(_amTime)+'</div>'
       +'<div class="notifCardMeta">'+_esc(_amFrom)+' → '+_esc(_amTo)+'　原因：時段衝突修正</div>'
       +(_amCreatedStr?'<div class="notifCardMeta" style="opacity:0.7;margin-top:2px">'+_amCreatedStr+'</div>':'')
+      +'</div>';
+  }
+  if(n.type==='booking_extension_approved'||n.type==='booking_extension_rejected'||
+     n.type==='booking_extension_revoked'){
+    var extensionTime=(n.startTime||'')+(n.endTime?'–'+n.endTime:'');
+    var extensionMeta=n.type==='booking_extension_approved'
+      ?'加時預約已建立'
+      :(n.type==='booking_extension_revoked'
+        ?'原因：'+_esc(n.reason||'原一般預約時數已不足 2 小時')
+        :'原因：'+_esc(n.reason||'加時申請未通過'));
+    return '<div class="notifCard'+(n.read?'':' unread')+'" onclick="_onNotifTap(\''+n.id+'\')">'
+      +'<div class="notifCardTitle">'+_esc(n.title||'加時申請通知')+'</div>'
+      +'<div class="notifCardTime">'+_esc(n.date||'')+'　'+_esc(extensionTime)+'　'+_esc(n.courtLabel||n.court||'')+'</div>'
+      +'<div class="notifCardMeta">'+extensionMeta+'</div>'
       +'</div>';
   }
   // ── booking_cancelled / booking_void ──────────────────────────────────────
@@ -10894,11 +10982,7 @@ function leaveBooking(id){
   if(!confirm('確認退出此預約？')) return;
   var myUid = currentUser?(currentUser.uid||currentUser.userId||currentUser.id||''):'';
   if(!myUid){ showToast('無法識別使用者'); return; }
-  db.collection('bookings').doc(id).update({
-    players:          firebase.firestore.FieldValue.arrayRemove(myUid),
-    participantCount: firebase.firestore.FieldValue.increment(-1),
-    updatedAt:        TS()
-  }).then(function(){
+  _callBookingFunction('leaveBooking',{bookingId:id}).then(function(){
     showToast('已退出預約');
     _dvCloseDetail();
     loadMyBookings();
@@ -10977,6 +11061,7 @@ function onFormModeChange(){
   // Reset join notice
   var jn = document.getElementById('formJoinNotice');
   if(jn) jn.style.display = 'none';
+  _refreshExtensionButton();
 }
 
 function openBookingForm(){
@@ -10988,7 +11073,7 @@ function openBookingForm(){
   if(di){
     di.value=formatDate(today); di.min=formatDate(today);
     /* Re-populate time selectors whenever the user changes the date */
-    di.onchange=function(){ _populateFormTimeSels(di.value); };
+    di.onchange=function(){ _populateFormTimeSels(di.value); _refreshExtensionButton(); };
   }
   /* Populate time selectors based on today's open hours */
   _populateFormTimeSels(formatDate(today));
@@ -11047,6 +11132,7 @@ function openBookingForm(){
   // Clay court restriction: disable options for non-admins
   var courtSel = document.getElementById('formCourt');
   if(courtSel){
+    courtSel.onchange=_refreshExtensionButton;
     Array.from(courtSel.options).forEach(function(opt){
       var isClay = opt.value==='clay_a' || opt.value==='clay_b';
       if(isClay){
@@ -11059,6 +11145,8 @@ function openBookingForm(){
       courtSel.value = 'hard_a';
     }
   }
+  startSel.onchange=_refreshExtensionButton;
+  endSel.onchange=_refreshExtensionButton;
   /* Reset general buddy state */
   _formBuddyMembers = [];
   _formBuddyGuests  = [];
@@ -11079,6 +11167,8 @@ function closeBookingForm(){
   if(titleEl) titleEl.textContent = '新增預約';
   var submitBtn = document.getElementById('submitBookingBtn');
   if(submitBtn) submitBtn.textContent = '確認預約';
+  var extensionBtn = document.getElementById('submitExtensionRequestBtn');
+  if(extensionBtn) extensionBtn.style.display = 'none';
 }
 
 /* ── Open booking form in EDIT mode ── */
@@ -11262,6 +11352,7 @@ function _formBuddyRender(){
   var addGBtn = document.getElementById('formBuddyAddGuestBtn');
   if(addMBtn) addMBtn.disabled = atCap;
   if(addGBtn) addGBtn.disabled = atCap;
+  _refreshExtensionButton();
 }
 
 function _formBuddyAddMember(){
@@ -11447,6 +11538,74 @@ function _generalDailyLimitMessage(result){
   if(!result||!result.uid) return _GENERAL_DAILY_LIMIT_MESSAGE;
   return (result.name||result.uid)+'今日一般場地使用時間將超過 2 小時，無法建立預約。';
 }
+function getGeneralDailyMinutesForUid(uid,date){
+  if(!db||!uid||!date) return Promise.reject(new Error('無法確認每日使用時數'));
+  return db.collection('bookings').where('date','==',date).get().then(function(snap){
+    var total=0;
+    snap.docs.forEach(function(doc){
+      var b=doc.data()||{};
+      if(!_isActiveBooking(b)||b.extensionStatus==='approved'||
+         _normaliseMode(b.mode)!=='general'||
+         (b.court!=='hard_a'&&b.court!=='hard_b')||
+         _generalBookingPlayerUids(b).indexOf(uid)<0) return;
+      var duration=timeToMin(b.endTime)-timeToMin(b.startTime);
+      if(isFinite(duration)&&duration>0) total+=duration;
+    });
+    return total;
+  });
+}
+var _extensionButtonCheckSeq=0;
+function _refreshExtensionButton(){
+  var btn=document.getElementById('submitExtensionRequestBtn');
+  if(!btn) return;
+  btn.style.display='none'; btn.disabled=false; btn.textContent='申請加時 1 小時';
+  if(_bkEditId||!currentUser) return;
+  var mode=((document.getElementById('formMode')||{}).value)||'';
+  var court=((document.getElementById('formCourt')||{}).value)||'';
+  var date=((document.getElementById('formDate')||{}).value)||'';
+  var start=((document.getElementById('formStart')||{}).value)||'';
+  var end=((document.getElementById('formEnd')||{}).value)||'';
+  var myUid=currentUser.uid||currentUser.userId||currentUser.id||'';
+  if(_normaliseMode(mode)!=='general'||(court!=='hard_a'&&court!=='hard_b')||
+     timeToMin(end)-timeToMin(start)!==60||_formBuddyOwnerUid()!==myUid||
+     _formBuddyMembers.length||_formBuddyGuests.length) return;
+  var existing=bookingExtensionRequestsCache.find(function(r){
+    return r.requesterUid===myUid&&r.date===date&&
+      (_extensionEffectiveStatus(r)==='pending'||r.status==='approved');
+  });
+  if(existing&&existing.status==='approved') return;
+  var seq=++_extensionButtonCheckSeq;
+  getGeneralDailyMinutesForUid(myUid,date).then(function(total){
+    if(seq!==_extensionButtonCheckSeq||total!==120) return;
+    btn.style.display='block';
+    if(existing&&_extensionEffectiveStatus(existing)==='pending'){
+      btn.disabled=true; btn.textContent='加時申請待審核';
+    }
+  }).catch(function(){});
+}
+function submitBookingExtensionRequest(){
+  var btn=document.getElementById('submitExtensionRequestBtn');
+  var date=((document.getElementById('formDate')||{}).value)||'';
+  var court=((document.getElementById('formCourt')||{}).value)||'';
+  var start=((document.getElementById('formStart')||{}).value)||'';
+  var end=((document.getElementById('formEnd')||{}).value)||'';
+  if(_normaliseMode(((document.getElementById('formMode')||{}).value)||'')!=='general'||
+     (court!=='hard_a'&&court!=='hard_b')||timeToMin(end)-timeToMin(start)!==60){
+    showToast('加時申請必須指定 Hard A 或 Hard B 的完整 1 小時時段。');return;
+  }
+  if(btn){btn.disabled=true;btn.textContent='送出中…';}
+  _callBookingFunction('submitBookingExtensionRequest',{
+    date:date,court:court,startTime:start,endTime:end
+  }).then(function(){
+    showToast('加時申請已送出，請至群組告知管理員，待核准後方可使用。');
+    closeBookingForm();
+  }).catch(function(e){
+    showToast('申請失敗：'+(e&&e.message?e.message:e));
+  }).finally(function(){
+    if(btn){btn.disabled=false;btn.textContent='申請加時 1 小時';}
+    _refreshExtensionButton();
+  });
+}
 function hasGeneralDailyLimitExceeded(draft, excludeId){
   if(_normaliseMode(draft.mode)!=='general' ||
      draft.date<_GENERAL_DAILY_LIMIT_START ||
@@ -11465,7 +11624,8 @@ function hasGeneralDailyLimitExceeded(draft, excludeId){
       snap.docs.forEach(function(doc){
         if(doc.id===excludeId) return;
         var b = doc.data()||{};
-        if(!_isActiveBooking(b) || _normaliseMode(b.mode)!=='general' ||
+        if(!_isActiveBooking(b) || b.extensionStatus==='approved' ||
+           _normaliseMode(b.mode)!=='general' ||
            (b.court!=='hard_a'&&b.court!=='hard_b')) return;
         var existingMinutes=timeToMin(b.endTime)-timeToMin(b.startTime);
         if(!isFinite(existingMinutes)||existingMinutes<=0) return;

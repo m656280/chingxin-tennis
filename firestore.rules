@@ -79,23 +79,13 @@ service cloud.firestore {
         && data.court in ['hard_a', 'hard_b'];
     }
 
-    function isOwnerOverlapRepair() {
-      return isOwner()
-        && ('movedReason' in request.resource.data)
-        && request.resource.data.movedReason == 'overlap_conflict_auto_fix'
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'court', 'movedFromCourt', 'movedReason', 'movedAt', 'movedBy', 'history'
-        ]);
-    }
-
     function isGeneralScheduleUpdateAllowed() {
       return (
           !isGeneralDailyLimitBooking(resource.data)
           && !isGeneralDailyLimitBooking(request.resource.data)
         )
         || !request.resource.data.diff(resource.data).affectedKeys()
-              .hasAny(['date', 'startTime', 'endTime', 'court', 'mode'])
-        || isOwnerOverlapRepair();
+              .hasAny(['date', 'startTime', 'endTime', 'court', 'mode']);
     }
 
     function isTeachingBooking(data) {
@@ -110,8 +100,23 @@ service cloud.firestore {
         )
         || !request.resource.data.diff(resource.data).affectedKeys()
               .hasAny(['date', 'startTime', 'endTime', 'court', 'mode',
-                       'students', 'coachId'])
-        || isOwnerOverlapRepair();
+                       'students', 'coachId']);
+    }
+
+    function isExtensionBooking(data) {
+      return ('extensionStatus' in data)
+        && data.extensionStatus == 'approved';
+    }
+
+    function isExtensionProtectedUpdateAllowed() {
+      return !isExtensionBooking(resource.data)
+        || !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+             'date', 'startTime', 'endTime', 'court', 'mode',
+             'players', 'guests', 'participantCount', 'createdBy',
+             'extensionStatus', 'extensionRequestId',
+             'extensionApprovedByUid', 'extensionApprovedByName',
+             'extensionApprovedAt'
+           ]);
     }
 
     // 合法的 financialRecord type 值
@@ -250,12 +255,14 @@ service cloud.firestore {
 
       // 更新：Phase 1A 過渡防護。
       // participants / createdBy / participantCount 與 cancelled 一律改由 Callable 寫入。
-      // 保留 creator/admin 的一般編輯、既有自行退出、出席與 owner 修復/作廢流程。
+      // 保留 creator/admin 的一般編輯與出席流程。
+      // 參與者異動、owner 修復/作廢統一由 Callable 取得鎖後執行。
       allow update: if (
           isSignedIn()
           && isGeneralBookingDurationAllowed(request.resource.data)
           && isGeneralScheduleUpdateAllowed()
           && isTeachingScheduleUpdateAllowed()
+          && isExtensionProtectedUpdateAllowed()
           && (
             (
               (
@@ -265,42 +272,6 @@ service cloud.firestore {
               )
               && !request.resource.data.diff(resource.data).affectedKeys()
                     .hasAny(['players', 'guests', 'participantCount', 'createdBy', 'status'])
-            )
-            || (
-              (
-                !('createdBy' in resource.data)
-                || resource.data.createdBy != request.auth.uid
-              )
-              && ('players' in resource.data)
-              && resource.data.players is list
-              && request.resource.data.players is list
-              && request.auth.uid in resource.data.players
-              && request.resource.data.players
-                   == resource.data.players.removeAll([request.auth.uid])
-              && request.resource.data.diff(resource.data).affectedKeys()
-                   .hasOnly(['players', 'participantCount', 'updatedAt'])
-              && (
-                (
-                  ('status' in resource.data)
-                  && request.resource.data.status == resource.data.status
-                )
-                || (
-                  !('status' in resource.data)
-                  && !('status' in request.resource.data)
-                )
-              )
-              && (
-                (
-                  ('participantCount' in resource.data)
-                  && resource.data.participantCount is number
-                  && request.resource.data.participantCount
-                       == resource.data.participantCount - 1
-                )
-                || (
-                  !('participantCount' in resource.data)
-                  && request.resource.data.participantCount == -1
-                )
-              )
             )
             || (
               hasActorMember()
@@ -317,18 +288,11 @@ service cloud.firestore {
             )
             || (
               isOwner()
-              && (
-                (
-                  ('status' in request.resource.data)
-                  && request.resource.data.status != 'cancelled'
-                )
-                || (
-                  !('status' in resource.data)
-                  && !('status' in request.resource.data)
-                )
-              )
               && !request.resource.data.diff(resource.data).affectedKeys()
-                    .hasAny(['players', 'guests', 'participantCount', 'createdBy'])
+                    .hasAny([
+                      'players', 'guests', 'participantCount', 'createdBy',
+                      'status'
+                    ])
             )
           )
         );
@@ -341,6 +305,25 @@ service cloud.firestore {
     match /bookingAuditLogs/{auditId} {
       allow read: if false;
       allow create, update, delete: if false;
+    }
+
+    // 加時申請：所有狀態轉移由 Callable 執行，會員僅能讀自己的申請。
+    match /bookingExtensionRequests/{requestId} {
+      allow read: if isSignedIn()
+                  && (isAdminLike()
+                      || resource.data.requesterUid == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
+    // 加時申請 audit：僅 admin/owner 可讀，僅 Admin SDK 可寫。
+    match /bookingExtensionAuditLogs/{auditId} {
+      allow read: if isAdminLike();
+      allow create, update, delete: if false;
+    }
+
+    // 依日期序列化 booking 建立與加時核准；client 不得讀寫。
+    match /bookingMutationLocks/{lockId} {
+      allow read, write: if false;
     }
 
     // ──────────────────────────────────────────────────────────────────────
@@ -402,7 +385,15 @@ service cloud.firestore {
       // 建立：預約系統在建立/取消/移場時建立通知
       allow create: if request.resource.data.keys().hasAll(['uid', 'createdAt'])
                     && request.resource.data.uid is string
-                    && request.resource.data.uid.size() > 0;
+                    && request.resource.data.uid.size() > 0
+                    && (
+                      !('type' in request.resource.data)
+                      || !(request.resource.data.type in [
+                        'booking_extension_approved',
+                        'booking_extension_rejected',
+                        'booking_extension_revoked'
+                      ])
+                    );
 
       // 更新：只允許標記已讀（read: true）和相關時間戳記
       // 防止通知內容被篡改

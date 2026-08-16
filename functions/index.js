@@ -25,6 +25,7 @@ const ADMIN_ROLES = new Set(['owner', 'admin']);
 const GENERAL_DAILY_LIMIT_START = '2026-08-10';
 const GENERAL_DAILY_LIMIT_MESSAGE =
   '一般會員每日最多可預約 2 小時（Hard A、Hard B 合併計算）。';
+const EXTENSION_DURATION_MINUTES = 60;
 const MEMBERSHIP_EXPIRY_CANCEL_REASON =
   '超過繳費會籍有效期限，此預約不成立。';
 
@@ -127,6 +128,129 @@ function timeToMinutes(value) {
   return Number(match[1]) * 60 + Number(match[2]);
 }
 
+function bookingEndMs(booking) {
+  return bookingStartMs(Object.assign({}, booking, {
+    startTime: booking.endTime,
+  }));
+}
+
+function bookingIntervalsOverlap(first, second) {
+  const firstStart = bookingStartMs(first);
+  const firstEnd = bookingEndMs(first);
+  const secondStart = bookingStartMs(second);
+  const secondEnd = bookingEndMs(second);
+  return Number.isFinite(firstStart) && Number.isFinite(firstEnd) &&
+    Number.isFinite(secondStart) && Number.isFinite(secondEnd) &&
+    firstStart < secondEnd && firstEnd > secondStart;
+}
+
+function bookingParticipantUids(booking) {
+  const uids = [];
+  if (booking.coachId) uids.push(booking.coachId);
+  if (Array.isArray(booking.players)) uids.push(...booking.players);
+  if (Array.isArray(booking.students)) uids.push(...booking.students);
+  return [...new Set(uids.filter((uid) =>
+    typeof uid === 'string' && uid))];
+}
+
+function findCourtConflict(bookings, candidate, excludeId) {
+  return bookings.find((booking) =>
+    booking.id !== excludeId &&
+    isActiveBooking(booking) &&
+    booking.court === candidate.court &&
+    bookingIntervalsOverlap(booking, candidate)) || null;
+}
+
+function findParticipantConflictUid(bookings, candidate, excludeId) {
+  const candidateUids = new Set(bookingParticipantUids(candidate));
+  if (!candidateUids.size) return '';
+  for (const booking of bookings) {
+    if (booking.id === excludeId || !isActiveBooking(booking) ||
+        !bookingIntervalsOverlap(booking, candidate)) continue;
+    const conflictUid = bookingParticipantUids(booking)
+      .find((uid) => candidateUids.has(uid));
+    if (conflictUid) return conflictUid;
+  }
+  return '';
+}
+
+function generalMinutesForUid(bookings, uid) {
+  return bookings.reduce((total, booking) => {
+    if (!isActiveBooking(booking) ||
+        normaliseBookingMode(booking.mode) !== 'general' ||
+        (booking.court !== 'hard_a' && booking.court !== 'hard_b') ||
+        !generalBookingPlayerUids(booking).includes(uid)) return total;
+    const duration = timeToMinutes(booking.endTime) -
+      timeToMinutes(booking.startTime);
+    return Number.isFinite(duration) && duration > 0 ? total + duration : total;
+  }, 0);
+}
+
+function normalGeneralMinutesForUid(bookings, uid) {
+  return generalMinutesForUid(
+    bookings.filter((booking) => booking.extensionStatus !== 'approved'),
+    uid,
+  );
+}
+
+function hasApprovedExtension(bookings, uid) {
+  return bookings.some((booking) =>
+    isActiveBooking(booking) &&
+    booking.extensionStatus === 'approved' &&
+    generalBookingPlayerUids(booking).includes(uid));
+}
+
+function extensionRequestDocId(uid, date) {
+  return `${encodeURIComponent(uid)}_${date}`;
+}
+
+function bookingDateLockId(date) {
+  return date;
+}
+
+function memberDisplayName(member, fallback) {
+  return cleanString(
+    member.realName || member.name || member.displayName || fallback,
+    100,
+  );
+}
+
+function courtLabel(court) {
+  return {
+    hard_a: 'Hard A',
+    hard_b: 'Hard B',
+    clay_a: 'Clay A',
+    clay_b: 'Clay B',
+  }[court] || court || '';
+}
+
+function assertExtensionTimeInput(date, court, startTime, endTime) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+      (court !== 'hard_a' && court !== 'hard_b') ||
+      !Number.isFinite(timeToMinutes(startTime)) ||
+      !Number.isFinite(timeToMinutes(endTime)) ||
+      timeToMinutes(endTime) - timeToMinutes(startTime) !==
+        EXTENSION_DURATION_MINUTES) {
+    throw new HttpsError(
+      'invalid-argument',
+      '加時申請必須指定 Hard A 或 Hard B 的完整 1 小時時段。',
+    );
+  }
+}
+
+function assertExtensionMemberEligible(member, date) {
+  if (!isEligibleMember(member)) {
+    throw new HttpsError('failed-precondition', '會員目前不具有效資格');
+  }
+  if (!ADMIN_ROLES.has(member.role || '') &&
+      !hasValidMembershipForBooking(member, date)) {
+    throw new HttpsError(
+      'failed-precondition',
+      '會員會籍無法涵蓋申請日期，無法申請加時。',
+    );
+  }
+}
+
 function generalBookingPlayerUids(booking) {
   const players = Array.isArray(booking.players) ? booking.players : [];
   const uids = players.filter((uid) => typeof uid === 'string' && uid);
@@ -149,6 +273,7 @@ function findGeneralDailyLimitExceededUid(bookings, booking, excludeId) {
   bookings.forEach((existing) => {
     if (existing.id === excludeId ||
         !isActiveBooking(existing) ||
+        existing.extensionStatus === 'approved' ||
         normaliseBookingMode(existing.mode) !== 'general' ||
         (existing.court !== 'hard_a' && existing.court !== 'hard_b')) return;
     const existingDuration = timeToMinutes(existing.endTime) -
@@ -414,7 +539,41 @@ exports.createBooking = onCall({region: 'asia-east1'}, async (request) => {
   }
 
   const bookingRef = bookingDb.collection('bookings').doc();
-  await bookingRef.set(booking);
+  const lockRef = bookingDb.collection('bookingMutationLocks')
+    .doc(bookingDateLockId(date));
+  await bookingDb.runTransaction(async (transaction) => {
+    await transaction.get(lockRef);
+    const sameDateSnap = await transaction.get(
+      bookingDb.collection('bookings').where('date', '==', date),
+    );
+    const sameDateBookings = sameDateSnap.docs.map((doc) => ({
+      id: doc.id,
+      ...(doc.data() || {}),
+    }));
+    if (findCourtConflict(sameDateBookings, booking, '')) {
+      throw new HttpsError(
+        'already-exists',
+        '此場地該時段已有預約，請選擇其他時段。',
+      );
+    }
+    if (findParticipantConflictUid(sameDateBookings, booking, '')) {
+      throw new HttpsError(
+        'failed-precondition',
+        '此會員已在同時段參與其他預約。',
+      );
+    }
+    const exceededUid = findGeneralDailyLimitExceededUid(
+      sameDateBookings, booking, '',
+    );
+    if (exceededUid) {
+      throw new HttpsError('failed-precondition', GENERAL_DAILY_LIMIT_MESSAGE);
+    }
+    transaction.set(lockRef, {
+      updatedAt: SERVER_TS(),
+      version: admin.firestore.FieldValue.increment(1),
+    }, {merge: true});
+    transaction.set(bookingRef, booking);
+  });
   return {ok: true, bookingId: bookingRef.id};
 });
 
@@ -422,6 +581,12 @@ exports.updateBooking = onCall({region: 'asia-east1'}, async (request) => {
   const context = await getBookingActorContext(request);
   if (!isActiveBooking(context.booking)) {
     throw new HttpsError('failed-precondition', '此預約已取消或作廢');
+  }
+  if (context.booking.extensionStatus === 'approved') {
+    throw new HttpsError(
+      'failed-precondition',
+      '已核准的加時預約不可修改日期、時間、場地或參與者。',
+    );
   }
   const originalStartMs = bookingStartMs(context.booking);
   if (!Number.isFinite(originalStartMs) || Date.now() >= originalStartMs) {
@@ -556,7 +721,69 @@ exports.updateBooking = onCall({region: 'asia-east1'}, async (request) => {
     }
   }
 
-  await context.bookingRef.update(update);
+  const mutationDates = [...new Set([context.booking.date, date])].sort();
+  const updateLockRefs = mutationDates.map((mutationDate) =>
+    bookingDb.collection('bookingMutationLocks')
+      .doc(bookingDateLockId(mutationDate)));
+  await bookingDb.runTransaction(async (transaction) => {
+    const currentBookingSnap = await transaction.get(context.bookingRef);
+    for (const lockRef of updateLockRefs) await transaction.get(lockRef);
+    const newDateSnap = await transaction.get(
+      bookingDb.collection('bookings').where('date', '==', date),
+    );
+    const oldDateSnap = context.booking.date === date ? newDateSnap :
+      await transaction.get(bookingDb.collection('bookings')
+        .where('date', '==', context.booking.date));
+    if (!currentBookingSnap.exists ||
+        !isActiveBooking(currentBookingSnap.data() || {})) {
+      throw new HttpsError('failed-precondition', '此預約已取消或作廢');
+    }
+    const sameDateBookings = newDateSnap.docs.map((doc) => ({
+      id: doc.id,
+      ...(doc.data() || {}),
+    }));
+    if (findCourtConflict(sameDateBookings, booking, context.bookingId)) {
+      throw new HttpsError(
+        'already-exists',
+        '此場地該時段已有預約，請選擇其他時段。',
+      );
+    }
+    if (findParticipantConflictUid(
+      sameDateBookings, booking, context.bookingId,
+    )) {
+      throw new HttpsError(
+        'failed-precondition',
+        '此會員已在同時段參與其他預約。',
+      );
+    }
+    const exceededUid = findGeneralDailyLimitExceededUid(
+      sameDateBookings, booking, context.bookingId,
+    );
+    if (exceededUid) {
+      throw new HttpsError('failed-precondition', GENERAL_DAILY_LIMIT_MESSAGE);
+    }
+    const currentBooking = Object.assign(
+      {id: context.bookingId}, currentBookingSnap.data() || {},
+    );
+    if (currentBooking.date !== context.booking.date) {
+      throw new HttpsError('aborted', '預約日期已變更，請重新操作');
+    }
+    const bookingAfter = context.booking.date === date ?
+      Object.assign({}, currentBooking, update) : null;
+    await revokeInvalidExtensions(
+      transaction, oldDateSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() || {}),
+      })), currentBooking, bookingAfter, context.actorUid,
+      context.actor.realName || context.actor.displayName || '',
+      '原一般預約日期或時段已變更',
+    );
+    updateLockRefs.forEach((lockRef) => transaction.set(lockRef, {
+      updatedAt: SERVER_TS(),
+      version: admin.firestore.FieldValue.increment(1),
+    }, {merge: true}));
+    transaction.update(context.bookingRef, update);
+  });
   return {ok: true};
 });
 
@@ -571,6 +798,12 @@ function assertParticipantMutationAllowed(booking) {
   const mode = booking.mode || 'general';
   if (mode !== 'general' && mode !== 'normal') {
     throw new HttpsError('failed-precondition', '此預約模式不支援一般參與者管理');
+  }
+  if (booking.extensionStatus === 'approved') {
+    throw new HttpsError(
+      'failed-precondition',
+      '加時預約僅限申請會員本人使用，不可新增或移除參與者。',
+    );
   }
 }
 
@@ -662,6 +895,176 @@ function addMembershipExpiryCancelNotification(batch, context) {
   });
 }
 
+function extensionAuditData(
+  requestId, bookingId, actorUid, actorName, targetUid, action, reason, details,
+) {
+  const audit = {
+    requestId,
+    bookingId: bookingId || '',
+    actorUid,
+    actorName: actorName || '',
+    targetUid,
+    action,
+    reason: reason || '',
+    createdAt: SERVER_TS(),
+    source: 'web_callable',
+  };
+  if (details) {
+    audit.date = details.date || '';
+    audit.court = details.court || '';
+    audit.startTime = details.startTime || '';
+    audit.endTime = details.endTime || '';
+    audit.attempt = Number(details.attempt) || 1;
+  }
+  return audit;
+}
+
+function extensionNotificationData(
+  extensionRequest, type, bookingId, actorUid, actorName, reason,
+) {
+  const approved = type === 'booking_extension_approved';
+  const title = approved ? '加時申請已核准' : '加時申請未通過';
+  const message = approved ?
+    '您的加時申請已核准，預約已建立。' :
+    `您的加時申請未通過。${reason ? `原因：${reason}` : ''}`;
+  return {
+    uid: extensionRequest.requesterUid,
+    type,
+    action: approved ? 'approve' : 'reject',
+    requestId: extensionRequest.id,
+    bookingId: bookingId || '',
+    title,
+    date: extensionRequest.date,
+    startTime: extensionRequest.startTime,
+    endTime: extensionRequest.endTime,
+    court: extensionRequest.court,
+    courtLabel: courtLabel(extensionRequest.court),
+    actedByUid: actorUid,
+    actedByName: actorName,
+    reason: reason || '',
+    message,
+    createdAt: SERVER_TS(),
+    expiresAt: admin.firestore.Timestamp.fromMillis(
+      Date.now() + 30 * 24 * 60 * 60 * 1000,
+    ),
+    read: false,
+  };
+}
+
+function extensionRevokedNotificationData(
+  extensionBooking, requestId, actorUid, actorName, reason,
+) {
+  return {
+    uid: generalBookingPlayerUids(extensionBooking)[0] || '',
+    type: 'booking_extension_revoked',
+    action: 'revoke',
+    requestId,
+    bookingId: extensionBooking.id,
+    title: '加時預約已撤銷',
+    date: extensionBooking.date || '',
+    startTime: extensionBooking.startTime || '',
+    endTime: extensionBooking.endTime || '',
+    court: extensionBooking.court || '',
+    courtLabel: courtLabel(extensionBooking.court),
+    actedByUid: actorUid,
+    actedByName: actorName,
+    reason,
+    message: `原一般預約時數已不足 2 小時，加時預約已撤銷。${reason}`,
+    createdAt: SERVER_TS(),
+    expiresAt: admin.firestore.Timestamp.fromMillis(
+      Date.now() + 30 * 24 * 60 * 60 * 1000,
+    ),
+    read: false,
+  };
+}
+
+async function revokeInvalidExtensions(
+  transaction, sameDateBookings, changedBooking, changedBookingAfter,
+  actorUid, actorName, reason,
+) {
+  const affectedUids = generalBookingPlayerUids(changedBooking);
+  const bookingsAfterMutation = sameDateBookings.map((booking) =>
+    booking.id === changedBooking.id ?
+      (changedBookingAfter || Object.assign({}, booking, {status: 'cancelled'})) :
+      booking);
+  const extensionBookings = [];
+
+  if (changedBooking.extensionStatus === 'approved') {
+    extensionBookings.push(changedBooking);
+  } else {
+    affectedUids.forEach((uid) => {
+      if (normalGeneralMinutesForUid(bookingsAfterMutation, uid) >= 120) return;
+      bookingsAfterMutation.forEach((booking) => {
+        if (isActiveBooking(booking) &&
+            booking.extensionStatus === 'approved' &&
+            generalBookingPlayerUids(booking).includes(uid)) {
+          extensionBookings.push(booking);
+        }
+      });
+    });
+  }
+
+  const uniqueExtensions = [...new Map(extensionBookings.map((booking) =>
+    [booking.id, booking])).values()];
+  const requestSnapshots = new Map();
+  for (const extensionBooking of uniqueExtensions) {
+    const requestId = cleanString(extensionBooking.extensionRequestId, 600);
+    if (!requestId || requestSnapshots.has(requestId)) continue;
+    requestSnapshots.set(requestId, await transaction.get(
+      bookingDb.collection('bookingExtensionRequests').doc(requestId),
+    ));
+  }
+
+  uniqueExtensions.forEach((extensionBooking) => {
+    const requestId = cleanString(extensionBooking.extensionRequestId, 600);
+    const revokeReason = reason || '原一般預約時數已不足 2 小時';
+    if (extensionBooking.id !== changedBooking.id) {
+      transaction.update(
+        bookingDb.collection('bookings').doc(extensionBooking.id),
+        {
+          status: 'cancelled',
+          cancelReason: revokeReason,
+          cancelledBy: actorUid,
+          cancelledByUid: actorUid,
+          cancelledByName: actorName,
+          cancelledAt: SERVER_TS(),
+          extensionRevokedAt: SERVER_TS(),
+          updatedAt: SERVER_TS(),
+        },
+      );
+    }
+    const requestSnap = requestSnapshots.get(requestId);
+    if (requestId && requestSnap && requestSnap.exists) {
+      transaction.update(requestSnap.ref, {
+        status: 'revoked',
+        revokedByUid: actorUid,
+        revokedByName: actorName,
+        revokedAt: SERVER_TS(),
+        revokeReason,
+        updatedAt: SERVER_TS(),
+      });
+    }
+    transaction.set(
+      bookingDb.collection('bookingExtensionAuditLogs').doc(),
+      extensionAuditData(
+        requestId, extensionBooking.id, actorUid, actorName,
+        generalBookingPlayerUids(extensionBooking)[0] || '',
+        'extension_revoked', revokeReason, extensionBooking,
+      ),
+    );
+    if (requestId) {
+      transaction.set(
+        bookingDb.collection('notifications')
+          .doc(`booking_extension_revoked_${requestId}`),
+        extensionRevokedNotificationData(
+          extensionBooking, requestId, actorUid, actorName, revokeReason,
+        ),
+      );
+    }
+  });
+  return uniqueExtensions.map((booking) => booking.id);
+}
+
 // ── Phase 1A: booking participant authorization + minimal audit ──────
 exports.addBookingParticipant = onCall({region: 'asia-east1'}, async (request) => {
   const context = await getBookingActorContext(request);
@@ -722,17 +1125,67 @@ exports.addBookingParticipant = onCall({region: 'asia-east1'}, async (request) =
     auditTargetLabel = guestName;
   }
 
-  const batch = bookingDb.batch();
-  batch.update(context.bookingRef, update);
-  addAuditWrite(
-    batch,
-    context,
-    'participant_added',
-    auditTargetUid,
-    reason,
-    auditTargetLabel,
-  );
-  await batch.commit();
+  const lockRef = bookingDb.collection('bookingMutationLocks')
+    .doc(bookingDateLockId(context.booking.date));
+  await bookingDb.runTransaction(async (transaction) => {
+    const bookingSnap = await transaction.get(context.bookingRef);
+    await transaction.get(lockRef);
+    const sameDateSnap = await transaction.get(
+      bookingDb.collection('bookings')
+        .where('date', '==', context.booking.date),
+    );
+    if (!bookingSnap.exists || !isActiveBooking(bookingSnap.data() || {})) {
+      throw new HttpsError('failed-precondition', '此預約已取消或作廢');
+    }
+    const currentBooking = Object.assign(
+      {id: context.bookingId}, bookingSnap.data() || {},
+    );
+    if (currentBooking.date !== context.booking.date) {
+      throw new HttpsError('aborted', '預約日期已變更，請重新操作');
+    }
+    assertParticipantMutationAllowed(currentBooking);
+    const currentPlayers = generalBookingPlayerUids(currentBooking);
+    const currentGuests = Array.isArray(currentBooking.guests) ?
+      currentBooking.guests : [];
+    if (currentPlayers.length + currentGuests.length >=
+        (Number(currentBooking.capacity) || 4)) {
+      throw new HttpsError('failed-precondition', '此預約已達人數上限');
+    }
+    if (targetUid) {
+      if (currentPlayers.includes(targetUid)) {
+        throw new HttpsError('already-exists', '此會員已在預約中');
+      }
+      const bookingAfter = Object.assign({}, currentBooking, {
+        players: currentPlayers.concat([targetUid]),
+      });
+      const sameDateBookings = sameDateSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() || {}),
+      }));
+      if (findParticipantConflictUid(
+        sameDateBookings, bookingAfter, context.bookingId,
+      )) {
+        throw new HttpsError(
+          'failed-precondition', '此會員已在同時段參與其他預約',
+        );
+      }
+      const exceededUid = findGeneralDailyLimitExceededUid(
+        sameDateBookings, bookingAfter, context.bookingId,
+      );
+      if (exceededUid) {
+        throw new HttpsError('failed-precondition', GENERAL_DAILY_LIMIT_MESSAGE);
+      }
+    }
+    transaction.set(lockRef, {
+      updatedAt: SERVER_TS(),
+      version: admin.firestore.FieldValue.increment(1),
+    }, {merge: true});
+    transaction.update(context.bookingRef, update);
+    addAuditWrite(
+      transaction, Object.assign({}, context, {booking: currentBooking}),
+      'participant_added', auditTargetUid, reason, auditTargetLabel,
+    );
+  });
   return {ok: true};
 });
 
@@ -773,18 +1226,135 @@ exports.removeBookingParticipant = onCall({region: 'asia-east1'}, async (request
     update.guests = guests;
   }
 
-  const batch = bookingDb.batch();
-  batch.update(context.bookingRef, update);
-  addAuditWrite(
-    batch,
-    context,
-    'participant_removed',
-    auditTargetUid,
-    reason,
-    auditTargetLabel,
-  );
-  await batch.commit();
-  return {ok: true};
+  const lockRef = bookingDb.collection('bookingMutationLocks')
+    .doc(bookingDateLockId(context.booking.date));
+  let revokedExtensionBookingIds = [];
+  await bookingDb.runTransaction(async (transaction) => {
+    const bookingSnap = await transaction.get(context.bookingRef);
+    await transaction.get(lockRef);
+    const sameDateSnap = await transaction.get(
+      bookingDb.collection('bookings')
+        .where('date', '==', context.booking.date),
+    );
+    if (!bookingSnap.exists || !isActiveBooking(bookingSnap.data() || {})) {
+      throw new HttpsError('failed-precondition', '此預約已取消或作廢');
+    }
+    const currentBooking = Object.assign(
+      {id: context.bookingId}, bookingSnap.data() || {},
+    );
+    if (currentBooking.date !== context.booking.date) {
+      throw new HttpsError('aborted', '預約日期已變更，請重新操作');
+    }
+    const currentPlayers = generalBookingPlayerUids(currentBooking);
+    if (targetUid && !currentPlayers.includes(targetUid)) {
+      throw new HttpsError('not-found', '此會員不在預約中');
+    }
+    if (targetUid) {
+      const bookingAfter = Object.assign({}, currentBooking, {
+        players: currentPlayers.filter((uid) => uid !== targetUid),
+      });
+      revokedExtensionBookingIds = await revokeInvalidExtensions(
+        transaction, sameDateSnap.docs.map((doc) => ({
+          id: doc.id,
+          ...(doc.data() || {}),
+        })), currentBooking, bookingAfter,
+        context.actorUid,
+        context.actor.realName || context.actor.displayName || '',
+        reason || '已從原一般預約移除',
+      );
+    }
+    transaction.set(lockRef, {
+      updatedAt: SERVER_TS(),
+      version: admin.firestore.FieldValue.increment(1),
+    }, {merge: true});
+    transaction.update(context.bookingRef, update);
+    addAuditWrite(
+      transaction, Object.assign({}, context, {booking: currentBooking}),
+      'participant_removed', auditTargetUid, reason, auditTargetLabel,
+    );
+  });
+  return {ok: true, revokedExtensionBookingIds};
+});
+
+exports.leaveBooking = onCall({region: 'asia-east1'}, async (request) => {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError('unauthenticated', '請重新登入 LINE 後再試');
+  }
+  const actorUid = request.auth.uid;
+  const actorSnap = await bookingDb.collection('members').doc(actorUid).get();
+  if (!actorSnap.exists) {
+    throw new HttpsError('permission-denied', '找不到操作者會員資料');
+  }
+  const bookingId = cleanString((request.data || {}).bookingId, 128);
+  if (!bookingId) {
+    throw new HttpsError('invalid-argument', 'bookingId 必填');
+  }
+  const bookingRef = bookingDb.collection('bookings').doc(bookingId);
+  const initialSnap = await bookingRef.get();
+  if (!initialSnap.exists) throw new HttpsError('not-found', '找不到此預約');
+  const initialBooking = initialSnap.data() || {};
+  assertParticipantMutationAllowed(initialBooking);
+  if (initialBooking.createdBy === actorUid) {
+    throw new HttpsError('failed-precondition', '預約建立者不可退出自己的預約');
+  }
+  if (!generalBookingPlayerUids(initialBooking).includes(actorUid)) {
+    throw new HttpsError('not-found', '您不在此預約中');
+  }
+  if (bookingStartMs(initialBooking) - Date.now() < 30 * 60 * 1000) {
+    throw new HttpsError('failed-precondition', '距開始不足 30 分鐘，無法退出');
+  }
+
+  const actor = actorSnap.data() || {};
+  const actorName = actor.realName || actor.displayName || '';
+  const lockRef = bookingDb.collection('bookingMutationLocks')
+    .doc(bookingDateLockId(initialBooking.date));
+  let revokedExtensionBookingIds = [];
+  await bookingDb.runTransaction(async (transaction) => {
+    const bookingSnap = await transaction.get(bookingRef);
+    await transaction.get(lockRef);
+    const sameDateSnap = await transaction.get(
+      bookingDb.collection('bookings')
+        .where('date', '==', initialBooking.date),
+    );
+    if (!bookingSnap.exists || !isActiveBooking(bookingSnap.data() || {})) {
+      throw new HttpsError('failed-precondition', '此預約已取消或作廢');
+    }
+    const booking = Object.assign({id: bookingId}, bookingSnap.data() || {});
+    if (booking.date !== initialBooking.date) {
+      throw new HttpsError('aborted', '預約日期已變更，請重新操作');
+    }
+    assertParticipantMutationAllowed(booking);
+    if (booking.createdBy === actorUid ||
+        !generalBookingPlayerUids(booking).includes(actorUid)) {
+      throw new HttpsError('failed-precondition', '目前無法退出此預約');
+    }
+    const bookingAfter = Object.assign({}, booking, {
+      players: generalBookingPlayerUids(booking)
+        .filter((uid) => uid !== actorUid),
+    });
+    revokedExtensionBookingIds = await revokeInvalidExtensions(
+      transaction, sameDateSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() || {}),
+      })), booking, bookingAfter, actorUid, actorName,
+      '已退出原一般預約',
+    );
+    transaction.set(lockRef, {
+      updatedAt: SERVER_TS(),
+      version: admin.firestore.FieldValue.increment(1),
+    }, {merge: true});
+    transaction.update(bookingRef, {
+      players: admin.firestore.FieldValue.arrayRemove(actorUid),
+      participantCount: admin.firestore.FieldValue.increment(-1),
+      updatedAt: SERVER_TS(),
+    });
+    addAuditWrite(
+      transaction,
+      {actorUid, bookingId, booking, actor, bookingRef},
+      'participant_removed', actorUid, '會員自行退出', '',
+    );
+  });
+  return {ok: true, revokedExtensionBookingIds};
 });
 
 exports.cancelBooking = onCall({region: 'asia-east1'}, async (request) => {
@@ -793,10 +1363,6 @@ exports.cancelBooking = onCall({region: 'asia-east1'}, async (request) => {
   if (ADMIN_ROLES.has(context.actorRole) && !reason) {
     throw new HttpsError('invalid-argument', '管理員取消預約必須填寫原因');
   }
-  if (!isActiveBooking(context.booking)) {
-    throw new HttpsError('failed-precondition', '此預約已取消或作廢');
-  }
-
   const startMs = bookingStartMs(context.booking);
   if (!Number.isFinite(startMs)) {
     throw new HttpsError('failed-precondition', '預約時間資料不完整');
@@ -821,22 +1387,593 @@ exports.cancelBooking = onCall({region: 'asia-east1'}, async (request) => {
   };
   if (reason) update.cancelReason = reason;
 
-  const batch = bookingDb.batch();
-  batch.update(context.bookingRef, update);
-  addAuditWrite(
-    batch,
-    context,
-    'cancel',
-    context.booking.createdBy || '',
-    reason,
-    '',
-  );
-  if (reason === MEMBERSHIP_EXPIRY_CANCEL_REASON) {
-    addMembershipExpiryCancelNotification(batch, context);
-  }
-  await batch.commit();
-  return {ok: true, cancelledByName: actorName};
+  const lockRef = bookingDb.collection('bookingMutationLocks')
+    .doc(bookingDateLockId(context.booking.date));
+  let revokedExtensionBookingIds = [];
+  await bookingDb.runTransaction(async (transaction) => {
+    const bookingSnap = await transaction.get(context.bookingRef);
+    await transaction.get(lockRef);
+    const sameDateSnap = await transaction.get(
+      bookingDb.collection('bookings')
+        .where('date', '==', context.booking.date),
+    );
+    if (!bookingSnap.exists || !isActiveBooking(bookingSnap.data() || {})) {
+      throw new HttpsError('failed-precondition', '此預約已取消或作廢');
+    }
+    const booking = Object.assign(
+      {id: context.bookingId}, bookingSnap.data() || {},
+    );
+    if (booking.date !== context.booking.date) {
+      throw new HttpsError('aborted', '預約日期已變更，請重新操作');
+    }
+    revokedExtensionBookingIds = await revokeInvalidExtensions(
+      transaction, sameDateSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() || {}),
+      })), booking, Object.assign({}, booking, {status: 'cancelled'}),
+      context.actorUid, actorName,
+      reason || '原一般預約已取消',
+    );
+    if (booking.extensionStatus === 'approved') {
+      update.extensionRevokedAt = SERVER_TS();
+    }
+    transaction.set(lockRef, {
+      updatedAt: SERVER_TS(),
+      version: admin.firestore.FieldValue.increment(1),
+    }, {merge: true});
+    transaction.update(context.bookingRef, update);
+    const currentContext = Object.assign({}, context, {booking});
+    addAuditWrite(
+      transaction, currentContext, 'cancel', booking.createdBy || '', reason, '',
+    );
+    if (reason === MEMBERSHIP_EXPIRY_CANCEL_REASON) {
+      addMembershipExpiryCancelNotification(transaction, currentContext);
+    }
+  });
+  return {
+    ok: true,
+    cancelledByName: actorName,
+    revokedExtensionBookingIds,
+  };
 });
+
+exports.voidBooking = onCall({region: 'asia-east1'}, async (request) => {
+  const context = await getBookingActorContext(request);
+  if (context.actorRole !== 'owner') {
+    throw new HttpsError('permission-denied', '僅開發者可強制作廢');
+  }
+  const reason = cleanString((request.data || {}).reason, 300);
+  const actorName = context.actor.realName || context.actor.displayName || '';
+  const lockRef = bookingDb.collection('bookingMutationLocks')
+    .doc(bookingDateLockId(context.booking.date));
+  let revokedExtensionBookingIds = [];
+  await bookingDb.runTransaction(async (transaction) => {
+    const bookingSnap = await transaction.get(context.bookingRef);
+    await transaction.get(lockRef);
+    const sameDateSnap = await transaction.get(
+      bookingDb.collection('bookings')
+        .where('date', '==', context.booking.date),
+    );
+    if (!bookingSnap.exists || !isActiveBooking(bookingSnap.data() || {})) {
+      throw new HttpsError('failed-precondition', '此預約已取消或作廢');
+    }
+    const booking = Object.assign(
+      {id: context.bookingId}, bookingSnap.data() || {},
+    );
+    if (booking.date !== context.booking.date) {
+      throw new HttpsError('aborted', '預約日期已變更，請重新操作');
+    }
+    revokedExtensionBookingIds = await revokeInvalidExtensions(
+      transaction, sameDateSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() || {}),
+      })), booking, Object.assign({}, booking, {status: 'void'}),
+      context.actorUid, actorName,
+      reason || '原一般預約已作廢',
+    );
+    const update = {
+      status: 'void',
+      voidBy: context.actorUid,
+      voidByName: actorName,
+      voidAt: SERVER_TS(),
+      updatedAt: SERVER_TS(),
+    };
+    if (reason) update.voidReason = reason;
+    if (booking.extensionStatus === 'approved') {
+      update.extensionRevokedAt = SERVER_TS();
+    }
+    transaction.set(lockRef, {
+      updatedAt: SERVER_TS(),
+      version: admin.firestore.FieldValue.increment(1),
+    }, {merge: true});
+    transaction.update(context.bookingRef, update);
+    addAuditWrite(
+      transaction, Object.assign({}, context, {booking}),
+      'void', booking.createdBy || '', reason, '',
+    );
+  });
+  return {ok: true, voidByName: actorName, revokedExtensionBookingIds};
+});
+
+exports.repairBookingOverlap = onCall(
+  {region: 'asia-east1'},
+  async (request) => {
+    const context = await getBookingActorContext(request);
+    if (context.actorRole !== 'owner') {
+      throw new HttpsError('permission-denied', '僅 Owner 可執行此操作');
+    }
+    const targetCourt = cleanString((request.data || {}).targetCourt, 20);
+    const pairedCourt = {
+      hard_a: 'hard_b',
+      hard_b: 'hard_a',
+      clay_a: 'clay_b',
+      clay_b: 'clay_a',
+    }[context.booking.court];
+    if (!pairedCourt || targetCourt !== pairedCourt) {
+      throw new HttpsError('invalid-argument', '修復目標場地不正確');
+    }
+    const actorName = context.actor.realName || context.actor.displayName || '';
+    const lockRef = bookingDb.collection('bookingMutationLocks')
+      .doc(bookingDateLockId(context.booking.date));
+    await bookingDb.runTransaction(async (transaction) => {
+      const bookingSnap = await transaction.get(context.bookingRef);
+      await transaction.get(lockRef);
+      const sameDateSnap = await transaction.get(
+        bookingDb.collection('bookings')
+          .where('date', '==', context.booking.date),
+      );
+      if (!bookingSnap.exists || !isActiveBooking(bookingSnap.data() || {})) {
+        throw new HttpsError('failed-precondition', '此預約已取消或作廢');
+      }
+      const booking = Object.assign(
+        {id: context.bookingId}, bookingSnap.data() || {},
+      );
+      if (booking.date !== context.booking.date ||
+          booking.court !== context.booking.court) {
+        throw new HttpsError('aborted', '預約場地已變更，請重新掃描');
+      }
+      const candidate = Object.assign({}, booking, {court: targetCourt});
+      const sameDateBookings = sameDateSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() || {}),
+      }));
+      if (findCourtConflict(sameDateBookings, candidate, context.bookingId)) {
+        throw new HttpsError(
+          'already-exists', '目標場地該時段已有預約，請重新掃描。',
+        );
+      }
+      transaction.set(lockRef, {
+        updatedAt: SERVER_TS(),
+        version: admin.firestore.FieldValue.increment(1),
+      }, {merge: true});
+      transaction.update(context.bookingRef, {
+        court: targetCourt,
+        movedFromCourt: booking.court,
+        movedReason: 'overlap_conflict_auto_fix',
+        movedAt: SERVER_TS(),
+        movedBy: context.actorUid,
+        history: admin.firestore.FieldValue.arrayUnion({
+          type: 'court_auto_moved',
+          fromCourt: booking.court,
+          toCourt: targetCourt,
+          reason: 'overlap_conflict_auto_fix',
+          createdAt: new Date(),
+          createdBy: context.actorUid,
+        }),
+      });
+      addAuditWrite(
+        transaction, Object.assign({}, context, {booking}),
+        'court_auto_moved', booking.createdBy || '',
+        'overlap_conflict_auto_fix', targetCourt,
+      );
+    });
+    return {ok: true};
+  },
+);
+
+exports.submitBookingExtensionRequest = onCall(
+  {region: 'asia-east1'},
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError('unauthenticated', '請重新登入 LINE 後再試');
+    }
+    const requesterUid = request.auth.uid;
+    const memberSnap = await bookingDb.collection('members')
+      .doc(requesterUid).get();
+    if (!memberSnap.exists) {
+      throw new HttpsError('permission-denied', '找不到申請會員資料');
+    }
+    const member = memberSnap.data() || {};
+    const input = request.data || {};
+    const date = cleanString(input.date, 10);
+    const court = cleanString(input.court, 20);
+    const startTime = cleanString(input.startTime, 5);
+    const endTime = cleanString(input.endTime, 5);
+    assertExtensionTimeInput(date, court, startTime, endTime);
+    assertExtensionMemberEligible(member, date);
+
+    const candidate = {
+      date,
+      court,
+      startTime,
+      endTime,
+      mode: 'general',
+      status: 'active',
+      createdBy: requesterUid,
+      players: [requesterUid],
+    };
+    const startMs = bookingStartMs(candidate);
+    if (!Number.isFinite(startMs) || startMs <= Date.now()) {
+      throw new HttpsError(
+        'failed-precondition',
+        '加時申請時段已開始或已結束，無法送出。',
+      );
+    }
+
+    const sameDateSnap = await bookingDb.collection('bookings')
+      .where('date', '==', date).get();
+    const sameDateBookings = sameDateSnap.docs.map((doc) => ({
+      id: doc.id,
+      ...(doc.data() || {}),
+    }));
+    if (hasApprovedExtension(sameDateBookings, requesterUid)) {
+      throw new HttpsError(
+        'failed-precondition',
+        '您今日已有一筆核准的加時預約，無法再次申請。',
+      );
+    }
+    if (normalGeneralMinutesForUid(sameDateBookings, requesterUid) !== 120) {
+      throw new HttpsError(
+        'failed-precondition',
+        '當日一般預約使用時間達 2 小時後，才能申請加時。',
+      );
+    }
+    if (findCourtConflict(sameDateBookings, candidate, '')) {
+      throw new HttpsError('already-exists', '申請時段已有其他預約。');
+    }
+    if (findParticipantConflictUid(sameDateBookings, candidate, '')) {
+      throw new HttpsError(
+        'failed-precondition',
+        '您在申請時段已有其他預約。',
+      );
+    }
+    assertHardCourtUsageAllowed(
+      sameDateBookings, requesterUid, startTime, endTime, '',
+    );
+
+    const requestId = extensionRequestDocId(requesterUid, date);
+    const requestRef = bookingDb.collection('bookingExtensionRequests')
+      .doc(requestId);
+    const requesterName = memberDisplayName(member, requesterUid);
+    await bookingDb.runTransaction(async (transaction) => {
+      const existingSnap = await transaction.get(requestRef);
+      const existing = existingSnap.exists ? existingSnap.data() || {} : {};
+      const existingStart = existingSnap.exists ? bookingStartMs(existing) : NaN;
+      if (existing.status === 'approved' || existing.status === 'revoked') {
+        throw new HttpsError(
+          'failed-precondition',
+          '您今日已有一筆曾核准的加時預約，無法再次申請。',
+        );
+      }
+      if (existing.status === 'pending' &&
+          Number.isFinite(existingStart) && existingStart > Date.now()) {
+        throw new HttpsError(
+          'already-exists',
+          '您今日已有一筆待審核加時申請。',
+        );
+      }
+      if (existing.status === 'pending') {
+        transaction.set(
+          bookingDb.collection('bookingExtensionAuditLogs').doc(),
+          extensionAuditData(
+            requestId, '', requesterUid, requesterName, requesterUid,
+            'extension_expired', '申請時段開始前未核准',
+            existing,
+          ),
+        );
+      }
+      const attempt = Number(existing.attempt) || 0;
+      transaction.set(requestRef, {
+        requesterUid,
+        requesterName,
+        date,
+        court,
+        startTime,
+        endTime,
+        durationMinutes: EXTENSION_DURATION_MINUTES,
+        status: 'pending',
+        attempt: attempt + 1,
+        requestedAt: SERVER_TS(),
+        updatedAt: SERVER_TS(),
+        approvedByUid: '',
+        approvedByName: '',
+        approvedAt: null,
+        rejectedByUid: '',
+        rejectedByName: '',
+        rejectedAt: null,
+        rejectReason: '',
+        bookingId: '',
+        source: 'web_callable',
+      });
+      transaction.set(
+        bookingDb.collection('bookingExtensionAuditLogs').doc(),
+        extensionAuditData(
+          requestId, '', requesterUid, requesterName, requesterUid,
+          'extension_requested', '',
+          {date, court, startTime, endTime, attempt: attempt + 1},
+        ),
+      );
+    });
+    return {ok: true, requestId};
+  },
+);
+
+exports.approveBookingExtensionRequest = onCall(
+  {region: 'asia-east1'},
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError('unauthenticated', '請重新登入 LINE 後再試');
+    }
+    const actorUid = request.auth.uid;
+    const actorSnap = await bookingDb.collection('members').doc(actorUid).get();
+    const actor = actorSnap.exists ? actorSnap.data() || {} : {};
+    if (!actorSnap.exists || !ADMIN_ROLES.has(actor.role || '')) {
+      throw new HttpsError('permission-denied', '僅管理員可核准加時申請');
+    }
+    const actorName = memberDisplayName(actor, actorUid);
+    const requestId = cleanString(request.data && request.data.requestId, 600);
+    if (!requestId) {
+      throw new HttpsError('invalid-argument', '缺少加時申請 ID');
+    }
+    const requestRef = bookingDb.collection('bookingExtensionRequests')
+      .doc(requestId);
+    let expired = false;
+    let bookingId = '';
+    await bookingDb.runTransaction(async (transaction) => {
+      const extensionSnap = await transaction.get(requestRef);
+      if (!extensionSnap.exists) {
+        throw new HttpsError('not-found', '找不到加時申請');
+      }
+      const extensionRequest = Object.assign(
+        {id: requestId}, extensionSnap.data() || {},
+      );
+      if (extensionRequest.status !== 'pending') {
+        throw new HttpsError('failed-precondition', '此申請已處理');
+      }
+      assertExtensionTimeInput(
+        extensionRequest.date,
+        extensionRequest.court,
+        extensionRequest.startTime,
+        extensionRequest.endTime,
+      );
+      if (bookingStartMs(extensionRequest) <= Date.now()) {
+        expired = true;
+        transaction.update(requestRef, {
+          status: 'expired',
+          updatedAt: SERVER_TS(),
+        });
+        transaction.set(
+          bookingDb.collection('bookingExtensionAuditLogs').doc(),
+          extensionAuditData(
+            requestId, '', actorUid, actorName,
+            extensionRequest.requesterUid,
+            'extension_expired', '申請時段開始前未核准',
+            extensionRequest,
+          ),
+        );
+        return;
+      }
+
+      const memberRef = bookingDb.collection('members')
+        .doc(extensionRequest.requesterUid);
+      const memberSnap = await transaction.get(memberRef);
+      if (!memberSnap.exists) {
+        throw new HttpsError('failed-precondition', '找不到申請會員資料');
+      }
+      const member = memberSnap.data() || {};
+      assertExtensionMemberEligible(member, extensionRequest.date);
+
+      bookingId = `extension_${requestId}`;
+      const bookingRef = bookingDb.collection('bookings').doc(bookingId);
+      const lockRef = bookingDb.collection('bookingMutationLocks')
+        .doc(bookingDateLockId(extensionRequest.date));
+      const bookingSnap = await transaction.get(bookingRef);
+      await transaction.get(lockRef);
+      const sameDateSnap = await transaction.get(
+        bookingDb.collection('bookings')
+          .where('date', '==', extensionRequest.date),
+      );
+      if (bookingSnap.exists) {
+        throw new HttpsError('already-exists', '此加時預約已建立');
+      }
+      const sameDateBookings = sameDateSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() || {}),
+      }));
+      if (hasApprovedExtension(
+        sameDateBookings, extensionRequest.requesterUid,
+      )) {
+        throw new HttpsError(
+          'failed-precondition',
+          '此會員今日已有一筆核准的加時預約。',
+        );
+      }
+      if (normalGeneralMinutesForUid(
+        sameDateBookings, extensionRequest.requesterUid,
+      ) !== 120) {
+        throw new HttpsError(
+          'failed-precondition',
+          '此會員當日正常一般預約時數已變更，無法核准。',
+        );
+      }
+
+      const requesterName = memberDisplayName(
+        member, extensionRequest.requesterUid,
+      );
+      const booking = {
+        date: extensionRequest.date,
+        court: extensionRequest.court,
+        startTime: extensionRequest.startTime,
+        endTime: extensionRequest.endTime,
+        mode: 'general',
+        status: 'active',
+        createdBy: extensionRequest.requesterUid,
+        createdByName: requesterName,
+        primaryName: requesterName,
+        players: [extensionRequest.requesterUid],
+        guests: [],
+        capacity: 1,
+        participantCount: 1,
+        extensionStatus: 'approved',
+        extensionRequestId: requestId,
+        extensionApprovedByUid: actorUid,
+        extensionApprovedByName: actorName,
+        extensionApprovedAt: SERVER_TS(),
+        createdAt: SERVER_TS(),
+        updatedAt: SERVER_TS(),
+      };
+      if (findCourtConflict(sameDateBookings, booking, '')) {
+        throw new HttpsError('already-exists', '申請時段已有其他預約。');
+      }
+      if (findParticipantConflictUid(sameDateBookings, booking, '')) {
+        throw new HttpsError(
+          'failed-precondition',
+          '申請會員在此時段已有其他預約。',
+        );
+      }
+      assertHardCourtUsageAllowed(
+        sameDateBookings,
+        extensionRequest.requesterUid,
+        extensionRequest.startTime,
+        extensionRequest.endTime,
+        '',
+      );
+
+      transaction.set(lockRef, {
+        updatedAt: SERVER_TS(),
+        version: admin.firestore.FieldValue.increment(1),
+      }, {merge: true});
+      transaction.set(bookingRef, booking);
+      transaction.update(requestRef, {
+        requesterName,
+        status: 'approved',
+        approvedByUid: actorUid,
+        approvedByName: actorName,
+        approvedAt: SERVER_TS(),
+        bookingId,
+        updatedAt: SERVER_TS(),
+      });
+      transaction.set(
+        bookingDb.collection('bookingExtensionAuditLogs').doc(),
+        extensionAuditData(
+          requestId, bookingId, actorUid, actorName,
+          extensionRequest.requesterUid, 'extension_approved', '',
+          extensionRequest,
+        ),
+      );
+      transaction.set(
+        bookingDb.collection('notifications')
+          .doc(`booking_extension_approved_${requestId}`),
+        extensionNotificationData(
+          extensionRequest, 'booking_extension_approved', bookingId,
+          actorUid, actorName, '',
+        ),
+      );
+    });
+    if (expired) {
+      throw new HttpsError(
+        'deadline-exceeded',
+        '此加時申請已超過開始時間，已標記為 expired。',
+      );
+    }
+    return {ok: true, bookingId};
+  },
+);
+
+exports.rejectBookingExtensionRequest = onCall(
+  {region: 'asia-east1'},
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError('unauthenticated', '請重新登入 LINE 後再試');
+    }
+    const actorUid = request.auth.uid;
+    const actorSnap = await bookingDb.collection('members').doc(actorUid).get();
+    const actor = actorSnap.exists ? actorSnap.data() || {} : {};
+    if (!actorSnap.exists || !ADMIN_ROLES.has(actor.role || '')) {
+      throw new HttpsError('permission-denied', '僅管理員可拒絕加時申請');
+    }
+    const actorName = memberDisplayName(actor, actorUid);
+    const requestId = cleanString(request.data && request.data.requestId, 600);
+    const reason = cleanString(request.data && request.data.reason, 300) ||
+      '加時申請未通過';
+    if (!requestId) {
+      throw new HttpsError('invalid-argument', '缺少加時申請 ID');
+    }
+    const requestRef = bookingDb.collection('bookingExtensionRequests')
+      .doc(requestId);
+    let expired = false;
+    await bookingDb.runTransaction(async (transaction) => {
+      const extensionSnap = await transaction.get(requestRef);
+      if (!extensionSnap.exists) {
+        throw new HttpsError('not-found', '找不到加時申請');
+      }
+      const extensionRequest = Object.assign(
+        {id: requestId}, extensionSnap.data() || {},
+      );
+      if (extensionRequest.status !== 'pending') {
+        throw new HttpsError('failed-precondition', '此申請已處理');
+      }
+      if (bookingStartMs(extensionRequest) <= Date.now()) {
+        expired = true;
+        transaction.update(requestRef, {
+          status: 'expired',
+          updatedAt: SERVER_TS(),
+        });
+        transaction.set(
+          bookingDb.collection('bookingExtensionAuditLogs').doc(),
+          extensionAuditData(
+            requestId, '', actorUid, actorName,
+            extensionRequest.requesterUid,
+            'extension_expired', '申請時段開始前未核准',
+            extensionRequest,
+          ),
+        );
+        return;
+      }
+      transaction.update(requestRef, {
+        status: 'rejected',
+        rejectedByUid: actorUid,
+        rejectedByName: actorName,
+        rejectedAt: SERVER_TS(),
+        rejectReason: reason,
+        updatedAt: SERVER_TS(),
+      });
+      transaction.set(
+        bookingDb.collection('bookingExtensionAuditLogs').doc(),
+        extensionAuditData(
+          requestId, '', actorUid, actorName,
+          extensionRequest.requesterUid, 'extension_rejected', reason,
+          extensionRequest,
+        ),
+      );
+      transaction.set(
+        bookingDb.collection('notifications')
+          .doc(`booking_extension_rejected_${requestId}_${extensionRequest.attempt || 1}`),
+        extensionNotificationData(
+          extensionRequest, 'booking_extension_rejected', '',
+          actorUid, actorName, reason,
+        ),
+      );
+    });
+    if (expired) {
+      throw new HttpsError(
+        'deadline-exceeded',
+        '此加時申請已超過開始時間，已標記為 expired。',
+      );
+    }
+    return {ok: true};
+  },
+);
 
 exports.restoreFinancialRecord = onCall({region: 'asia-east1'}, async (request) => {
   if (!request.auth || !request.auth.uid) {
