@@ -127,31 +127,54 @@ function timeToMinutes(value) {
   return Number(match[1]) * 60 + Number(match[2]);
 }
 
-function assertGeneralDailyLimitAllowed(bookings, booking, subjectUid, excludeId) {
+function generalBookingPlayerUids(booking) {
+  const players = Array.isArray(booking.players) ? booking.players : [];
+  const uids = players.filter((uid) => typeof uid === 'string' && uid);
+  if (!uids.length && booking.createdBy) uids.push(booking.createdBy);
+  return [...new Set(uids)];
+}
+
+function findGeneralDailyLimitExceededUid(bookings, booking, excludeId) {
   if (booking.date < GENERAL_DAILY_LIMIT_START ||
       normaliseBookingMode(booking.mode) !== 'general' ||
       (booking.court !== 'hard_a' && booking.court !== 'hard_b')) {
-    return;
+    return '';
   }
+  const playerUids = generalBookingPlayerUids(booking);
+  if (!playerUids.length) return '';
   const duration = timeToMinutes(booking.endTime) -
     timeToMinutes(booking.startTime);
-  const existingMinutes = bookings
-    .filter((existing) => {
-      return existing.id !== excludeId &&
-        isActiveBooking(existing) &&
-        normaliseBookingMode(existing.mode) === 'general' &&
-        (existing.court === 'hard_a' || existing.court === 'hard_b') &&
-        bookingSubjectUid(existing) === subjectUid;
-    })
-    .reduce((total, existing) => {
-      return total + timeToMinutes(existing.endTime) -
-        timeToMinutes(existing.startTime);
-    }, 0);
-  if (!Number.isFinite(duration) || !Number.isFinite(existingMinutes) ||
-      duration <= 0 ||
-      existingMinutes + duration > 120) {
-    throw new HttpsError('failed-precondition', GENERAL_DAILY_LIMIT_MESSAGE);
-  }
+  if (!Number.isFinite(duration) || duration <= 0) return playerUids[0];
+  const totals = new Map(playerUids.map((uid) => [uid, duration]));
+  bookings.forEach((existing) => {
+    if (existing.id === excludeId ||
+        !isActiveBooking(existing) ||
+        normaliseBookingMode(existing.mode) !== 'general' ||
+        (existing.court !== 'hard_a' && existing.court !== 'hard_b')) return;
+    const existingDuration = timeToMinutes(existing.endTime) -
+      timeToMinutes(existing.startTime);
+    if (!Number.isFinite(existingDuration) || existingDuration <= 0) return;
+    const existingPlayers = new Set(generalBookingPlayerUids(existing));
+    playerUids.forEach((uid) => {
+      if (existingPlayers.has(uid)) totals.set(uid, totals.get(uid) + existingDuration);
+    });
+  });
+  return playerUids.find((uid) => totals.get(uid) > 120) || '';
+}
+
+async function assertGeneralDailyLimitAllowed(bookings, booking, excludeId) {
+  const exceededUid = findGeneralDailyLimitExceededUid(
+    bookings, booking, excludeId,
+  );
+  if (!exceededUid) return;
+  const memberSnap = await bookingDb.collection('members').doc(exceededUid).get();
+  const member = memberSnap.exists ? memberSnap.data() || {} : {};
+  const name = member.realName || member.name ||
+    member.displayName || exceededUid;
+  throw new HttpsError(
+    'failed-precondition',
+    `${name}今日一般場地使用時間將超過 2 小時，無法建立預約。`,
+  );
 }
 
 function assertHardCourtUsageAllowed(
@@ -379,8 +402,8 @@ exports.createBooking = onCall({region: 'asia-east1'}, async (request) => {
         id: doc.id,
         ...(doc.data() || {}),
       }));
-      assertGeneralDailyLimitAllowed(
-        sameDateBookings, booking, subjectUid, '',
+      await assertGeneralDailyLimitAllowed(
+        sameDateBookings, booking, '',
       );
       if (subjectRole !== 'coach') {
         assertHardCourtUsageAllowed(
@@ -518,8 +541,8 @@ exports.updateBooking = onCall({region: 'asia-east1'}, async (request) => {
         id: doc.id,
         ...(doc.data() || {}),
       }));
-      assertGeneralDailyLimitAllowed(
-        sameDateBookings, booking, subjectUid, context.bookingId,
+      await assertGeneralDailyLimitAllowed(
+        sameDateBookings, booking, context.bookingId,
       );
       if (subjectRole !== 'coach') {
         assertHardCourtUsageAllowed(
@@ -675,6 +698,23 @@ exports.addBookingParticipant = onCall({region: 'asia-east1'}, async (request) =
       throw new HttpsError('failed-precondition', '此會員目前不具有效資格');
     }
     await assertNoParticipantTimeConflict(context, targetUid);
+    const bookingWithParticipant = Object.assign({}, context.booking, {
+      players: players.concat([targetUid]),
+    });
+    if (normaliseBookingMode(bookingWithParticipant.mode) === 'general' &&
+        (bookingWithParticipant.court === 'hard_a' ||
+         bookingWithParticipant.court === 'hard_b')) {
+      const sameDateSnap = await bookingDb.collection('bookings')
+        .where('date', '==', bookingWithParticipant.date)
+        .get();
+      const sameDateBookings = sameDateSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() || {}),
+      }));
+      await assertGeneralDailyLimitAllowed(
+        sameDateBookings, bookingWithParticipant, context.bookingId,
+      );
+    }
     update.players = admin.firestore.FieldValue.arrayUnion(targetUid);
     auditTargetUid = targetUid;
   } else {

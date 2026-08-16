@@ -9771,12 +9771,20 @@ function _dvAddMember(){
   var guests  = Array.isArray(b.guests)  ? b.guests  : [];
   if(players.indexOf(uid) >= 0){ showToast('此會員已在預約中'); return; }
   if(players.length + guests.length >= 4){ showToast('已達 4 人上限'); return; }
-  _callBookingFunction('addBookingParticipant', {bookingId:bid, targetUid:uid}).then(function(){
-    players.push(uid);
-    _patchBookingInAllCaches(bid, { players: players });
-    loadMyBookings();
-    _dvRefreshDetail();
-  }).catch(function(e){ showToast('新增失敗：'+e.message); });
+  var bookingWithMember=Object.assign({},b,{players:players.concat([uid])});
+  hasGeneralDailyLimitExceeded(bookingWithMember,bid).then(function(exceeded){
+    if(exceeded&&exceeded.queryError) throw new Error('目前無法確認每日預約時數，請稍後再試');
+    if(exceeded) throw new Error(_generalDailyLimitMessage(exceeded));
+    return _callBookingFunction('addBookingParticipant', {bookingId:bid, targetUid:uid});
+  }).then(function(){
+      players.push(uid);
+      _patchBookingInAllCaches(bid, { players: players });
+      loadMyBookings();
+      _dvRefreshDetail();
+    }).catch(function(e){
+      if(e&&e.message&&e.message.indexOf('今日一般場地使用時間將超過 2 小時')>=0) showToast(e.message);
+      else showToast('新增失敗：'+e.message);
+    });
 }
 function _dvAddGuest(){
   if(!db){ showToast('無法連線'); return; }
@@ -11430,26 +11438,46 @@ function _bookingParticipantUids(b){
 var _CONFLICT_QUERY_ERROR = {queryError: true};
 var _GENERAL_DAILY_LIMIT_START = '2026-08-10';
 var _GENERAL_DAILY_LIMIT_MESSAGE = '一般會員每日最多可預約 2 小時（Hard A、Hard B 合併計算）。';
+function _generalBookingPlayerUids(b){
+  var players=Array.isArray(b&&b.players)?b.players.filter(Boolean):[];
+  if(!players.length&&b&&b.createdBy) players.push(b.createdBy);
+  return players.filter(function(uid,i){return players.indexOf(uid)===i;});
+}
+function _generalDailyLimitMessage(result){
+  if(!result||!result.uid) return _GENERAL_DAILY_LIMIT_MESSAGE;
+  return (result.name||result.uid)+'今日一般場地使用時間將超過 2 小時，無法建立預約。';
+}
 function hasGeneralDailyLimitExceeded(draft, excludeId){
   if(_normaliseMode(draft.mode)!=='general' ||
      draft.date<_GENERAL_DAILY_LIMIT_START ||
      (draft.court!=='hard_a'&&draft.court!=='hard_b')) return Promise.resolve(false);
-  var subjectUid = (Array.isArray(draft.players)&&draft.players.length ? draft.players[0] : draft.createdBy)||'';
-  if(!db || !subjectUid) return Promise.resolve(_CONFLICT_QUERY_ERROR);
+  var playerUids=_generalBookingPlayerUids(draft);
+  if(!db||!playerUids.length) return Promise.resolve(_CONFLICT_QUERY_ERROR);
   var draftMinutes = timeToMin(draft.endTime)-timeToMin(draft.startTime);
-  if(draftMinutes>120) return Promise.resolve(true);
+  if(!isFinite(draftMinutes)||draftMinutes<=0||draftMinutes>120){
+    var firstUid=playerUids[0];
+    return Promise.resolve({uid:firstUid,name:_mName(usersCache[firstUid]||{})||firstUid});
+  }
   return db.collection('bookings').where('date','==',draft.date).get()
     .then(function(snap){
-      var total = draftMinutes;
+      var totals={};
+      playerUids.forEach(function(uid){totals[uid]=draftMinutes;});
       snap.docs.forEach(function(doc){
         if(doc.id===excludeId) return;
         var b = doc.data()||{};
         if(!_isActiveBooking(b) || _normaliseMode(b.mode)!=='general' ||
            (b.court!=='hard_a'&&b.court!=='hard_b')) return;
-        var existingUid = (Array.isArray(b.players)&&b.players.length ? b.players[0] : b.createdBy)||'';
-        if(existingUid===subjectUid) total += timeToMin(b.endTime)-timeToMin(b.startTime);
+        var existingMinutes=timeToMin(b.endTime)-timeToMin(b.startTime);
+        if(!isFinite(existingMinutes)||existingMinutes<=0) return;
+        var existingPlayers=_generalBookingPlayerUids(b);
+        playerUids.forEach(function(uid){
+          if(existingPlayers.indexOf(uid)>=0) totals[uid]+=existingMinutes;
+        });
       });
-      return total>120;
+      var exceededUid=playerUids.find(function(uid){return totals[uid]>120;})||'';
+      return exceededUid
+        ? {uid:exceededUid,name:_mName(usersCache[exceededUid]||{})||exceededUid}
+        : false;
     })
     .catch(function(e){
       console.error('[generalDailyLimit] query error:',e);
@@ -11660,7 +11688,7 @@ function _submitBookingEdit(){
             return Promise.reject({_bookingHandled:true});
           }
           if(_dailyExceeded4){
-            showToast(_GENERAL_DAILY_LIMIT_MESSAGE);
+            showToast(_generalDailyLimitMessage(_dailyExceeded4));
             if(btn){ btn.disabled=false; btn.textContent='儲存變更'; }
             return Promise.reject({_bookingHandled:true});
           }
@@ -11688,7 +11716,7 @@ function _submitBookingEdit(){
       if(e&&e._bookingHandled) return;
       console.error('_submitBookingEdit error:', e);
       if(e&&e.message&&e.message.indexOf('目前無有效會籍，無法建立教學預約。')>=0) showToast(e.message);
-      else if(e&&e.message===_GENERAL_DAILY_LIMIT_MESSAGE) showToast(e.message);
+      else if(e&&e.message&&e.message.indexOf('今日一般場地使用時間將超過 2 小時')>=0) showToast(e.message);
       else showToast('儲存失敗：'+e.message);
     })
     .finally(function(){
@@ -11832,7 +11860,7 @@ function submitBooking(){
           return;
         }
         if(_dailyExceeded){
-          showToast(_GENERAL_DAILY_LIMIT_MESSAGE);
+          showToast(_generalDailyLimitMessage(_dailyExceeded));
           if(btn){ btn.disabled=false; btn.textContent='確認預約'; }
           return;
         }
@@ -11866,7 +11894,7 @@ function submitBooking(){
       console.error('submitBooking error:',e);
       var _createErr = e && e.message ? e.message : '';
       if(_createErr.indexOf('目前無有效會籍，無法建立教學預約。')>=0 ||
-         _createErr===_GENERAL_DAILY_LIMIT_MESSAGE ||
+         _createErr.indexOf('今日一般場地使用時間將超過 2 小時')>=0 ||
          _createErr.indexOf('您的會籍有效期限至 ')===0 ||
          _createErr.indexOf('硬地每人連續預約最多 2 小時')===0){
         showToast(_createErr);
