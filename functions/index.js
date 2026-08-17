@@ -28,6 +28,13 @@ const GENERAL_DAILY_LIMIT_MESSAGE =
 const EXTENSION_DURATION_MINUTES = 60;
 const MEMBERSHIP_EXPIRY_CANCEL_REASON =
   '超過繳費會籍有效期限，此預約不成立。';
+const VIOLATION_LIMIT = 3;
+const VIOLATION_TYPES = new Set(['no_show', 'roster_mismatch', 'other']);
+const VIOLATION_REASON_LABELS = {
+  no_show: '預約未到，未取消也未告知',
+  roster_mismatch: '預約名單與實際使用人員不符',
+  other: '其他原因',
+};
 
 function cleanString(value, maxLength = 200) {
   return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
@@ -213,6 +220,254 @@ function memberDisplayName(member, fallback) {
     member.realName || member.name || member.displayName || fallback,
     100,
   );
+}
+
+function timestampMillis(value) {
+  if (!value) return 0;
+  if (typeof value.toMillis === 'function') return value.toMillis();
+  if (value instanceof Date) return value.getTime();
+  if (typeof value.seconds === 'number') return value.seconds * 1000;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function addTaipeiCalendarMonth(nowMillis) {
+  const taipeiOffset = 8 * 60 * 60 * 1000;
+  const shifted = new Date(nowMillis + taipeiOffset);
+  const year = shifted.getUTCFullYear();
+  const month = shifted.getUTCMonth();
+  const day = shifted.getUTCDate();
+  const hour = shifted.getUTCHours();
+  const minute = shifted.getUTCMinutes();
+  const second = shifted.getUTCSeconds();
+  const millis = shifted.getUTCMilliseconds();
+  const lastTargetDay = new Date(Date.UTC(year, month + 2, 0)).getUTCDate();
+  return Date.UTC(
+    year, month + 1, Math.min(day, lastTargetDay),
+    hour, minute, second, millis,
+  ) - taipeiOffset;
+}
+
+function formatTaipeiDate(value) {
+  const millis = timestampMillis(value);
+  if (!millis) return '';
+  return new Intl.DateTimeFormat('zh-TW', {
+    timeZone: 'Asia/Taipei',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(millis));
+}
+
+function violationSummaryRef(memberUid) {
+  return bookingDb.collection('bookingViolationSummaries').doc(memberUid);
+}
+
+function violationAuditData({
+  action, actorUid, actorName, targetUid, targetName, bookingId,
+  violationId, before, after, reason, source,
+}) {
+  return {
+    action,
+    actorUid: actorUid || '',
+    actorName: actorName || '',
+    targetUid: targetUid || '',
+    targetName: targetName || '',
+    bookingId: bookingId || '',
+    violationId: violationId || '',
+    before: before || null,
+    after: after || null,
+    reason: reason || '',
+    timestamp: SERVER_TS(),
+    source: source || 'web_callable',
+  };
+}
+
+function violationNotificationData(
+  violation, activePoints, suspendedAt, suspendedUntil,
+) {
+  const suspended = Boolean(suspendedUntil);
+  const bookingTime = violation.startTime && violation.endTime ?
+    `${violation.startTime}–${violation.endTime}` : '';
+  const details = [
+    `違規記點 +1`,
+    `違規原因：${violation.violationReason}`,
+  ];
+  if (violation.note) details.push(`備註：${violation.note}`);
+  if (violation.bookingDate) {
+    details.push(
+      `預約：${violation.bookingDate} ${bookingTime} ${courtLabel(violation.court)}`.trim(),
+    );
+  }
+  details.push(`記點人員：${violation.createdByName}`);
+  details.push(`記點時間：${new Date().toLocaleString('zh-TW', {timeZone: 'Asia/Taipei'})}`);
+  details.push(`目前有效點數：${activePoints} / ${VIOLATION_LIMIT}`);
+  if (suspended) {
+    details.push('已累積 3 點，自即日起暫停預約資格 1 個月。');
+    details.push(`停權開始時間：${new Date(suspendedAt).toLocaleString('zh-TW', {timeZone: 'Asia/Taipei'})}`);
+    details.push(`停權截止時間：${new Date(suspendedUntil).toLocaleString('zh-TW', {timeZone: 'Asia/Taipei'})}`);
+  }
+  return {
+    uid: violation.memberUid,
+    type: suspended ? 'booking_suspension_started' : 'booking_violation_recorded',
+    action: 'violation_create',
+    title: suspended ? '違規記點與預約停權通知' : '違規記點通知',
+    violationId: violation.id,
+    bookingId: violation.bookingId || '',
+    violationType: violation.violationType,
+    violationReason: violation.violationReason,
+    note: violation.note || '',
+    date: violation.bookingDate || '',
+    startTime: violation.startTime || '',
+    endTime: violation.endTime || '',
+    court: violation.court || '',
+    courtLabel: courtLabel(violation.court),
+    recordedByUid: violation.createdByUid,
+    recordedByName: violation.createdByName,
+    activePoints,
+    suspensionStartedAt: suspended ?
+      admin.firestore.Timestamp.fromMillis(suspendedAt) : null,
+    suspensionUntil: suspended ?
+      admin.firestore.Timestamp.fromMillis(suspendedUntil) : null,
+    message: details.join('\n'),
+    createdAt: SERVER_TS(),
+    expiresAt: admin.firestore.Timestamp.fromMillis(
+      Date.now() + 30 * 24 * 60 * 60 * 1000,
+    ),
+    read: false,
+  };
+}
+
+async function normaliseExpiredViolationCycle(
+  memberUid, actorUid, actorName, source,
+) {
+  const summaryRef = violationSummaryRef(memberUid);
+  await bookingDb.runTransaction(async (transaction) => {
+    const summarySnap = await transaction.get(summaryRef);
+    if (!summarySnap.exists) return;
+    const summary = summarySnap.data() || {};
+    const suspendedUntilMs = timestampMillis(summary.bookingSuspendedUntil);
+    if (summary.status !== 'suspended' ||
+        !suspendedUntilMs || suspendedUntilMs > Date.now()) return;
+    const before = {
+      cycleId: summary.cycleId || '',
+      activePoints: Number(summary.activePoints) || 0,
+      bookingSuspendedAt: summary.bookingSuspendedAt || null,
+      bookingSuspendedUntil: summary.bookingSuspendedUntil || null,
+    };
+    transaction.set(summaryRef, {
+      memberUid,
+      memberName: summary.memberName || '',
+      cycleId: '',
+      cycleViolationIds: [],
+      activePoints: 0,
+      status: 'active',
+      cycleStartedAt: null,
+      bookingSuspendedAt: null,
+      bookingSuspendedUntil: null,
+      suspensionTriggerViolationId: '',
+      suspensionEndedAt: SERVER_TS(),
+      lastCompletedCycleId: summary.cycleId || '',
+      updatedAt: SERVER_TS(),
+    }, {merge: true});
+    transaction.set(
+      bookingDb.collection('bookingViolationAuditLogs').doc(),
+      violationAuditData({
+        action: 'suspension_end',
+        actorUid,
+        actorName,
+        targetUid: memberUid,
+        targetName: summary.memberName || '',
+        violationId: summary.suspensionTriggerViolationId || '',
+        before,
+        after: {cycleId: '', activePoints: 0, status: 'active'},
+        reason: '預約停權期限已屆滿，目前週期有效點數歸零',
+        source,
+      }),
+    );
+  });
+}
+
+function suspendedBookingError(memberUid, memberName, suspendedUntil, action) {
+  const untilLabel = formatTaipeiDate(suspendedUntil);
+  return new HttpsError(
+    'failed-precondition',
+    `因累積 3 點預約違規，目前暫停預約資格至 ${untilLabel}。`,
+    {
+      suspensionRejected: true,
+      memberUid,
+      memberName,
+      suspendedUntil: timestampMillis(suspendedUntil),
+      action,
+    },
+  );
+}
+
+async function assertPlayersNotSuspendedInTransaction(
+  transaction, playerUids, action,
+) {
+  const uniqueUids = [...new Set((playerUids || []).filter(Boolean))];
+  for (const memberUid of uniqueUids) {
+    const summarySnap = await transaction.get(violationSummaryRef(memberUid));
+    if (!summarySnap.exists) continue;
+    const summary = summarySnap.data() || {};
+    const untilMs = timestampMillis(summary.bookingSuspendedUntil);
+    if (summary.status === 'suspended' && untilMs > Date.now()) {
+      throw suspendedBookingError(
+        memberUid, summary.memberName || memberUid,
+        summary.bookingSuspendedUntil, action,
+      );
+    }
+  }
+}
+
+async function assertPlayersNotSuspended(playerUids, action) {
+  const uniqueUids = [...new Set((playerUids || []).filter(Boolean))];
+  for (const memberUid of uniqueUids) {
+    const summarySnap = await violationSummaryRef(memberUid).get();
+    if (!summarySnap.exists) continue;
+    const summary = summarySnap.data() || {};
+    const untilMs = timestampMillis(summary.bookingSuspendedUntil);
+    if (summary.status === 'suspended' && untilMs > Date.now()) {
+      throw suspendedBookingError(
+        memberUid, summary.memberName || memberUid,
+        summary.bookingSuspendedUntil, action,
+      );
+    }
+  }
+}
+
+async function recordSuspensionRejection(
+  error, actorUid, actorName, bookingId, source,
+) {
+  const details = error && error.details || {};
+  if (!details.suspensionRejected) return;
+  await bookingDb.collection('bookingViolationAuditLogs').add(
+    violationAuditData({
+      action: details.action,
+      actorUid,
+      actorName,
+      targetUid: details.memberUid,
+      targetName: details.memberName,
+      bookingId,
+      reason: error.message || '停權中的會員不得建立或加入預約',
+      after: {bookingSuspendedUntil: details.suspendedUntil || null},
+      source,
+    }),
+  );
+}
+
+async function assertPlayersNotSuspendedAndAudit(
+  playerUids, action, actorUid, actorName, bookingId, source,
+) {
+  try {
+    await assertPlayersNotSuspended(playerUids, action);
+  } catch (error) {
+    await recordSuspensionRejection(
+      error, actorUid, actorName, bookingId, source,
+    );
+    throw error;
+  }
 }
 
 function courtLabel(court) {
@@ -491,6 +746,18 @@ exports.createBooking = onCall({region: 'asia-east1'}, async (request) => {
     throw new HttpsError('failed-precondition', '一般預約最多 4 人');
   }
 
+  const bookingPlayerUids = Array.isArray(booking.players) ?
+    [...new Set(booking.players.filter(Boolean))] : [];
+  const actorName = memberDisplayName(actor, actorUid);
+  await Promise.all(bookingPlayerUids.map((uid) =>
+    normaliseExpiredViolationCycle(
+      uid, actorUid, actorName, 'createBooking',
+    )));
+  await assertPlayersNotSuspendedAndAudit(
+    bookingPlayerUids, 'suspended_booking_rejected',
+    actorUid, actorName, '', 'createBooking',
+  );
+
   const subjectUid = bookingSubjectUid(booking);
   if (subjectUid) {
     const subjectSnap = await bookingDb.collection('members').doc(subjectUid).get();
@@ -541,39 +808,49 @@ exports.createBooking = onCall({region: 'asia-east1'}, async (request) => {
   const bookingRef = bookingDb.collection('bookings').doc();
   const lockRef = bookingDb.collection('bookingMutationLocks')
     .doc(bookingDateLockId(date));
-  await bookingDb.runTransaction(async (transaction) => {
-    await transaction.get(lockRef);
-    const sameDateSnap = await transaction.get(
-      bookingDb.collection('bookings').where('date', '==', date),
-    );
-    const sameDateBookings = sameDateSnap.docs.map((doc) => ({
-      id: doc.id,
-      ...(doc.data() || {}),
-    }));
-    if (findCourtConflict(sameDateBookings, booking, '')) {
-      throw new HttpsError(
-        'already-exists',
-        '此場地該時段已有預約，請選擇其他時段。',
+  try {
+    await bookingDb.runTransaction(async (transaction) => {
+      await transaction.get(lockRef);
+      const sameDateSnap = await transaction.get(
+        bookingDb.collection('bookings').where('date', '==', date),
       );
-    }
-    if (findParticipantConflictUid(sameDateBookings, booking, '')) {
-      throw new HttpsError(
-        'failed-precondition',
-        '此會員已在同時段參與其他預約。',
+      await assertPlayersNotSuspendedInTransaction(
+        transaction, bookingPlayerUids, 'suspended_booking_rejected',
       );
-    }
-    const exceededUid = findGeneralDailyLimitExceededUid(
-      sameDateBookings, booking, '',
+      const sameDateBookings = sameDateSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() || {}),
+      }));
+      if (findCourtConflict(sameDateBookings, booking, '')) {
+        throw new HttpsError(
+          'already-exists',
+          '此場地該時段已有預約，請選擇其他時段。',
+        );
+      }
+      if (findParticipantConflictUid(sameDateBookings, booking, '')) {
+        throw new HttpsError(
+          'failed-precondition',
+          '此會員已在同時段參與其他預約。',
+        );
+      }
+      const exceededUid = findGeneralDailyLimitExceededUid(
+        sameDateBookings, booking, '',
+      );
+      if (exceededUid) {
+        throw new HttpsError('failed-precondition', GENERAL_DAILY_LIMIT_MESSAGE);
+      }
+      transaction.set(lockRef, {
+        updatedAt: SERVER_TS(),
+        version: admin.firestore.FieldValue.increment(1),
+      }, {merge: true});
+      transaction.set(bookingRef, booking);
+    });
+  } catch (error) {
+    await recordSuspensionRejection(
+      error, actorUid, actorName, bookingRef.id, 'createBooking',
     );
-    if (exceededUid) {
-      throw new HttpsError('failed-precondition', GENERAL_DAILY_LIMIT_MESSAGE);
-    }
-    transaction.set(lockRef, {
-      updatedAt: SERVER_TS(),
-      version: admin.firestore.FieldValue.increment(1),
-    }, {merge: true});
-    transaction.set(bookingRef, booking);
-  });
+    throw error;
+  }
   return {ok: true, bookingId: bookingRef.id};
 });
 
@@ -671,6 +948,17 @@ exports.updateBooking = onCall({region: 'asia-east1'}, async (request) => {
   if (mode === 'teaching') {
     await assertSelectedTeachingStudentsEligible(booking.students || [], date);
   }
+  const bookingPlayerUids = Array.isArray(booking.players) ?
+    [...new Set(booking.players.filter(Boolean))] : [];
+  const actorName = memberDisplayName(context.actor, context.actorUid);
+  await Promise.all(bookingPlayerUids.map((uid) =>
+    normaliseExpiredViolationCycle(
+      uid, context.actorUid, actorName, 'updateBooking',
+    )));
+  await assertPlayersNotSuspendedAndAudit(
+    bookingPlayerUids, 'suspended_booking_rejected',
+    context.actorUid, actorName, context.bookingId, 'updateBooking',
+  );
   const subjectUid = bookingSubjectUid(booking);
   if (subjectUid) {
     const subjectSnap = await bookingDb.collection('members').doc(subjectUid).get();
@@ -725,7 +1013,8 @@ exports.updateBooking = onCall({region: 'asia-east1'}, async (request) => {
   const updateLockRefs = mutationDates.map((mutationDate) =>
     bookingDb.collection('bookingMutationLocks')
       .doc(bookingDateLockId(mutationDate)));
-  await bookingDb.runTransaction(async (transaction) => {
+  try {
+    await bookingDb.runTransaction(async (transaction) => {
     const currentBookingSnap = await transaction.get(context.bookingRef);
     for (const lockRef of updateLockRefs) await transaction.get(lockRef);
     const newDateSnap = await transaction.get(
@@ -734,6 +1023,9 @@ exports.updateBooking = onCall({region: 'asia-east1'}, async (request) => {
     const oldDateSnap = context.booking.date === date ? newDateSnap :
       await transaction.get(bookingDb.collection('bookings')
         .where('date', '==', context.booking.date));
+    await assertPlayersNotSuspendedInTransaction(
+      transaction, bookingPlayerUids, 'suspended_booking_rejected',
+    );
     if (!currentBookingSnap.exists ||
         !isActiveBooking(currentBookingSnap.data() || {})) {
       throw new HttpsError('failed-precondition', '此預約已取消或作廢');
@@ -783,7 +1075,13 @@ exports.updateBooking = onCall({region: 'asia-east1'}, async (request) => {
       version: admin.firestore.FieldValue.increment(1),
     }, {merge: true}));
     transaction.update(context.bookingRef, update);
-  });
+    });
+  } catch (error) {
+    await recordSuspensionRejection(
+      error, context.actorUid, actorName, context.bookingId, 'updateBooking',
+    );
+    throw error;
+  }
   return {ok: true};
 });
 
@@ -1089,6 +1387,7 @@ exports.addBookingParticipant = onCall({region: 'asia-east1'}, async (request) =
   const update = {updatedAt: SERVER_TS()};
   let auditTargetUid = '';
   let auditTargetLabel = '';
+  const actorName = memberDisplayName(context.actor, context.actorUid);
   if (targetUid) {
     if (players.includes(targetUid)) {
       throw new HttpsError('already-exists', '此會員已在預約中');
@@ -1097,9 +1396,18 @@ exports.addBookingParticipant = onCall({region: 'asia-east1'}, async (request) =
     if (!targetSnap.exists) {
       throw new HttpsError('not-found', '找不到指定會員');
     }
-    if (!isEligibleMember(targetSnap.data() || {})) {
+    const targetMember = targetSnap.data() || {};
+    if (!isEligibleMember(targetMember)) {
       throw new HttpsError('failed-precondition', '此會員目前不具有效資格');
     }
+    await normaliseExpiredViolationCycle(
+      targetUid, context.actorUid, actorName, 'addBookingParticipant',
+    );
+    await assertPlayersNotSuspendedAndAudit(
+      [targetUid], 'suspended_player_add_rejected',
+      context.actorUid, actorName, context.bookingId,
+      'addBookingParticipant',
+    );
     await assertNoParticipantTimeConflict(context, targetUid);
     const bookingWithParticipant = Object.assign({}, context.booking, {
       players: players.concat([targetUid]),
@@ -1127,7 +1435,8 @@ exports.addBookingParticipant = onCall({region: 'asia-east1'}, async (request) =
 
   const lockRef = bookingDb.collection('bookingMutationLocks')
     .doc(bookingDateLockId(context.booking.date));
-  await bookingDb.runTransaction(async (transaction) => {
+  try {
+    await bookingDb.runTransaction(async (transaction) => {
     const bookingSnap = await transaction.get(context.bookingRef);
     await transaction.get(lockRef);
     const sameDateSnap = await transaction.get(
@@ -1152,6 +1461,9 @@ exports.addBookingParticipant = onCall({region: 'asia-east1'}, async (request) =
       throw new HttpsError('failed-precondition', '此預約已達人數上限');
     }
     if (targetUid) {
+      await assertPlayersNotSuspendedInTransaction(
+        transaction, [targetUid], 'suspended_player_add_rejected',
+      );
       if (currentPlayers.includes(targetUid)) {
         throw new HttpsError('already-exists', '此會員已在預約中');
       }
@@ -1185,7 +1497,14 @@ exports.addBookingParticipant = onCall({region: 'asia-east1'}, async (request) =
       transaction, Object.assign({}, context, {booking: currentBooking}),
       'participant_added', auditTargetUid, reason, auditTargetLabel,
     );
-  });
+    });
+  } catch (error) {
+    await recordSuspensionRejection(
+      error, context.actorUid, actorName,
+      context.bookingId, 'addBookingParticipant',
+    );
+    throw error;
+  }
   return {ok: true};
 });
 
@@ -1584,6 +1903,7 @@ exports.submitBookingExtensionRequest = onCall(
       throw new HttpsError('permission-denied', '找不到申請會員資料');
     }
     const member = memberSnap.data() || {};
+    const requesterName = memberDisplayName(member, requesterUid);
     const input = request.data || {};
     const date = cleanString(input.date, 10);
     const court = cleanString(input.court, 20);
@@ -1591,6 +1911,14 @@ exports.submitBookingExtensionRequest = onCall(
     const endTime = cleanString(input.endTime, 5);
     assertExtensionTimeInput(date, court, startTime, endTime);
     assertExtensionMemberEligible(member, date);
+    await normaliseExpiredViolationCycle(
+      requesterUid, requesterUid, requesterName,
+      'submitBookingExtensionRequest',
+    );
+    await assertPlayersNotSuspendedAndAudit(
+      [requesterUid], 'suspended_booking_rejected',
+      requesterUid, requesterName, '', 'submitBookingExtensionRequest',
+    );
 
     const candidate = {
       date,
@@ -1644,9 +1972,12 @@ exports.submitBookingExtensionRequest = onCall(
     const requestId = extensionRequestDocId(requesterUid, date);
     const requestRef = bookingDb.collection('bookingExtensionRequests')
       .doc(requestId);
-    const requesterName = memberDisplayName(member, requesterUid);
-    await bookingDb.runTransaction(async (transaction) => {
-      const existingSnap = await transaction.get(requestRef);
+    try {
+      await bookingDb.runTransaction(async (transaction) => {
+        const existingSnap = await transaction.get(requestRef);
+        await assertPlayersNotSuspendedInTransaction(
+          transaction, [requesterUid], 'suspended_booking_rejected',
+        );
       const existing = existingSnap.exists ? existingSnap.data() || {} : {};
       const existingStart = existingSnap.exists ? bookingStartMs(existing) : NaN;
       if (existing.status === 'approved' || existing.status === 'revoked') {
@@ -1695,15 +2026,22 @@ exports.submitBookingExtensionRequest = onCall(
         bookingId: '',
         source: 'web_callable',
       });
-      transaction.set(
+        transaction.set(
         bookingDb.collection('bookingExtensionAuditLogs').doc(),
         extensionAuditData(
           requestId, '', requesterUid, requesterName, requesterUid,
           'extension_requested', '',
           {date, court, startTime, endTime, attempt: attempt + 1},
         ),
+        );
+      });
+    } catch (error) {
+      await recordSuspensionRejection(
+        error, requesterUid, requesterName, '',
+        'submitBookingExtensionRequest',
       );
-    });
+      throw error;
+    }
     return {ok: true, requestId};
   },
 );
@@ -1727,9 +2065,27 @@ exports.approveBookingExtensionRequest = onCall(
     }
     const requestRef = bookingDb.collection('bookingExtensionRequests')
       .doc(requestId);
+    const preliminaryRequestSnap = await requestRef.get();
+    if (preliminaryRequestSnap.exists) {
+      const preliminaryRequest = preliminaryRequestSnap.data() || {};
+      if (preliminaryRequest.requesterUid) {
+        await normaliseExpiredViolationCycle(
+          preliminaryRequest.requesterUid,
+          actorUid,
+          actorName,
+          'approveBookingExtensionRequest',
+        );
+        await assertPlayersNotSuspendedAndAudit(
+          [preliminaryRequest.requesterUid],
+          'suspended_booking_rejected',
+          actorUid, actorName, '', 'approveBookingExtensionRequest',
+        );
+      }
+    }
     let expired = false;
     let bookingId = '';
-    await bookingDb.runTransaction(async (transaction) => {
+    try {
+      await bookingDb.runTransaction(async (transaction) => {
       const extensionSnap = await transaction.get(requestRef);
       if (!extensionSnap.exists) {
         throw new HttpsError('not-found', '找不到加時申請');
@@ -1782,6 +2138,11 @@ exports.approveBookingExtensionRequest = onCall(
       const sameDateSnap = await transaction.get(
         bookingDb.collection('bookings')
           .where('date', '==', extensionRequest.date),
+      );
+      await assertPlayersNotSuspendedInTransaction(
+        transaction,
+        [extensionRequest.requesterUid],
+        'suspended_booking_rejected',
       );
       if (bookingSnap.exists) {
         throw new HttpsError('already-exists', '此加時預約已建立');
@@ -1879,7 +2240,19 @@ exports.approveBookingExtensionRequest = onCall(
           actorUid, actorName, '',
         ),
       );
-    });
+      });
+    } catch (error) {
+      const targetUid = preliminaryRequestSnap.exists ?
+        (preliminaryRequestSnap.data() || {}).requesterUid || '' : '';
+      await recordSuspensionRejection(
+        error, actorUid, actorName, bookingId,
+        'approveBookingExtensionRequest',
+      );
+      if (error && error.details && !error.details.memberUid && targetUid) {
+        error.details.memberUid = targetUid;
+      }
+      throw error;
+    }
     if (expired) {
       throw new HttpsError(
         'deadline-exceeded',
@@ -1972,6 +2345,493 @@ exports.rejectBookingExtensionRequest = onCall(
       );
     }
     return {ok: true};
+  },
+);
+
+async function getViolationActor(request, ownerOnly) {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError('unauthenticated', '請重新登入 LINE 後再試');
+  }
+  const actorUid = request.auth.uid;
+  const actorSnap = await bookingDb.collection('members').doc(actorUid).get();
+  const actor = actorSnap.exists ? actorSnap.data() || {} : {};
+  const allowed = ownerOnly ? actor.role === 'owner' :
+    ADMIN_ROLES.has(actor.role || '');
+  if (!actorSnap.exists || !allowed) {
+    throw new HttpsError(
+      'permission-denied',
+      ownerOnly ? '僅開發者可永久刪除違規紀錄' : '僅管理員可執行違規記點操作',
+    );
+  }
+  return {
+    actorUid,
+    actor,
+    actorName: memberDisplayName(actor, actorUid),
+  };
+}
+
+function assertViolationTargetAllowed(actorUid, targetUid, target) {
+  if (actorUid === targetUid) {
+    throw new HttpsError('permission-denied', '不可對自己記點');
+  }
+  if (target.role !== 'member' && target.role !== 'coach') {
+    throw new HttpsError('permission-denied', '僅可對一般會員或教練記點');
+  }
+}
+
+function revokedViolationNotificationData(
+  violation, actorUid, actorName, reason, activePoints,
+) {
+  return {
+    uid: violation.memberUid,
+    type: 'booking_violation_revoked',
+    action: 'violation_revoke',
+    title: '違規記點已撤銷',
+    violationId: violation.id,
+    bookingId: violation.bookingId || '',
+    violationReason: violation.violationReason || '',
+    revokedByUid: actorUid,
+    revokedByName: actorName,
+    revokeReason: reason,
+    activePoints,
+    message: `違規記點已撤銷。撤銷原因：${reason}\n目前有效點數：${activePoints} / ${VIOLATION_LIMIT}`,
+    createdAt: SERVER_TS(),
+    expiresAt: admin.firestore.Timestamp.fromMillis(
+      Date.now() + 30 * 24 * 60 * 60 * 1000,
+    ),
+    read: false,
+  };
+}
+
+exports.createBookingViolation = onCall(
+  {region: 'asia-east1'},
+  async (request) => {
+    const {actorUid, actorName} = await getViolationActor(request, false);
+    const data = request.data || {};
+    const requestedTargetUid = cleanString(data.targetUid, 128);
+    const bookingId = cleanString(data.bookingId, 128);
+    const violationType = cleanString(data.violationType, 40);
+    const note = cleanString(data.note, 500);
+    if (!VIOLATION_TYPES.has(violationType)) {
+      throw new HttpsError('invalid-argument', '違規原因不正確');
+    }
+    if (violationType === 'other' && !note) {
+      throw new HttpsError('invalid-argument', '其他原因必須填寫備註');
+    }
+    if ((violationType === 'no_show' ||
+         violationType === 'roster_mismatch') && !bookingId) {
+      throw new HttpsError('invalid-argument', '此違規原因必須選擇對應預約');
+    }
+
+    let booking = null;
+    let targetUid = requestedTargetUid;
+    if (bookingId) {
+      const bookingSnap = await bookingDb.collection('bookings').doc(bookingId).get();
+      if (!bookingSnap.exists) {
+        throw new HttpsError('not-found', '找不到對應預約');
+      }
+      booking = bookingSnap.data() || {};
+      if (violationType === 'roster_mismatch') {
+        targetUid = cleanString(booking.createdBy, 128);
+      }
+    }
+    if (!targetUid) {
+      throw new HttpsError('invalid-argument', '缺少記點會員');
+    }
+    const targetRef = bookingDb.collection('members').doc(targetUid);
+    const targetSnap = await targetRef.get();
+    if (!targetSnap.exists) {
+      throw new HttpsError('not-found', '找不到記點會員');
+    }
+    const target = targetSnap.data() || {};
+    assertViolationTargetAllowed(actorUid, targetUid, target);
+    if (violationType === 'no_show') {
+      if (!booking || !isActiveBooking(booking) ||
+          !Array.isArray(booking.players) ||
+          !booking.players.includes(targetUid)) {
+        throw new HttpsError(
+          'failed-precondition',
+          '預約未到只能記在該筆有效預約的參與會員身上',
+        );
+      }
+    }
+    if (violationType === 'roster_mismatch' &&
+        (!booking || !isActiveBooking(booking) ||
+         booking.createdBy !== targetUid)) {
+      throw new HttpsError(
+        'failed-precondition',
+        '名單不符必須記在該筆有效預約的建立者身上',
+      );
+    }
+
+    await normaliseExpiredViolationCycle(
+      targetUid, actorUid, actorName, 'createBookingViolation',
+    );
+    const violationRef = bookingDb.collection('bookingViolations').doc();
+    const summaryRef = violationSummaryRef(targetUid);
+    const actorRef = bookingDb.collection('members').doc(actorUid);
+    const bookingRef = bookingId ?
+      bookingDb.collection('bookings').doc(bookingId) : null;
+    await bookingDb.runTransaction(async (transaction) => {
+      const actorCurrentSnap = await transaction.get(actorRef);
+      const targetCurrentSnap = await transaction.get(targetRef);
+      const bookingCurrentSnap = bookingRef ?
+        await transaction.get(bookingRef) : null;
+      const summarySnap = await transaction.get(summaryRef);
+      const actorCurrent = actorCurrentSnap.exists ?
+        actorCurrentSnap.data() || {} : {};
+      if (!ADMIN_ROLES.has(actorCurrent.role || '')) {
+        throw new HttpsError('permission-denied', '僅管理員可執行違規記點操作');
+      }
+      if (!targetCurrentSnap.exists) {
+        throw new HttpsError('not-found', '找不到記點會員');
+      }
+      const targetCurrent = targetCurrentSnap.data() || {};
+      assertViolationTargetAllowed(actorUid, targetUid, targetCurrent);
+      const bookingCurrent = bookingCurrentSnap && bookingCurrentSnap.exists ?
+        bookingCurrentSnap.data() || {} : null;
+      if (violationType === 'no_show' &&
+          (!bookingCurrent || !isActiveBooking(bookingCurrent) ||
+           !Array.isArray(bookingCurrent.players) ||
+           !bookingCurrent.players.includes(targetUid))) {
+        throw new HttpsError('failed-precondition', '對應預約或會員名單已變更');
+      }
+      if (violationType === 'roster_mismatch' &&
+          (!bookingCurrent || !isActiveBooking(bookingCurrent) ||
+           bookingCurrent.createdBy !== targetUid)) {
+        throw new HttpsError('failed-precondition', '對應預約建立者已變更');
+      }
+
+      const summary = summarySnap.exists ? summarySnap.data() || {} : {};
+      const suspendedUntilMs = timestampMillis(summary.bookingSuspendedUntil);
+      const cycleExpired = summary.status === 'suspended' &&
+        suspendedUntilMs > 0 && suspendedUntilMs <= Date.now();
+      const currentlySuspended = summary.status === 'suspended' &&
+        suspendedUntilMs > Date.now();
+      const previousPoints = cycleExpired ? 0 :
+        (Number(summary.activePoints) || 0);
+      const countsTowardCycle = !currentlySuspended;
+      const activePoints = countsTowardCycle ?
+        Math.min(VIOLATION_LIMIT, previousPoints + 1) : previousPoints;
+      const cycleId = cycleExpired ? violationRef.id :
+        (summary.cycleId || violationRef.id);
+      const cycleViolationIds = cycleExpired ? [] :
+        (Array.isArray(summary.cycleViolationIds) ?
+          summary.cycleViolationIds.slice() : []);
+      if (countsTowardCycle) cycleViolationIds.push(violationRef.id);
+      const startsSuspension = countsTowardCycle &&
+        previousPoints < VIOLATION_LIMIT && activePoints === VIOLATION_LIMIT;
+      const nowMillis = Date.now();
+      const suspensionUntilMs = startsSuspension ?
+        addTaipeiCalendarMonth(nowMillis) : suspendedUntilMs;
+      const bookingSnapshot = bookingCurrent || booking || {};
+      const violation = {
+        id: violationRef.id,
+        memberUid: targetUid,
+        memberName: memberDisplayName(targetCurrent, targetUid),
+        bookingId: bookingId || '',
+        bookingDate: bookingSnapshot.date || '',
+        court: bookingSnapshot.court || '',
+        startTime: bookingSnapshot.startTime || '',
+        endTime: bookingSnapshot.endTime || '',
+        violationType,
+        violationReason: VIOLATION_REASON_LABELS[violationType],
+        note,
+        points: 1,
+        status: 'active',
+        cycleId,
+        countsTowardCycle,
+        cycleStatus: currentlySuspended ? 'suspended_unscored' : 'current',
+        createdByUid: actorUid,
+        createdByName: memberDisplayName(actorCurrent, actorUid),
+        createdAt: SERVER_TS(),
+        revokedByUid: '',
+        revokedByName: '',
+        revokedAt: null,
+        revokeReason: '',
+        suspensionTriggered: startsSuspension,
+        suspensionStartedAt: startsSuspension ?
+          admin.firestore.Timestamp.fromMillis(nowMillis) : null,
+        suspensionUntil: startsSuspension ?
+          admin.firestore.Timestamp.fromMillis(suspensionUntilMs) : null,
+      };
+      const summaryAfter = {
+        memberUid: targetUid,
+        memberName: violation.memberName,
+        cycleId,
+        cycleViolationIds,
+        activePoints,
+        status: startsSuspension || currentlySuspended ? 'suspended' : 'active',
+        cycleStartedAt: cycleExpired ? SERVER_TS() :
+          (summary.cycleStartedAt || SERVER_TS()),
+        bookingSuspendedAt: startsSuspension ?
+          admin.firestore.Timestamp.fromMillis(nowMillis) :
+          (cycleExpired ? null : (summary.bookingSuspendedAt || null)),
+        bookingSuspendedUntil: startsSuspension ?
+          admin.firestore.Timestamp.fromMillis(suspensionUntilMs) :
+          (cycleExpired ? null : (summary.bookingSuspendedUntil || null)),
+        suspensionTriggerViolationId: startsSuspension ?
+          violationRef.id :
+          (cycleExpired ? '' : (summary.suspensionTriggerViolationId || '')),
+        updatedAt: SERVER_TS(),
+      };
+      transaction.set(violationRef, violation);
+      transaction.set(summaryRef, summaryAfter, {merge: true});
+      if (cycleExpired) {
+        transaction.set(
+          bookingDb.collection('bookingViolationAuditLogs').doc(),
+          violationAuditData({
+            action: 'suspension_end',
+            actorUid,
+            actorName: violation.createdByName,
+            targetUid,
+            targetName: violation.memberName,
+            violationId: summary.suspensionTriggerViolationId || '',
+            before: {
+              cycleId: summary.cycleId || '',
+              activePoints: Number(summary.activePoints) || 0,
+              status: 'suspended',
+            },
+            after: {cycleId, activePoints, status: 'active'},
+            reason: '預約停權期限已屆滿，開始新的違規點數週期',
+            source: 'createBookingViolation',
+          }),
+        );
+      }
+      transaction.set(
+        bookingDb.collection('bookingViolationAuditLogs').doc(),
+        violationAuditData({
+          action: 'violation_create',
+          actorUid,
+          actorName: violation.createdByName,
+          targetUid,
+          targetName: violation.memberName,
+          bookingId,
+          violationId: violationRef.id,
+          before: {activePoints: previousPoints, cycleId: summary.cycleId || ''},
+          after: {activePoints, cycleId, countsTowardCycle},
+          reason: violation.violationReason,
+          source: 'createBookingViolation',
+        }),
+      );
+      if (startsSuspension) {
+        transaction.set(
+          bookingDb.collection('bookingViolationAuditLogs').doc(),
+          violationAuditData({
+            action: 'suspension_start',
+            actorUid,
+            actorName: violation.createdByName,
+            targetUid,
+            targetName: violation.memberName,
+            bookingId,
+            violationId: violationRef.id,
+            before: {activePoints: previousPoints, status: 'active'},
+            after: {
+              activePoints,
+              status: 'suspended',
+              bookingSuspendedUntil: suspensionUntilMs,
+            },
+            reason: '目前週期累積 3 點，暫停預約資格一個曆月',
+            source: 'createBookingViolation',
+          }),
+        );
+      }
+      transaction.set(
+        bookingDb.collection('notifications')
+          .doc(`booking_violation_${violationRef.id}`),
+        violationNotificationData(
+          violation,
+          activePoints,
+          startsSuspension ? nowMillis : 0,
+          startsSuspension ? suspensionUntilMs : 0,
+        ),
+      );
+    });
+    return {ok: true, violationId: violationRef.id, memberUid: targetUid};
+  },
+);
+
+async function applyViolationRemovalToSummary(
+  transaction, summaryRef, summary, violation, actorUid, actorName,
+  actionReason, source,
+) {
+  const belongsToCurrentCycle = violation.countsTowardCycle === true &&
+    violation.cycleId && violation.cycleId === summary.cycleId;
+  if (!belongsToCurrentCycle) return Number(summary.activePoints) || 0;
+  const beforePoints = Number(summary.activePoints) || 0;
+  const activePoints = Math.max(0, beforePoints - Number(violation.points || 1));
+  const cycleViolationIds = (Array.isArray(summary.cycleViolationIds) ?
+    summary.cycleViolationIds : []).filter((id) => id !== violation.id);
+  const wasSuspended = summary.status === 'suspended';
+  const clearsSuspension = wasSuspended && activePoints < VIOLATION_LIMIT;
+  transaction.set(summaryRef, {
+    activePoints,
+    cycleId: activePoints === 0 ? '' : summary.cycleId,
+    cycleViolationIds,
+    status: clearsSuspension ? 'active' : (summary.status || 'active'),
+    cycleStartedAt: activePoints === 0 ? null : (summary.cycleStartedAt || null),
+    bookingSuspendedAt: clearsSuspension ? null :
+      (summary.bookingSuspendedAt || null),
+    bookingSuspendedUntil: clearsSuspension ? null :
+      (summary.bookingSuspendedUntil || null),
+    suspensionTriggerViolationId: clearsSuspension ? '' :
+      (summary.suspensionTriggerViolationId || ''),
+    suspensionEndedAt: clearsSuspension ? SERVER_TS() :
+      (summary.suspensionEndedAt || null),
+    updatedAt: SERVER_TS(),
+  }, {merge: true});
+  if (clearsSuspension) {
+    transaction.set(
+      bookingDb.collection('bookingViolationAuditLogs').doc(),
+      violationAuditData({
+        action: 'suspension_end',
+        actorUid,
+        actorName,
+        targetUid: violation.memberUid,
+        targetName: violation.memberName,
+        bookingId: violation.bookingId || '',
+        violationId: violation.id,
+        before: {activePoints: beforePoints, status: 'suspended'},
+        after: {activePoints, status: 'active'},
+        reason: actionReason,
+        source,
+      }),
+    );
+  }
+  return activePoints;
+}
+
+exports.revokeBookingViolation = onCall(
+  {region: 'asia-east1'},
+  async (request) => {
+    const {actorUid, actorName} = await getViolationActor(request, false);
+    const violationId = cleanString(request.data && request.data.violationId, 128);
+    const revokeReason = cleanString(request.data && request.data.revokeReason, 500);
+    if (!violationId || !revokeReason) {
+      throw new HttpsError('invalid-argument', '違規紀錄與撤銷原因必填');
+    }
+    const violationRef = bookingDb.collection('bookingViolations').doc(violationId);
+    const initialSnap = await violationRef.get();
+    if (!initialSnap.exists) throw new HttpsError('not-found', '找不到違規紀錄');
+    const initial = initialSnap.data() || {};
+    await normaliseExpiredViolationCycle(
+      initial.memberUid, actorUid, actorName, 'revokeBookingViolation',
+    );
+    let activePoints = 0;
+    await bookingDb.runTransaction(async (transaction) => {
+      const actorSnap = await transaction.get(
+        bookingDb.collection('members').doc(actorUid));
+      const violationSnap = await transaction.get(violationRef);
+      const summaryRef = violationSummaryRef(initial.memberUid);
+      const summarySnap = await transaction.get(summaryRef);
+      const actor = actorSnap.exists ? actorSnap.data() || {} : {};
+      if (!ADMIN_ROLES.has(actor.role || '')) {
+        throw new HttpsError('permission-denied', '僅管理員可撤銷違規記點');
+      }
+      if (!violationSnap.exists) throw new HttpsError('not-found', '找不到違規紀錄');
+      const violation = Object.assign({id: violationId}, violationSnap.data() || {});
+      if (violation.status !== 'active') {
+        throw new HttpsError('failed-precondition', '此違規紀錄已撤銷');
+      }
+      const summary = summarySnap.exists ? summarySnap.data() || {} : {};
+      activePoints = await applyViolationRemovalToSummary(
+        transaction, summaryRef, summary, violation,
+        actorUid, memberDisplayName(actor, actorUid),
+        `撤銷記點：${revokeReason}`, 'revokeBookingViolation',
+      );
+      transaction.update(violationRef, {
+        status: 'revoked',
+        revokedByUid: actorUid,
+        revokedByName: memberDisplayName(actor, actorUid),
+        revokedAt: SERVER_TS(),
+        revokeReason,
+      });
+      transaction.set(
+        bookingDb.collection('bookingViolationAuditLogs').doc(),
+        violationAuditData({
+          action: 'violation_revoke',
+          actorUid,
+          actorName: memberDisplayName(actor, actorUid),
+          targetUid: violation.memberUid,
+          targetName: violation.memberName,
+          bookingId: violation.bookingId || '',
+          violationId,
+          before: {status: 'active', activePoints: Number(summary.activePoints) || 0},
+          after: {status: 'revoked', activePoints},
+          reason: revokeReason,
+          source: 'revokeBookingViolation',
+        }),
+      );
+      transaction.set(
+        bookingDb.collection('notifications')
+          .doc(`booking_violation_revoked_${violationId}`),
+        revokedViolationNotificationData(
+          violation, actorUid, memberDisplayName(actor, actorUid),
+          revokeReason, activePoints,
+        ),
+      );
+    });
+    return {ok: true, violationId, activePoints};
+  },
+);
+
+exports.deleteBookingViolation = onCall(
+  {region: 'asia-east1'},
+  async (request) => {
+    const {actorUid, actorName} = await getViolationActor(request, true);
+    const violationId = cleanString(request.data && request.data.violationId, 128);
+    const deleteReason = cleanString(request.data && request.data.deleteReason, 500);
+    if (!violationId || !deleteReason) {
+      throw new HttpsError('invalid-argument', '違規紀錄與刪除原因必填');
+    }
+    const violationRef = bookingDb.collection('bookingViolations').doc(violationId);
+    const initialSnap = await violationRef.get();
+    if (!initialSnap.exists) throw new HttpsError('not-found', '找不到違規紀錄');
+    const initial = initialSnap.data() || {};
+    await normaliseExpiredViolationCycle(
+      initial.memberUid, actorUid, actorName, 'deleteBookingViolation',
+    );
+    let activePoints = 0;
+    await bookingDb.runTransaction(async (transaction) => {
+      const actorSnap = await transaction.get(
+        bookingDb.collection('members').doc(actorUid));
+      const violationSnap = await transaction.get(violationRef);
+      const summaryRef = violationSummaryRef(initial.memberUid);
+      const summarySnap = await transaction.get(summaryRef);
+      const actor = actorSnap.exists ? actorSnap.data() || {} : {};
+      if (actor.role !== 'owner') {
+        throw new HttpsError('permission-denied', '僅開發者可永久刪除違規紀錄');
+      }
+      if (!violationSnap.exists) throw new HttpsError('not-found', '找不到違規紀錄');
+      const violation = Object.assign({id: violationId}, violationSnap.data() || {});
+      const summary = summarySnap.exists ? summarySnap.data() || {} : {};
+      activePoints = Number(summary.activePoints) || 0;
+      if (violation.status === 'active') {
+        activePoints = await applyViolationRemovalToSummary(
+          transaction, summaryRef, summary, violation,
+          actorUid, memberDisplayName(actor, actorUid),
+          `永久刪除違規紀錄：${deleteReason}`, 'deleteBookingViolation',
+        );
+      }
+      transaction.set(
+        bookingDb.collection('bookingViolationAuditLogs').doc(),
+        violationAuditData({
+          action: 'violation_delete',
+          actorUid,
+          actorName: memberDisplayName(actor, actorUid),
+          targetUid: violation.memberUid,
+          targetName: violation.memberName,
+          bookingId: violation.bookingId || '',
+          violationId,
+          before: violation,
+          after: {deleted: true, activePoints},
+          reason: deleteReason,
+          source: 'deleteBookingViolation',
+        }),
+      );
+      transaction.delete(violationRef);
+    });
+    return {ok: true, violationId, activePoints};
   },
 );
 

@@ -156,6 +156,15 @@ service cloud.firestore {
       return hasActorMember() && actorRole() == 'owner';
     }
 
+    function isViolationNotification(data) {
+      return ('type' in data)
+        && data.type in [
+          'booking_violation_recorded',
+          'booking_suspension_started',
+          'booking_violation_revoked'
+        ];
+    }
+
     // ──────────────────────────────────────────────────────────────────────
     // sessions  — lineauth Admin SDK 寫入，前端目前不讀取
     // ──────────────────────────────────────────────────────────────────────
@@ -271,7 +280,10 @@ service cloud.firestore {
                 || isAdminLike()
               )
               && !request.resource.data.diff(resource.data).affectedKeys()
-                    .hasAny(['players', 'guests', 'participantCount', 'createdBy', 'status'])
+                    .hasAny([
+                      'date', 'startTime', 'endTime', 'court', 'mode',
+                      'players', 'guests', 'participantCount', 'createdBy', 'status'
+                    ])
             )
             || (
               hasActorMember()
@@ -290,6 +302,7 @@ service cloud.firestore {
               isOwner()
               && !request.resource.data.diff(resource.data).affectedKeys()
                     .hasAny([
+                      'date', 'startTime', 'endTime', 'court', 'mode',
                       'players', 'guests', 'participantCount', 'createdBy',
                       'status'
                     ])
@@ -326,13 +339,38 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // 違規歷史：會員只能讀自己的紀錄；admin/owner 可讀全部。
+    // 所有狀態轉移均由 Callable / Admin SDK 執行。
+    match /bookingViolations/{violationId} {
+      allow read: if isSignedIn()
+                  && (isAdminLike()
+                      || resource.data.memberUid == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
+    // 目前違規週期與停權狀態，client 僅能讀取，不得竄改。
+    match /bookingViolationSummaries/{memberUid} {
+      allow read: if isSignedIn()
+                  && (isAdminLike() || memberUid == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
+    // 違規操作 audit：僅 admin/owner 可查閱，client 全面禁止寫入。
+    match /bookingViolationAuditLogs/{auditId} {
+      allow read: if isAdminLike();
+      allow create, update, delete: if false;
+    }
+
     // ──────────────────────────────────────────────────────────────────────
     // financialRecords
     // ──────────────────────────────────────────────────────────────────────
     match /financialRecords/{recordId} {
       // 讀：全員可讀（月費會員看自己的記錄）
       // TODO [L2]: 改為限制 isAdmin 或 memberId == request.auth.uid 後限制
-      allow read: if true;
+      allow read: if !isViolationNotification(resource.data)
+                  || (isSignedIn()
+                      && (resource.data.uid == request.auth.uid
+                          || isAdminLike()));
 
       // 建立：驗證必要欄位
       allow create: if request.resource.data.keys().hasAll(['type', 'amount', 'date', 'status'])
@@ -391,7 +429,10 @@ service cloud.firestore {
                       || !(request.resource.data.type in [
                         'booking_extension_approved',
                         'booking_extension_rejected',
-                        'booking_extension_revoked'
+                        'booking_extension_revoked',
+                        'booking_violation_recorded',
+                        'booking_suspension_started',
+                        'booking_violation_revoked'
                       ])
                     );
 
@@ -399,10 +440,16 @@ service cloud.firestore {
       // 防止通知內容被篡改
       allow update: if request.resource.data.diff(resource.data).affectedKeys()
                        .hasOnly(['read', 'updatedAt'])
-                    && request.resource.data.read == true;
+                    && request.resource.data.read == true
+                    && (
+                      !isViolationNotification(resource.data)
+                      || (isSignedIn()
+                          && (resource.data.uid == request.auth.uid
+                              || isAdminLike()))
+                    );
 
       // 刪除：允許（booking 永久刪除時清理對應通知）
-      allow delete: if true;
+      allow delete: if !isViolationNotification(resource.data);
     }
 
     // ──────────────────────────────────────────────────────────────────────

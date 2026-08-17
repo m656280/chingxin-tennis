@@ -57,6 +57,10 @@ class MockCollectionReference extends MockQuery {
       this._db, this.collectionName, id || `auto_${++autoId}`,
     );
   }
+  add(data) {
+    const ref = this.doc();
+    return ref.set(data).then(() => ref);
+  }
 }
 
 class MockTransaction {
@@ -76,12 +80,16 @@ class MockTransaction {
   update(ref, data) {
     this._writes.push({type: 'update', ref, data});
   }
+  delete(ref) {
+    this._writes.push({type: 'delete', ref});
+  }
   commit() {
     this._writes.forEach((write) => {
       if (write.type === 'set') {
         this._db._setDoc(write.ref, write.data, write.options);
       } else {
-        this._db._updateDoc(write.ref, write.data);
+        if (write.type === 'update') this._db._updateDoc(write.ref, write.data);
+        else this._db._deleteDoc(write.ref);
       }
     });
   }
@@ -166,6 +174,7 @@ class MockFirestore {
     });
     map.set(ref.id, next);
   }
+  _deleteDoc(ref) { this._map(ref.collectionName).delete(ref.id); }
 }
 
 const db = new MockFirestore();
@@ -227,6 +236,8 @@ async function main() {
     seedMember('C', '林佑涵'),
     seedMember('D', '測試會員丁'),
     seedMember('E', '測試會員戊'),
+    seedMember('F', '並發記點會員'),
+    seedMember('COACH', '測試教練', 'coach'),
   ]);
 
   const approvalDate = '2030-08-20';
@@ -634,6 +645,187 @@ async function main() {
   assert.strictEqual(participantRace.filter((item) =>
     item.status === 'fulfilled').length, 1);
 
+  const violationDate = '2030-10-10';
+  await db.collection('bookings').doc('violation_source').set(
+    normalBooking(
+      violationDate, '18:00', '19:00', 'hard_a', ['B', 'C'],
+    ),
+  );
+  await Promise.all([
+    call(functions.createBookingViolation, 'ADMIN', {
+      targetUid: 'F', violationType: 'other', note: '並發記點一',
+    }),
+    call(functions.createBookingViolation, 'OWNER', {
+      targetUid: 'F', violationType: 'other', note: '並發記點二',
+    }),
+  ]);
+  assert.strictEqual((await db.collection('bookingViolationSummaries')
+    .doc('F').get()).data().activePoints, 2);
+  await assert.rejects(
+    call(functions.createBookingViolation, 'ADMIN', {
+      targetUid: 'B', violationType: 'other', note: '',
+    }),
+    (error) => error.code === 'invalid-argument',
+  );
+  await assert.rejects(
+    call(functions.createBookingViolation, 'ADMIN', {
+      targetUid: 'ADMIN', violationType: 'other', note: '不可對管理員記點',
+    }),
+    (error) => error.code === 'permission-denied',
+  );
+  const rosterViolation = await call(functions.createBookingViolation, 'ADMIN', {
+    targetUid: 'C', bookingId: 'violation_source',
+    violationType: 'roster_mismatch', note: '',
+  });
+  assert.strictEqual(rosterViolation.memberUid, 'B');
+  await call(functions.createBookingViolation, 'ADMIN', {
+    targetUid: 'B', bookingId: 'violation_source',
+    violationType: 'no_show', note: '',
+  });
+  const thirdViolation = await call(functions.createBookingViolation, 'ADMIN', {
+    targetUid: 'B', bookingId: 'violation_source',
+    violationType: 'no_show', note: '第三點',
+  });
+  await call(functions.createBookingViolation, 'ADMIN', {
+    targetUid: 'C', bookingId: 'violation_source',
+    violationType: 'no_show', note: '多人分別記點',
+  });
+  let violationSummary = (await db.collection('bookingViolationSummaries')
+    .doc('B').get()).data();
+  assert.strictEqual(violationSummary.activePoints, 3);
+  assert.strictEqual(violationSummary.status, 'suspended');
+
+  const blockedCreateDate = '2030-10-12';
+  await assert.rejects(
+    call(functions.createBooking, 'B', {booking: {
+      date: blockedCreateDate,
+      court: 'hard_a', startTime: '10:00', endTime: '11:00',
+      mode: 'general', players: ['B'], guests: [],
+      capacity: 4, participantCount: 1,
+    }}),
+    (error) => error.code === 'failed-precondition' &&
+      error.message.includes('暫停預約資格至'),
+  );
+  await db.collection('bookings').doc('violation_add_target').set(
+    normalBooking(blockedCreateDate, '11:00', '12:00', 'hard_b', ['D']),
+  );
+  await assert.rejects(
+    call(functions.addBookingParticipant, 'ADMIN', {
+      bookingId: 'violation_add_target', targetUid: 'B',
+    }),
+    (error) => error.code === 'failed-precondition' &&
+      error.message.includes('暫停預約資格至'),
+  );
+
+  await call(functions.createBooking, 'COACH', {booking: {
+    date: '2030-10-13', court: 'hard_a',
+    startTime: '09:00', endTime: '11:00', mode: 'teaching',
+    players: ['D'], students: ['B'], coachId: 'COACH',
+    capacity: 4, participantCount: 1,
+  }});
+  const duringSuspension = await call(functions.createBookingViolation, 'ADMIN', {
+    targetUid: 'B', violationType: 'other', note: '停權期間仍保留歷史',
+  });
+  const duringSnap = (await db.collection('bookingViolations')
+    .doc(duringSuspension.violationId).get()).data();
+  assert.strictEqual(duringSnap.countsTowardCycle, false);
+  violationSummary = (await db.collection('bookingViolationSummaries')
+    .doc('B').get()).data();
+  assert.strictEqual(violationSummary.activePoints, 3);
+
+  await call(functions.revokeBookingViolation, 'ADMIN', {
+    violationId: thirdViolation.violationId,
+    revokeReason: '測試撤銷第三點',
+  });
+  violationSummary = (await db.collection('bookingViolationSummaries')
+    .doc('B').get()).data();
+  assert.strictEqual(violationSummary.activePoints, 2);
+  assert.strictEqual(violationSummary.status, 'active');
+  await assert.rejects(
+    call(functions.deleteBookingViolation, 'ADMIN', {
+      violationId: rosterViolation.violationId, deleteReason: '權限測試',
+    }),
+    (error) => error.code === 'permission-denied',
+  );
+  await call(functions.deleteBookingViolation, 'OWNER', {
+    violationId: rosterViolation.violationId,
+    deleteReason: '測試永久刪除與 audit',
+  });
+  assert.strictEqual((await db.collection('bookingViolations')
+    .doc(rosterViolation.violationId).get()).exists, false);
+
+  await db.collection('bookingViolationSummaries').doc('B').set({
+    memberUid: 'B', memberName: '林昱丞', cycleId: 'expired_cycle',
+    cycleViolationIds: [], activePoints: 3, status: 'suspended',
+    bookingSuspendedAt: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000),
+    bookingSuspendedUntil: new Date(Date.now() - 1000),
+    suspensionTriggerViolationId: 'expired_trigger',
+  });
+  const newCycleViolation = await call(functions.createBookingViolation, 'ADMIN', {
+    targetUid: 'B', violationType: 'other', note: '新週期第一點',
+  });
+  violationSummary = (await db.collection('bookingViolationSummaries')
+    .doc('B').get()).data();
+  assert.strictEqual(violationSummary.activePoints, 1);
+  assert.strictEqual(violationSummary.cycleId, newCycleViolation.violationId);
+  assert.strictEqual(violationSummary.status, 'active');
+
+  const suspendedExtensionDate = '2030-11-01';
+  await seedTwoHours(suspendedExtensionDate, ['E']);
+  const pendingBeforeSuspension = await call(
+    functions.submitBookingExtensionRequest, 'E', {
+      date: suspendedExtensionDate, court: 'hard_a',
+      startTime: '16:00', endTime: '17:00',
+    },
+  );
+  await db.collection('bookingViolationSummaries').doc('E').set({
+    memberUid: 'E', memberName: '測試會員戊', cycleId: 'e_cycle',
+    cycleViolationIds: ['e1', 'e2', 'e3'], activePoints: 3,
+    status: 'suspended', bookingSuspendedAt: new Date(),
+    bookingSuspendedUntil: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000),
+    suspensionTriggerViolationId: 'e3',
+  });
+  await assert.rejects(
+    call(functions.createBooking, 'ADMIN', {booking: {
+      date: '2030-11-02', court: 'hard_a',
+      startTime: '10:00', endTime: '11:00', mode: 'general',
+      players: ['E'], guests: [], capacity: 4, participantCount: 1,
+    }}),
+    (error) => error.message.includes('暫停預約資格至'),
+  );
+  await db.collection('bookings').doc('suspended_update_target').set(
+    normalBooking('2030-11-03', '10:00', '11:00', 'hard_a', ['E']),
+  );
+  await assert.rejects(
+    call(functions.updateBooking, 'ADMIN', {bookingId: 'suspended_update_target', booking: {
+      date: '2030-11-03', court: 'hard_b',
+      startTime: '10:00', endTime: '11:00', mode: 'general',
+    }}),
+    (error) => error.message.includes('暫停預約資格至'),
+  );
+  await assert.rejects(
+    call(functions.submitBookingExtensionRequest, 'E', {
+      date: suspendedExtensionDate, court: 'hard_b',
+      startTime: '17:00', endTime: '18:00',
+    }),
+    (error) => error.message.includes('暫停預約資格至'),
+  );
+  await assert.rejects(
+    call(functions.approveBookingExtensionRequest, 'ADMIN', {
+      requestId: pendingBeforeSuspension.requestId,
+    }),
+    (error) => error.message.includes('暫停預約資格至'),
+  );
+  const violationAudits = (await db.collection('bookingViolationAuditLogs').get())
+    .docs.map((snap) => snap.data());
+  assert(violationAudits.some((audit) => audit.action === 'suspension_start'));
+  assert(violationAudits.some((audit) => audit.action === 'suspension_end'));
+  assert(violationAudits.some((audit) => audit.action === 'violation_delete'));
+  assert(violationAudits.some((audit) =>
+    audit.action === 'suspended_booking_rejected'));
+  assert(violationAudits.some((audit) =>
+    audit.action === 'suspended_player_add_rejected'));
+
   console.log('PASS submit creates only a pending extension request');
   console.log('PASS concurrent approvals create exactly one booking for one court slot');
   console.log('PASS approved booking keeps general mode and requester ownership');
@@ -654,6 +846,15 @@ async function main() {
   console.log('PASS concurrent cancellation versus approval leaves no invalid active extension');
   console.log('PASS owner repair rechecks conflict under the shared date mutex');
   console.log('PASS concurrent participant additions share the daily mutex');
+  console.log('PASS violation 1 → 2 → 3 starts a calendar-month suspension');
+  console.log('PASS concurrent admin/owner point writes retain both points');
+  console.log('PASS suspended booking creation and participant addition are blocked and audited');
+  console.log('PASS teaching students[] and coachId are not included in suspension enforcement');
+  console.log('PASS suspension-period violations are retained without starting a new cycle');
+  console.log('PASS revocation recalculates points and clears suspension');
+  console.log('PASS admin cannot permanently delete; owner deletion retains audit');
+  console.log('PASS expired suspension lazily resets to a new 1/3 cycle');
+  console.log('PASS proxy create, booking edit, extension submit, and extension approval all enforce suspension');
 }
 
 main().then(() => process.exit(0)).catch((error) => {

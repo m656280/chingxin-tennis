@@ -2166,6 +2166,7 @@ function _showMainApp(){
   loadMyBookings();
   loadMyNotifications();  // personal notifications (booking cancelled by admin etc.)
   loadBookingExtensionRequests();
+  loadBookingViolationData();
 }
 
 /* ── Profile Sheet: auth-aware renderer ────────────────────────────────
@@ -2269,6 +2270,8 @@ function _renderProfileSheet(){
   var _realName    = _fsM.realName || '';
   var _displayName = u.displayName || '未命名';
   var _primaryName = _realName || _displayName;
+  var _profileUid = u.uid || u.userId || '';
+  var _profileViolationSummary = _violationSummary(_profileUid);
   var _safeVal     = function(v){ return _esc(v).replace(/"/g,'&quot;'); };
 
   // ── 資訊卡 rows ────────────────────────────────────────────────────
@@ -2283,6 +2286,10 @@ function _renderProfileSheet(){
   if(_fsM.expireDate)
     _infoRows += '<div class="sheetRow"><span class="sheetRowLabel">會費到期日</span><span class="sheetRowValue">' + String(_fsM.expireDate).replace(/\//g,' / ') + '</span></div>';
   _infoRows += '<div class="sheetRow"><span class="sheetRowLabel">LINE 暱稱</span><span class="sheetRowValue" style="color:var(--color-text-muted)">' + _esc(_displayName) + '</span></div>';
+  var _profilePoints = _effectiveViolationPoints(_profileViolationSummary);
+  var _profileSuspension = _isBookingSuspended(_profileUid) ? _violationSuspensionMessage(_profileUid) : '';
+  _infoRows += '<div class="sheetRow"><span class="sheetRowLabel">違規點數</span><span class="sheetRowValue">' + _profilePoints + ' / 3' +
+    (_profileSuspension?'<br><span style="font-size:11px;color:#b24b3b">'+_esc(_profileSuspension)+'</span>':'') + '</span></div>';
 
   // ── 正式姓名未設定提示 ─────────────────────────────────────────────
   var _rnPrompt = !_realName
@@ -2336,6 +2343,10 @@ function _renderProfileSheet(){
           '</div>' +
         '</div>' +
       '</details>' +
+    '</div>' +
+    '<div class="sheetSection">' +
+      '<div class="sheetRow sheetNavRow" onclick="openViolationHistory(\'' + _profileUid + '\')">' +
+        '<span class="sheetRowLabel">我的違規紀錄</span><span class="sheetRowChevron">›</span></div>' +
     '</div>' +
     '<div class="sheetSection">' +
       '<div class="sheetRow sheetNavRow" onclick="openAbout()">' +
@@ -3062,6 +3073,10 @@ let announcementsCache = [];  // manage: announcements from Firestore
 let _announceLastReadTs = parseInt(localStorage.getItem('qx_announceLastRead')||'0',10); // 未讀追蹤
 let notificationsCache = []; // user's personal notifications (booking cancelled etc.)
 let _notifUnsubscribe  = null; // Firestore onSnapshot unsubscribe fn for notifications
+let bookingViolationSummariesCache = {};
+let myBookingViolationsCache = [];
+let _violationSummaryUnsubscribe = null;
+let _myViolationUnsubscribe = null;
 let financeRecords = [];      // local array; Firestore layer can be added later
 let _finSearchQuery = '';     // finance search filter state
 let _finYear = new Date().getFullYear();    // active year ledger (defaults to current year)
@@ -4847,6 +4862,18 @@ function _renderMemberListInTab(){
     var sourceBadgeHtml = adminLike
       ? '<span class="sourceBadge '+_src+'">'+ (_src==='manual'?'手動':'LINE') + '</span>'
       : '';
+    var violationStatusHtml='';
+    var violationSummary=_violationSummary(rawUid);
+    if(adminLike||isSelf){
+      var violationPoints=_effectiveViolationPoints(violationSummary);
+      var suspensionLabel='';
+      if(_isBookingSuspended(rawUid)){
+        var suspensionDate=new Date(_timestampMs(violationSummary.bookingSuspendedUntil));
+        suspensionLabel='｜預約停權至 '+suspensionDate.toLocaleDateString('zh-TW',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'});
+      }
+      violationStatusHtml='<button type="button" onclick="openViolationHistory(\''+rawUid+'\')" style="display:block;border:0;background:none;padding:2px 0;color:'+
+        (_isBookingSuspended(rawUid)?'#b24b3b':'var(--color-text-muted)')+';font-size:11px;cursor:pointer;text-align:left">違規點數 '+violationPoints+' / 3'+suspensionLabel+'</button>';
+    }
 
     /* （登入狀態 badge 已移除 — members 本身就是已登入資料）*/
 
@@ -4864,6 +4891,7 @@ function _renderMemberListInTab(){
         roleButtons+='<button style="font-size:11px;padding:3px 9px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="setMemberRole(\''+rawUid+'\',\'member\')">設會員</button>';
         roleButtons+='<button style="font-size:11px;padding:3px 9px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="setMemberRole(\''+rawUid+'\',\'coach\')">設教練</button>';
         if(isOwner) roleButtons+='<button style="font-size:11px;padding:3px 9px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="setMemberRole(\''+rawUid+'\',\'admin\')">設管理員</button>';
+        if((m.role==='member'||m.role==='coach')&&rawUid!==_myId) roleButtons+='<button style="font-size:11px;padding:3px 9px;border-radius:6px;border:1px solid rgba(184,122,45,0.6);background:transparent;color:#9a681f;cursor:pointer" onclick="openViolationCreate(\''+rawUid+'\')">記點</button>';
         roleButtons+='<button style="font-size:11px;padding:3px 9px;border-radius:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-muted);cursor:pointer" onclick="blockMember(\''+rawUid+'\')">封鎖</button>';
         roleButtons+='<button style="font-size:11px;padding:3px 9px;border-radius:6px;border:1px solid #e74c3c;background:transparent;color:#e74c3c;cursor:pointer" onclick="removeMember(\''+rawUid+'\')">離會</button>';
         mgmtHtml='<details style="margin-top:4px">'+
@@ -4880,6 +4908,7 @@ function _renderMemberListInTab(){
           '<div class="memberName">'+_esc(m.realName||m.displayName||'未知')+'</div>'+
           (m.realName?'<div style="font-size:11px;color:var(--color-text-muted);margin-top:1px">'+_esc(m.displayName||'')+'</div>':'')+
           '<div style="margin-top:5px;line-height:1.8">'+_memberFeeStatusHtml(m)+'</div>'+
+          violationStatusHtml+
           (meta.length?'<div class="memberMeta">'+meta.join(' · ')+'</div>':'')+
         '</div>'+
         '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0;align-self:flex-start">'+
@@ -4891,6 +4920,155 @@ function _renderMemberListInTab(){
     '</div>';
   });
   el.innerHTML=html;
+}
+
+var _violationCreateTargetUid='';
+var _violationBookingPool=[];
+function _closeViolationOverlay(){
+  var el=document.getElementById('bookingViolationOverlay');
+  if(el&&el.parentNode) el.parentNode.removeChild(el);
+}
+function _violationOverlay(title,bodyHtml){
+  _closeViolationOverlay();
+  var wrap=document.createElement('div');
+  wrap.id='bookingViolationOverlay';
+  wrap.style.cssText='position:fixed;inset:0;z-index:12000;background:rgba(0,0,0,.42);display:flex;align-items:flex-end;justify-content:center';
+  wrap.onclick=function(e){if(e.target===wrap)_closeViolationOverlay();};
+  wrap.innerHTML='<div style="width:100%;max-width:560px;max-height:90vh;overflow:auto;background:var(--color-surface);border-radius:22px 22px 0 0;padding:14px 20px 28px;box-sizing:border-box">'+
+    '<div style="width:44px;height:5px;border-radius:3px;background:var(--color-border);margin:0 auto 18px"></div>'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px"><div style="font-family:var(--font-display);font-size:21px">'+_esc(title)+'</div><button onclick="_closeViolationOverlay()" style="border:0;background:none;font-size:24px;color:var(--color-text-muted);cursor:pointer">×</button></div>'+
+    bodyHtml+'</div>';
+  document.body.appendChild(wrap);
+}
+function _violationBookingLabel(b){
+  var owner=usersCache[b.createdBy]||{};
+  return (b.date||'')+' '+(b.startTime||'')+'–'+(b.endTime||'')+' '+
+    ({hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[b.court]||b.court||'')+
+    '｜建立者 '+(_mName(owner)||b.createdBy||'未知');
+}
+function _renderViolationBookingOptions(){
+  var type=((document.getElementById('violationTypeSel')||{}).value)||'no_show';
+  var row=document.getElementById('violationBookingRow');
+  var sel=document.getElementById('violationBookingSel');
+  var note=document.getElementById('violationNote');
+  if(!row||!sel) return;
+  row.style.display=type==='other'?'none':'';
+  if(note) note.required=(type==='other');
+  var filtered=_violationBookingPool.filter(function(b){
+    if(!_isActiveBooking(b)) return false;
+    if(type==='roster_mismatch') return b.createdBy===_violationCreateTargetUid;
+    return Array.isArray(b.players)&&b.players.indexOf(_violationCreateTargetUid)>=0;
+  });
+  sel.innerHTML='<option value="">— 選擇對應預約 —</option>'+filtered.map(function(b){
+    return '<option value="'+_esc(b.id)+'">'+_esc(_violationBookingLabel(b))+'</option>';
+  }).join('');
+}
+function openViolationCreate(uid){
+  if(!isAdminLike()){showToast('無權限執行此操作');return;}
+  var target=usersCache[uid];
+  var myUid=currentUser?(currentUser.uid||currentUser.userId||''):'';
+  if(!target||uid===myUid||(target.role!=='member'&&target.role!=='coach')){
+    showToast('僅可對其他一般會員或教練記點');return;
+  }
+  _violationCreateTargetUid=uid;
+  var loadPromise=Promise.all([
+    db.collection('bookings').where('players','array-contains',uid).get(),
+    db.collection('bookings').where('createdBy','==',uid).get()
+  ]).then(function(snaps){
+    var seen={};var result=[];
+    snaps.forEach(function(snap){snap.docs.forEach(function(d){
+      if(seen[d.id])return;seen[d.id]=true;result.push(Object.assign({id:d.id},d.data()));
+    });});
+    return result;
+  });
+  loadPromise.then(function(bookings){
+    _violationBookingPool=(bookings||[]).slice().sort(function(a,b){
+      return (b.date||'').localeCompare(a.date||'')||(b.startTime||'').localeCompare(a.startTime||'');
+    });
+    var summary=_violationSummary(uid)||{};
+    var actorName=currentUser?(currentUser.realName||currentUser.displayName||''):'';
+    _violationOverlay('違規記點',
+      '<div style="display:grid;gap:14px">'+
+      '<div><div style="font-size:11px;color:var(--color-text-muted);margin-bottom:4px">會員姓名</div><div style="font-size:16px;font-weight:600">'+_esc(_mName(target)||uid)+'</div></div>'+
+      '<div style="display:flex;gap:20px"><div><div style="font-size:11px;color:var(--color-text-muted)">目前有效點數</div><div style="font-size:15px">'+_effectiveViolationPoints(summary)+' / 3</div></div><div><div style="font-size:11px;color:var(--color-text-muted)">本次點數</div><div style="font-size:15px;color:#9a681f">+1</div></div></div>'+
+      '<label style="font-size:12px;color:var(--color-text-muted)">記點原因<select id="violationTypeSel" class="formSelect" onchange="_renderViolationBookingOptions()"><option value="no_show">預約未到，未取消也未告知</option><option value="roster_mismatch">預約名單與實際使用人員不符</option><option value="other">其他原因</option></select></label>'+
+      '<label id="violationBookingRow" style="font-size:12px;color:var(--color-text-muted)">對應預約<select id="violationBookingSel" class="formSelect"></select></label>'+
+      '<label style="font-size:12px;color:var(--color-text-muted)">備註<textarea id="violationNote" class="formInput" rows="3" maxlength="500" style="resize:vertical"></textarea></label>'+
+      '<div style="font-size:12px;color:var(--color-text-muted);line-height:1.7">記點人員：'+_esc(actorName||'—')+'<br>記點時間：'+_esc(new Date().toLocaleString('zh-TW'))+'</div>'+
+      '<button id="violationSubmitBtn" class="primaryBtn" onclick="submitBookingViolation()">確認記點 +1</button></div>');
+    _renderViolationBookingOptions();
+  }).catch(function(e){showToast('載入預約紀錄失敗：'+e.message);});
+}
+function submitBookingViolation(){
+  var type=((document.getElementById('violationTypeSel')||{}).value)||'';
+  var bookingId=((document.getElementById('violationBookingSel')||{}).value)||'';
+  var note=(((document.getElementById('violationNote')||{}).value)||'').trim();
+  if((type==='no_show'||type==='roster_mismatch')&&!bookingId){showToast('請選擇對應預約');return;}
+  if(type==='other'&&!note){showToast('其他原因必須填寫備註');return;}
+  var btn=document.getElementById('violationSubmitBtn');
+  if(btn){btn.disabled=true;btn.textContent='記點中…';}
+  _callBookingFunction('createBookingViolation',{
+    targetUid:_violationCreateTargetUid,bookingId:bookingId,violationType:type,note:note
+  }).then(function(){
+    _closeViolationOverlay();showToast('違規記點已建立');
+  }).catch(function(e){showToast('記點失敗：'+(e&&e.message?e.message:e));
+  }).finally(function(){if(btn){btn.disabled=false;btn.textContent='確認記點 +1';}});
+}
+function _violationHistoryStatus(v,summary){
+  if(v.status==='revoked') return '已撤銷';
+  if(v.countsTowardCycle===false) return '停權期間紀錄（不計點）';
+  if(summary&&summary.status==='suspended'&&_timestampMs(summary.bookingSuspendedUntil)<=Date.now()) return '已完成週期';
+  if(summary&&v.cycleId===summary.cycleId) return '有效';
+  return '已完成週期';
+}
+function openViolationHistory(uid){
+  var myUid=currentUser?(currentUser.uid||currentUser.userId||''):'';
+  if(uid!==myUid&&!isAdminLike()){showToast('無權限查看此會員紀錄');return;}
+  var target=usersCache[uid]||{};
+  var load=uid===myUid
+    ?Promise.resolve(myBookingViolationsCache.slice())
+    :db.collection('bookingViolations').where('memberUid','==',uid).get().then(function(snap){
+      return snap.docs.map(function(d){return Object.assign({id:d.id},d.data());});
+    });
+  load.then(function(items){
+    items.sort(function(a,b){return _timestampMs(b.createdAt)-_timestampMs(a.createdAt);});
+    var summary=_violationSummary(uid)||{};
+    var cards=items.length?items.map(function(v){
+      var created=_timestampMs(v.createdAt)?new Date(_timestampMs(v.createdAt)).toLocaleString('zh-TW'):'';
+      var bookingMeta=v.bookingDate?[v.bookingDate,(v.startTime||'')+'–'+(v.endTime||''),({hard_a:'Hard A',hard_b:'Hard B',clay_a:'Clay A',clay_b:'Clay B'}[v.court]||v.court||'')].join(' '):'';
+      var controls='';
+      if(isAdminLike()&&v.status==='active') controls+='<button onclick="revokeBookingViolationUi(\''+v.id+'\',\''+uid+'\')" style="font-size:11px;border:1px solid #9a681f;color:#9a681f;background:transparent;border-radius:6px;padding:5px 9px">撤銷記點</button>';
+      if(_currentRole()==='owner') controls+='<button onclick="deleteBookingViolationUi(\''+v.id+'\',\''+uid+'\')" style="font-size:11px;border:1px solid #c0392b;color:#c0392b;background:transparent;border-radius:6px;padding:5px 9px">永久刪除</button>';
+      return '<div style="padding:13px 0;border-bottom:1px solid var(--color-border-soft);line-height:1.65">'+
+        '<div style="display:flex;justify-content:space-between;gap:10px"><strong>'+_esc(v.violationReason||'違規記點')+'</strong><span style="color:#9a681f">+1 點</span></div>'+
+        (v.note?'<div style="font-size:13px">備註：'+_esc(v.note)+'</div>':'')+
+        (bookingMeta?'<div style="font-size:12px;color:var(--color-text-muted)">'+_esc(bookingMeta)+'</div>':'')+
+        '<div style="font-size:12px;color:var(--color-text-muted)">記點人員：'+_esc(v.createdByName||'—')+'｜'+_esc(created)+'</div>'+
+        '<div style="font-size:12px;color:'+(v.status==='revoked'?'var(--color-text-muted)':'#8a5a18')+'">狀態：'+_esc(_violationHistoryStatus(v,summary))+'</div>'+
+        (v.status==='revoked'?'<div style="font-size:12px;color:var(--color-text-muted)">撤銷原因：'+_esc(v.revokeReason||'—')+'</div>':'')+
+        (controls?'<div style="display:flex;gap:7px;margin-top:7px">'+controls+'</div>':'')+'</div>';
+    }).join(''):'<div class="emptyState"><div class="emptyStateIcon">—</div>目前沒有違規紀錄</div>';
+    _violationOverlay((_mName(target)||'我的')+'違規紀錄',
+      '<div style="font-size:13px;color:var(--color-text-muted);margin-bottom:8px">目前週期有效點數 '+_effectiveViolationPoints(summary)+' / 3</div>'+cards);
+  }).catch(function(e){showToast('載入違規紀錄失敗：'+e.message);});
+}
+function revokeBookingViolationUi(violationId,uid){
+  var reason=prompt('請填寫撤銷原因：','');
+  if(reason===null)return;reason=reason.trim();
+  if(!reason){showToast('撤銷原因必填');return;}
+  _callBookingFunction('revokeBookingViolation',{violationId:violationId,revokeReason:reason}).then(function(){
+    showToast('違規記點已撤銷');openViolationHistory(uid);
+  }).catch(function(e){showToast('撤銷失敗：'+e.message);});
+}
+function deleteBookingViolationUi(violationId,uid){
+  if(_currentRole()!=='owner'){showToast('僅開發者可永久刪除');return;}
+  var reason=prompt('此操作不可復原。請填寫永久刪除原因：','');
+  if(reason===null)return;reason=reason.trim();
+  if(!reason){showToast('刪除原因必填');return;}
+  if(!confirm('此操作不可復原，確定永久刪除此違規紀錄嗎？'))return;
+  _callBookingFunction('deleteBookingViolation',{violationId:violationId,deleteReason:reason}).then(function(){
+    showToast('違規紀錄已永久刪除');openViolationHistory(uid);
+  }).catch(function(e){showToast('刪除失敗：'+e.message);});
 }
 
 /* 會員統計小卡（點擊套用 membershipType 篩選；filterVal='' 清除篩選）*/
@@ -10359,6 +10537,7 @@ function loadUsersCache(){
       }
     }
     loadBookingExtensionRequests();
+    loadBookingViolationData();
 
     renderMembers('');
     if(currentView==='week') renderWeekGrid();
@@ -10872,6 +11051,58 @@ function loadMyNotifications(){
     }, function(e){ console.warn('[loadMyNotifications] error:', e); });
 }
 
+function _timestampMs(v){
+  if(!v) return 0;
+  if(v.toMillis) return v.toMillis();
+  if(v.toDate) return v.toDate().getTime();
+  if(typeof v.seconds==='number') return v.seconds*1000;
+  var parsed=new Date(v).getTime();
+  return isFinite(parsed)?parsed:0;
+}
+function _violationSummary(uid){ return bookingViolationSummariesCache[uid]||null; }
+function _effectiveViolationPoints(summary){
+  if(!summary) return 0;
+  if(summary.status==='suspended'&&_timestampMs(summary.bookingSuspendedUntil)<=Date.now()) return 0;
+  return Number(summary.activePoints)||0;
+}
+function _isBookingSuspended(uid){
+  var s=_violationSummary(uid);
+  return !!(s&&s.status==='suspended'&&_timestampMs(s.bookingSuspendedUntil)>Date.now());
+}
+function _violationSuspensionMessage(uid){
+  var s=_violationSummary(uid);
+  if(!s||!_isBookingSuspended(uid)) return '';
+  var d=new Date(_timestampMs(s.bookingSuspendedUntil));
+  var label=d.toLocaleDateString('zh-TW',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'});
+  return '因累積 3 點預約違規，目前暫停預約資格至 '+label+'。';
+}
+function loadBookingViolationData(){
+  if(!db||!currentUser) return;
+  var myUid=currentUser.uid||currentUser.userId||currentUser.id||'';
+  if(!myUid) return;
+  if(_violationSummaryUnsubscribe) _violationSummaryUnsubscribe();
+  if(_myViolationUnsubscribe) _myViolationUnsubscribe();
+  var summaryQuery=isAdminLike()
+    ?db.collection('bookingViolationSummaries')
+    :db.collection('bookingViolationSummaries').where('memberUid','==',myUid);
+  _violationSummaryUnsubscribe=summaryQuery.onSnapshot(function(snap){
+    bookingViolationSummariesCache={};
+    snap.docs.forEach(function(d){bookingViolationSummariesCache[d.id]=Object.assign({id:d.id},d.data());});
+    var manage=document.getElementById('screen-manage');
+    if(manage&&manage.classList.contains('active')) renderManage();
+    var profile=document.getElementById('profileSheet');
+    if(profile&&profile.classList.contains('open')) _renderProfileSheet();
+    _refreshExtensionButton();
+  },function(e){console.warn('[bookingViolationSummaries] error:',e);});
+  _myViolationUnsubscribe=db.collection('bookingViolations')
+    .where('memberUid','==',myUid).onSnapshot(function(snap){
+      myBookingViolationsCache=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());});
+      myBookingViolationsCache.sort(function(a,b){return _timestampMs(b.createdAt)-_timestampMs(a.createdAt);});
+      var profile=document.getElementById('profileSheet');
+      if(profile&&profile.classList.contains('open')) _renderProfileSheet();
+    },function(e){console.warn('[myBookingViolations] error:',e);});
+}
+
 function _getUnreadNotifCount(){
   return notificationsCache.filter(function(n){ return !n.read; }).length;
 }
@@ -10903,6 +11134,18 @@ function _renderNotifCard(n){
       +'<div class="notifCardTime">'+_esc(n.date||'')+'　'+_esc(_amTime)+'</div>'
       +'<div class="notifCardMeta">'+_esc(_amFrom)+' → '+_esc(_amTo)+'　原因：時段衝突修正</div>'
       +(_amCreatedStr?'<div class="notifCardMeta" style="opacity:0.7;margin-top:2px">'+_amCreatedStr+'</div>':'')
+      +'</div>';
+  }
+  if(n.type==='booking_violation_recorded'||n.type==='booking_suspension_started'||
+     n.type==='booking_violation_revoked'){
+    var violationCreated='';
+    if(n.createdAt&&n.createdAt.toDate){
+      violationCreated=n.createdAt.toDate().toLocaleString('zh-TW');
+    }
+    return '<div class="notifCard'+(n.read?'':' unread')+'" onclick="_onNotifTap(\''+n.id+'\')">'
+      +'<div class="notifCardTitle">'+_esc(n.title||'違規記點通知')+'</div>'
+      +'<div class="notifCardMeta" style="white-space:pre-line;line-height:1.65">'+_esc(n.message||'')+'</div>'
+      +(violationCreated?'<div class="notifCardMeta" style="opacity:.7;margin-top:3px">'+_esc(violationCreated)+'</div>':'')
       +'</div>';
   }
   if(n.type==='booking_extension_approved'||n.type==='booking_extension_rejected'||
@@ -11337,7 +11580,7 @@ function _formBuddyRender(){
     Object.values(usersCache)
       .filter(function(m){
         var uid = m.userId||m.uid||'';
-        return uid && excludeUids.indexOf(uid) < 0 && m.status!=='deleted' && m.status!=='blocked' && m.role!=='pending';
+        return uid && excludeUids.indexOf(uid) < 0 && !_isBookingSuspended(uid) && m.status!=='deleted' && m.status!=='blocked' && m.role!=='pending';
       })
       .sort(function(a,b){ return _mName(a).localeCompare(_mName(b),'zh-Hant'); })
       .forEach(function(m){
@@ -11401,7 +11644,7 @@ function _formProxyToggle(){
       Object.values(usersCache)
         .filter(function(m){
           var uid = m.userId||m.uid||'';
-          return uid && uid !== myUid && m.status!=='deleted' && m.status!=='blocked' && m.role!=='pending';
+          return uid && uid !== myUid && !_isBookingSuspended(uid) && m.status!=='deleted' && m.status!=='blocked' && m.role!=='pending';
         })
         .sort(function(a,b){ return _mName(a).localeCompare(_mName(b),'zh-Hant'); })
         .forEach(function(m){
@@ -11517,7 +11760,6 @@ function _bookingParticipantUids(b){
   // Deduplicate
   return uids.filter(function(u,i){ return uids.indexOf(u)===i; });
 }
-
 /* ── Booking: cross-court participant time-conflict check ──────────────────────
    draft: { date, startTime, endTime, court, participantUids: uid[] }
    excludeId: booking ID to skip (edit mode); null for new bookings.
@@ -11566,6 +11808,7 @@ function _refreshExtensionButton(){
   var start=((document.getElementById('formStart')||{}).value)||'';
   var end=((document.getElementById('formEnd')||{}).value)||'';
   var myUid=currentUser.uid||currentUser.userId||currentUser.id||'';
+  if(_isBookingSuspended(myUid)) return;
   if(_normaliseMode(mode)!=='general'||(court!=='hard_a'&&court!=='hard_b')||
      timeToMin(end)-timeToMin(start)!==60||_formBuddyOwnerUid()!==myUid||
      _formBuddyMembers.length||_formBuddyGuests.length) return;
