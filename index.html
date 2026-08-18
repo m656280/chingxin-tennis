@@ -4579,6 +4579,12 @@ function _mPic(m){
 /* 回傳 {typeLabel, status, statusLabel, diff, expStr}
    diff:   到期日距今天數（負=已逾期，0=今日，正=未來），null 表示無法計算
    expStr: 到期日字串（YYYY/MM/DD 或 YYYY-MM-DD），供顯示用 */
+function _effectiveFinanceMembershipExpiry(r){
+  var exp = r.membershipExpiry || r.expireDate || '';
+  var is2026Monthly = (r.type==='monthly' || r.membershipType==='monthly')
+    && (String(r.date||'').slice(0,4)==='2026' || parseInt(r.billingYear,10)===2026);
+  return is2026Monthly && exp.replace(/-/g,'/')>'2026/12/31' ? '2026/12/31' : exp;
+}
 function _calcMemberFeeStatus(m){
   var uid = m.userId || m.uid || '';
   // financialRecords 為唯一依據：只有 status=active 才算有效繳費（void/refund 不算）
@@ -4590,8 +4596,8 @@ function _calcMemberFeeStatus(m){
   }
   // 取到期日最晚的那筆 active 紀錄
   var bestRec = activeRecs.reduce(function(best, r){
-    var expB = best.membershipExpiry || best.expireDate || '';
-    var expR = r.membershipExpiry    || r.expireDate    || '';
+    var expB = _effectiveFinanceMembershipExpiry(best);
+    var expR = _effectiveFinanceMembershipExpiry(r);
     return expR > expB ? r : best;
   }, activeRecs[0]);
   var typeLabel = bestRec.membershipType==='annual'  ? '年費會員'
@@ -4599,7 +4605,7 @@ function _calcMemberFeeStatus(m){
                : m.membershipType==='annual'        ? '年費會員'
                : m.membershipType==='monthly'       ? '月費會員' : '';
   // 到期日：優先用 financeRecord 自身欄位，舊紀錄無此欄位才 fallback 至 member doc 顯示快取
-  var expStr = bestRec.membershipExpiry || bestRec.expireDate || m.membershipExpiry || m.expireDate || '';
+  var expStr = _effectiveFinanceMembershipExpiry(bestRec) || m.membershipExpiry || m.expireDate || '';
   if(!expStr){ return {typeLabel:typeLabel, status:'paid', statusLabel:'已繳清', diff:null, expStr:''}; }
   var todayFS = new Date(); todayFS.setHours(0,0,0,0);
   var exp = new Date(expStr.replace(/\//g,'-')+'T00:00:00');
@@ -8870,10 +8876,12 @@ function _calcMembershipExpiry(membershipType, dateStr, membershipYear, periodMo
     var yr = (membershipYear && parseInt(membershipYear,10)) || y;
     return yr+'/12/31';
   } else if(membershipType==='monthly'){
+    var monthlyStartYear = y;
     var pm = (periodMonths && parseInt(periodMonths,10) > 0) ? parseInt(periodMonths,10) : 1;
     mo += pm;
     while(mo > 12){ mo -= 12; y += 1; }
-    return y+'/'+String(mo).padStart(2,'0')+'/'+String(d).padStart(2,'0');
+    var monthlyExpiry = y+'/'+String(mo).padStart(2,'0')+'/'+String(d).padStart(2,'0');
+    return monthlyStartYear===2026 && monthlyExpiry>'2026/12/31' ? '2026/12/31' : monthlyExpiry;
   }
   return '';
 }
