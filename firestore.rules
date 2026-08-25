@@ -243,7 +243,14 @@ service cloud.firestore {
             resource.data.status != 'deleted'
             && request.resource.data.status != 'deleted'
           )
-        );
+        )
+        // 會員合併欄位與 merged 狀態只能由後端 Transaction 寫入。
+        && resource.data.status != 'merged'
+        && request.resource.data.status != 'merged'
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+             'mergedInto', 'mergedAt', 'mergedByUid', 'mergedByName',
+             'mergeOperationId', 'mergedFromUids', 'lastMergeOperationId'
+           ]);
 
       // 刪除：全部封鎖。
       // permanentDeleteMember 是 owner-only 且極少使用，
@@ -363,6 +370,12 @@ service cloud.firestore {
 
     // 疑似重複會員候選：僅 Owner / Developer 可查看，僅後端 trigger 可寫。
     match /duplicateMemberCandidates/{candidateId} {
+      allow read: if isOwner();
+      allow create, update, delete: if false;
+    }
+
+    // 會員合併操作及 rollback 快照：僅 Owner 可查閱，僅 Callable 可寫。
+    match /memberMergeOperations/{operationId} {
       allow read: if isOwner();
       allow create, update, delete: if false;
     }

@@ -71,6 +71,10 @@ function duplicateMemberSnapshot(uid, member, source) {
     role: cleanString(member.role, 30),
     status: cleanString(member.status, 30),
     membershipType: cleanString(member.membershipType, 30),
+    membershipExpiry: normaliseExpiryDate(
+      member.membershipExpiry || member.expireDate || '',
+    ),
+    approved: member.approved === true,
     memberSource: source,
     ntrp: member.ntrp == null ? '' : cleanString(String(member.ntrp), 10),
     preferredPosition: cleanString(member.preferredPosition, 20),
@@ -85,7 +89,8 @@ function isActiveBooking(booking) {
 
 function isEligibleMember(member) {
   if (!member) return false;
-  if (member.status === 'deleted') return false;
+  if (member.status === 'deleted' || member.status === 'merged' ||
+      member.mergedInto) return false;
   if (ADMIN_ROLES.has(member.role || '')) {
     return member.status !== 'deleted' && member.status !== 'blocked';
   }
@@ -2916,6 +2921,598 @@ exports.restoreFinancialRecord = onCall({region: 'asia-east1'}, async (request) 
   });
   await batch.commit();
   return {ok: true, recordId};
+});
+
+function canonicalMergeValue(value) {
+  if (value == null) return value;
+  if (typeof value.toMillis === 'function') {
+    return {__timestampMillis: value.toMillis()};
+  }
+  if (Array.isArray(value)) return value.map(canonicalMergeValue);
+  if (typeof value === 'object') {
+    return Object.keys(value).sort().reduce((result, key) => {
+      result[key] = canonicalMergeValue(value[key]);
+      return result;
+    }, {});
+  }
+  return value;
+}
+
+function memberMergeHash(value) {
+  const encoded = JSON.stringify(canonicalMergeValue(value));
+  return crypto.createHash('sha256')
+    .update(encoded === undefined ? '__undefined__' : encoded, 'utf8')
+    .digest('hex');
+}
+
+function bookingContainsMemberUid(booking, uid) {
+  if (!booking || !uid) return false;
+  return booking.createdBy === uid || booking.coachId === uid ||
+    (Array.isArray(booking.players) && booking.players.includes(uid)) ||
+    (Array.isArray(booking.students) && booking.students.includes(uid)) ||
+    Boolean(booking.attendance &&
+      Object.prototype.hasOwnProperty.call(booking.attendance, uid));
+}
+
+function replaceMemberUidInBooking(booking, sourceUid, targetUid) {
+  const after = Object.assign({}, booking);
+  if (after.createdBy === sourceUid) after.createdBy = targetUid;
+  if (after.coachId === sourceUid) after.coachId = targetUid;
+  if (Array.isArray(after.players)) {
+    after.players = after.players.map((uid) =>
+      uid === sourceUid ? targetUid : uid);
+  }
+  if (Array.isArray(after.students)) {
+    after.students = after.students.map((uid) =>
+      uid === sourceUid ? targetUid : uid);
+  }
+  if (after.attendance &&
+      Object.prototype.hasOwnProperty.call(after.attendance, sourceUid)) {
+    after.attendance = Object.assign({}, after.attendance, {
+      [targetUid]: after.attendance[sourceUid],
+    });
+    delete after.attendance[sourceUid];
+  }
+  return after;
+}
+
+function memberMergeMembership(member) {
+  return {
+    membershipType: cleanString(member && member.membershipType, 30),
+    membershipExpiry: normaliseExpiryDate(
+      member && (member.membershipExpiry || member.expireDate || ''),
+    ),
+  };
+}
+
+function memberMergeSnapshotMatches(snapshot, member) {
+  if (!snapshot) return false;
+  const fields = [
+    'uid', 'realName', 'displayName', 'role', 'status', 'membershipType',
+    'memberSource', 'approved', 'createdAt',
+  ];
+  return fields.every((field) => {
+    if (!Object.prototype.hasOwnProperty.call(snapshot, field)) return true;
+    if (field === 'createdAt') {
+      return memberMergeHash(snapshot[field]) === memberMergeHash(member[field]);
+    }
+    if (field === 'approved') {
+      return (snapshot[field] === true) === (member[field] === true);
+    }
+    return cleanString(snapshot[field], 200) === cleanString(member[field], 200);
+  });
+}
+
+function memberMergeFinanceKey(record) {
+  const status = record.status || 'active';
+  if (status !== 'active') return '';
+  const type = cleanString(record.type || record.membershipType, 30);
+  if (type === 'annual') {
+    const rawYear = record.membershipYear || record.year ||
+      cleanString(record.date, 10).slice(0, 4);
+    const year = cleanString(String(rawYear || ''), 4);
+    return year ? `annual:${year}` : '';
+  }
+  if (type === 'monthly') {
+    const year = cleanString(String(
+      record.billingYear || record.year || '',
+    ), 4);
+    const monthNumber = Number(record.billingMonth || record.month || 0);
+    if (year && monthNumber >= 1 && monthNumber <= 12) {
+      return `monthly:${year}-${String(monthNumber).padStart(2, '0')}`;
+    }
+    const expiry = normaliseExpiryDate(
+      record.membershipExpiry || record.expireDate || '',
+    );
+    return expiry ? `monthly-expiry:${expiry}` : '';
+  }
+  return '';
+}
+
+function assessMemberMergeState(state) {
+  const blockers = [];
+  const warnings = [];
+  const candidate = state.candidate.data;
+  const lineMember = state.lineMember.data;
+  const manualMember = state.manualMember.data;
+  const lineUid = state.lineMember.id;
+  const manualUid = state.manualMember.id;
+  const lineRole = lineMember.role || 'member';
+  const manualRole = manualMember.role || 'member';
+  const lineMembership = memberMergeMembership(lineMember);
+  const manualMembership = memberMergeMembership(manualMember);
+
+  if (candidate.status !== 'pending') blockers.push('候選狀態已不是 pending');
+  if (normaliseMemberName(lineMember.realName) !==
+      normaliseMemberName(manualMember.realName)) {
+    blockers.push('LINE 與手動會員姓名已不一致');
+  }
+  if (lineMember.memberSource === 'manual' ||
+      manualMember.memberSource !== 'manual') {
+    blockers.push('會員來源不符合 LINE 主帳號／手動來源帳號');
+  }
+  if (lineMember.mergedInto || manualMember.mergedInto ||
+      lineMember.status === 'merged' || manualMember.status === 'merged') {
+    blockers.push('其中一筆會員已被合併');
+  }
+  if (lineRole !== manualRole ||
+      ['admin', 'owner'].includes(lineRole) ||
+      ['admin', 'owner'].includes(manualRole)) {
+    blockers.push('角色不一致或涉及 admin / owner');
+  }
+  if (!memberMergeSnapshotMatches(candidate.lineMember, lineMember) ||
+      !memberMergeSnapshotMatches(candidate.manualMember, manualMember)) {
+    blockers.push('會員重要資料已與候選建立時不同');
+  }
+  if (lineMembership.membershipType && manualMembership.membershipType &&
+      (lineMembership.membershipType !== manualMembership.membershipType ||
+       lineMembership.membershipExpiry !== manualMembership.membershipExpiry)) {
+    blockers.push('兩邊都有衝突的會員資格資料');
+  }
+  if ((lineMembership.membershipType && !lineMembership.membershipExpiry) ||
+      (manualMembership.membershipType && !manualMembership.membershipExpiry)) {
+    blockers.push('會員資格缺少可安全判定的到期日');
+  }
+  if (state.lineSummary && state.manualSummary) {
+    blockers.push('兩邊都有違規 summary');
+  }
+  if (Object.keys(lineMember.coachStudents || {}).length ||
+      Object.keys(manualMember.coachStudents || {}).length) {
+    blockers.push('來源或目標會員本身具有 coachStudents，需 Owner 人工確認');
+  }
+
+  state.bookings.forEach((item) => {
+    if (bookingContainsMemberUid(item.data, lineUid) &&
+        bookingContainsMemberUid(item.data, manualUid)) {
+      blockers.push(`booking ${item.id} 同時包含兩個 UID`);
+    }
+  });
+  state.coachMembers.forEach((item) => {
+    const students = item.data.coachStudents || {};
+    if (Object.prototype.hasOwnProperty.call(students, lineUid) &&
+        Object.prototype.hasOwnProperty.call(students, manualUid)) {
+      blockers.push(`coach ${item.id} 同時存在兩個 UID`);
+    }
+  });
+  if (state.extensionRequests.length) {
+    blockers.push('存在加時申請關聯，需 Owner 人工確認後另行處理');
+  }
+
+  const lineFinanceKeys = new Set(state.lineFinancialRecords
+    .map((item) => memberMergeFinanceKey(item.data)).filter(Boolean));
+  state.manualFinancialRecords.forEach((item) => {
+    const type = cleanString(item.data.type || item.data.membershipType, 30);
+    const key = memberMergeFinanceKey(item.data);
+    if ((item.data.status || 'active') === 'active' &&
+        ['annual', 'monthly'].includes(type) && !key) {
+      blockers.push(`財務紀錄 ${item.id} 無法安全判定帳期`);
+    } else if (key && lineFinanceKeys.has(key)) {
+      blockers.push(`財務帳期衝突：${key}`);
+    }
+  });
+
+  let effectiveMembership = lineMembership;
+  if (!effectiveMembership.membershipType && manualMembership.membershipType) {
+    effectiveMembership = manualMembership;
+  }
+  if (!candidate.lineMember || !candidate.manualMember) {
+    warnings.push('候選為舊版快照，執行時仍會以本次預覽雜湊防止資料漂移');
+  }
+
+  const counts = {
+    financialRecords: state.manualFinancialRecords.length,
+    bookings: state.bookings.filter((item) =>
+      bookingContainsMemberUid(item.data, manualUid)).length,
+    violations: state.manualViolations.length,
+    violationSummaries: state.manualSummary ? 1 : 0,
+    coachStudents: state.coachMembers.filter((item) =>
+      Object.prototype.hasOwnProperty.call(
+        item.data.coachStudents || {}, manualUid,
+      )).length,
+    notifications: state.notifications.length,
+    extensionRequests: state.extensionRequests.length,
+  };
+  const hashPayload = {
+    candidate: state.candidate,
+    lineMember: state.lineMember,
+    manualMember: state.manualMember,
+    manualFinancialRecords: state.manualFinancialRecords,
+    lineFinancialRecords: state.lineFinancialRecords,
+    bookings: state.bookings,
+    manualViolations: state.manualViolations,
+    lineViolations: state.lineViolations,
+    manualSummary: state.manualSummary,
+    lineSummary: state.lineSummary,
+    coachMembers: state.coachMembers,
+    notifications: state.notifications,
+    extensionRequests: state.extensionRequests,
+  };
+  return {
+    canMerge: blockers.length === 0,
+    blockers: [...new Set(blockers)],
+    warnings,
+    counts,
+    effectiveMembership,
+    previewHash: memberMergeHash(hashPayload),
+  };
+}
+
+function memberMergeDoc(path, snap) {
+  return snap && snap.exists ? {path, id: snap.id, data: snap.data() || {}} : null;
+}
+
+async function loadMemberMergeState(read, candidateId) {
+  const candidateRef = bookingDb.collection('duplicateMemberCandidates')
+    .doc(candidateId);
+  const candidateSnap = await read(candidateRef);
+  if (!candidateSnap.exists) {
+    throw new HttpsError('not-found', '找不到疑似重複會員候選');
+  }
+  const candidate = candidateSnap.data() || {};
+  const lineUid = cleanString(candidate.lineMemberUid, 200);
+  const manualUid = cleanString(candidate.manualMemberUid, 200);
+  if (!lineUid || !manualUid || lineUid === manualUid) {
+    throw new HttpsError('failed-precondition', '候選會員 UID 無效');
+  }
+  const lineRef = bookingDb.collection('members').doc(lineUid);
+  const manualRef = bookingDb.collection('members').doc(manualUid);
+  const lineSnap = await read(lineRef);
+  const manualSnap = await read(manualRef);
+  if (!lineSnap.exists || !manualSnap.exists) {
+    throw new HttpsError('failed-precondition', 'LINE 或手動會員資料不存在');
+  }
+
+  const readQuery = async (query, collectionName) => {
+    const snap = await read(query);
+    return snap.docs.map((doc) => ({
+      path: `${collectionName}/${doc.id}`,
+      id: doc.id,
+      data: doc.data() || {},
+    }));
+  };
+  const union = (items) => [...new Map(items.map((item) =>
+    [item.path, item])).values()];
+  const finance = bookingDb.collection('financialRecords');
+  const bookings = bookingDb.collection('bookings');
+  const violations = bookingDb.collection('bookingViolations');
+  const notifications = bookingDb.collection('notifications');
+  const extensions = bookingDb.collection('bookingExtensionRequests');
+
+  const manualFinancialRecords = await readQuery(
+    finance.where('memberId', '==', manualUid), 'financialRecords');
+  const lineFinancialRecords = await readQuery(
+    finance.where('memberId', '==', lineUid), 'financialRecords');
+  const allBookings = await readQuery(bookings, 'bookings');
+  const relatedBookings = allBookings.filter((item) =>
+    bookingContainsMemberUid(item.data, manualUid) ||
+    bookingContainsMemberUid(item.data, lineUid));
+  const manualViolations = await readQuery(
+    violations.where('memberUid', '==', manualUid), 'bookingViolations');
+  const lineViolations = await readQuery(
+    violations.where('memberUid', '==', lineUid), 'bookingViolations');
+  const manualSummarySnap = await read(
+    bookingDb.collection('bookingViolationSummaries').doc(manualUid));
+  const lineSummarySnap = await read(
+    bookingDb.collection('bookingViolationSummaries').doc(lineUid));
+  const allMembers = await read(bookingDb.collection('members'));
+  const coachMembers = allMembers.docs.filter((doc) => {
+    const students = (doc.data() || {}).coachStudents || {};
+    return Object.prototype.hasOwnProperty.call(students, manualUid) ||
+      Object.prototype.hasOwnProperty.call(students, lineUid);
+  }).map((doc) => ({
+    path: `members/${doc.id}`,
+    id: doc.id,
+    data: doc.data() || {},
+  }));
+  const relatedNotifications = await readQuery(
+    notifications.where('uid', '==', manualUid), 'notifications');
+  const manualExtensions = await readQuery(
+    extensions.where('requesterUid', '==', manualUid),
+    'bookingExtensionRequests');
+  const lineExtensions = await readQuery(
+    extensions.where('requesterUid', '==', lineUid),
+    'bookingExtensionRequests');
+
+  return {
+    candidate: memberMergeDoc(
+      `duplicateMemberCandidates/${candidateId}`, candidateSnap),
+    lineMember: memberMergeDoc(`members/${lineUid}`, lineSnap),
+    manualMember: memberMergeDoc(`members/${manualUid}`, manualSnap),
+    manualFinancialRecords,
+    lineFinancialRecords,
+    bookings: union(relatedBookings),
+    manualViolations,
+    lineViolations,
+    manualSummary: memberMergeDoc(
+      `bookingViolationSummaries/${manualUid}`, manualSummarySnap),
+    lineSummary: memberMergeDoc(
+      `bookingViolationSummaries/${lineUid}`, lineSummarySnap),
+    coachMembers,
+    notifications: relatedNotifications,
+    extensionRequests: union(manualExtensions.concat(lineExtensions)),
+  };
+}
+
+function memberMergeChange(path, before, after) {
+  return {
+    path,
+    beforeExists: before != null,
+    before: before || null,
+    after,
+    beforeHash: memberMergeHash(before),
+    afterHash: memberMergeHash(after),
+  };
+}
+
+function buildMemberMergeChanges(state, assessment, actor, operationId, mergedAt) {
+  const changes = [];
+  const lineUid = state.lineMember.id;
+  const manualUid = state.manualMember.id;
+  const addChange = (item, after) => changes.push(
+    memberMergeChange(item.path, item.data, after));
+  const lineAfter = Object.assign({}, state.lineMember.data, {
+    mergedFromUids: [...new Set(
+      (state.lineMember.data.mergedFromUids || []).concat(manualUid),
+    )],
+    lastMergeOperationId: operationId,
+    updatedAt: mergedAt,
+  });
+  if (assessment.effectiveMembership.membershipType) {
+    lineAfter.membershipType = assessment.effectiveMembership.membershipType;
+    lineAfter.membershipExpiry = assessment.effectiveMembership.membershipExpiry;
+    lineAfter.expireDate = assessment.effectiveMembership.membershipExpiry;
+  }
+  addChange(state.lineMember, lineAfter);
+  addChange(state.manualMember, Object.assign({}, state.manualMember.data, {
+    status: 'merged',
+    approved: false,
+    mergedInto: lineUid,
+    mergedAt,
+    mergedByUid: actor.uid,
+    mergedByName: actor.name,
+    mergeOperationId: operationId,
+    updatedAt: mergedAt,
+  }));
+  addChange(state.candidate, Object.assign({}, state.candidate.data, {
+    status: 'merged',
+    resolution: 'resolved',
+    resolvedAt: mergedAt,
+    resolvedByUid: actor.uid,
+    resolvedByName: actor.name,
+    mergeOperationId: operationId,
+  }));
+  state.manualFinancialRecords.forEach((item) => addChange(
+    item, Object.assign({}, item.data, {memberId: lineUid})));
+  state.bookings.filter((item) =>
+    bookingContainsMemberUid(item.data, manualUid)).forEach((item) =>
+    addChange(item, replaceMemberUidInBooking(item.data, manualUid, lineUid)));
+  state.manualViolations.forEach((item) => addChange(
+    item, Object.assign({}, item.data, {memberUid: lineUid})));
+  state.coachMembers.forEach((item) => {
+    const students = Object.assign({}, item.data.coachStudents || {});
+    if (!Object.prototype.hasOwnProperty.call(students, manualUid)) return;
+    students[lineUid] = students[manualUid];
+    delete students[manualUid];
+    addChange(item, Object.assign({}, item.data, {coachStudents: students}));
+  });
+  state.notifications.forEach((item) => addChange(
+    item, Object.assign({}, item.data, {uid: lineUid})));
+  if (state.manualSummary) {
+    const lineSummaryAfter = Object.assign({}, state.manualSummary.data, {
+      memberUid: lineUid,
+      mergeOperationId: operationId,
+    });
+    changes.push(memberMergeChange(
+      `bookingViolationSummaries/${lineUid}`,
+      state.lineSummary ? state.lineSummary.data : null,
+      lineSummaryAfter,
+    ));
+    addChange(state.manualSummary, Object.assign({}, state.manualSummary.data, {
+      status: 'merged',
+      mergedInto: lineUid,
+      mergedAt,
+      mergeOperationId: operationId,
+    }));
+  }
+  return changes;
+}
+
+function memberMergePreviewResponse(state, assessment) {
+  const line = state.lineMember.data;
+  const manual = state.manualMember.data;
+  return {
+    canMerge: assessment.canMerge,
+    blockers: assessment.blockers,
+    warnings: assessment.warnings,
+    previewHash: assessment.previewHash,
+    lineMember: {
+      uid: state.lineMember.id,
+      realName: cleanString(line.realName || line.displayName, 100),
+      displayName: cleanString(line.displayName, 100),
+      memberSource: line.memberSource || 'line',
+    },
+    manualMember: {
+      uid: state.manualMember.id,
+      realName: cleanString(manual.realName || manual.displayName, 100),
+      memberSource: manual.memberSource || 'manual',
+      resultingStatus: 'merged',
+      mergedInto: state.lineMember.id,
+    },
+    membershipType: assessment.effectiveMembership.membershipType || '',
+    membershipExpiry: assessment.effectiveMembership.membershipExpiry || '',
+    counts: assessment.counts,
+    affectedDocuments: [
+      state.lineMember.path,
+      state.manualMember.path,
+      state.candidate.path,
+      ...state.manualFinancialRecords.map((item) => item.path),
+      ...state.bookings.filter((item) =>
+        bookingContainsMemberUid(item.data, state.manualMember.id))
+        .map((item) => item.path),
+      ...state.manualViolations.map((item) => item.path),
+      ...state.coachMembers.filter((item) =>
+        Object.prototype.hasOwnProperty.call(
+          item.data.coachStudents || {}, state.manualMember.id,
+        )).map((item) => item.path),
+      ...state.notifications.map((item) => item.path),
+      ...(state.manualSummary ? [
+        state.manualSummary.path,
+        `bookingViolationSummaries/${state.lineMember.id}`,
+      ] : []),
+    ],
+  };
+}
+
+async function getOwnerMergeActor(request) {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError('unauthenticated', '請先登入');
+  }
+  const actorSnap = await bookingDb.collection('members')
+    .doc(request.auth.uid).get();
+  const actor = actorSnap.exists ? actorSnap.data() || {} : {};
+  if (!actorSnap.exists || actor.role !== 'owner') {
+    throw new HttpsError('permission-denied', '僅 Owner 可執行會員合併');
+  }
+  return {
+    uid: request.auth.uid,
+    name: memberDisplayName(actor, request.auth.uid),
+  };
+}
+
+exports.previewMemberMerge = onCall({region: 'asia-east1'}, async (request) => {
+  await getOwnerMergeActor(request);
+  const candidateId = cleanString(request.data && request.data.candidateId, 200);
+  if (!candidateId) throw new HttpsError('invalid-argument', '缺少候選 ID');
+  const state = await loadMemberMergeState((ref) => ref.get(), candidateId);
+  return memberMergePreviewResponse(state, assessMemberMergeState(state));
+});
+
+exports.executeMemberMerge = onCall({region: 'asia-east1'}, async (request) => {
+  const actor = await getOwnerMergeActor(request);
+  const candidateId = cleanString(request.data && request.data.candidateId, 200);
+  const previewHash = cleanString(request.data && request.data.previewHash, 100);
+  if (!candidateId || !previewHash) {
+    throw new HttpsError('invalid-argument', '缺少候選 ID 或預覽憑證');
+  }
+  const operationRef = bookingDb.collection('memberMergeOperations').doc();
+  const mergedAt = admin.firestore.Timestamp.now();
+  return bookingDb.runTransaction(async (transaction) => {
+    const state = await loadMemberMergeState(
+      (ref) => transaction.get(ref), candidateId);
+    const assessment = assessMemberMergeState(state);
+    if (!assessment.canMerge) {
+      throw new HttpsError('failed-precondition', assessment.blockers.join('；'));
+    }
+    if (assessment.previewHash !== previewHash) {
+      throw new HttpsError(
+        'aborted', '資料已在預覽後變更，請重新預覽再執行合併');
+    }
+    const changes = buildMemberMergeChanges(
+      state, assessment, actor, operationRef.id, mergedAt);
+    if (changes.length > 100 ||
+        Buffer.byteLength(JSON.stringify(canonicalMergeValue(changes))) > 800000) {
+      throw new HttpsError(
+        'resource-exhausted', '受影響資料過多，請停止並由 Owner 人工確認');
+    }
+    changes.forEach((change) => {
+      transaction.set(bookingDb.doc(change.path), change.after);
+    });
+    transaction.set(operationRef, {
+      status: 'completed',
+      candidateId,
+      sourceUid: state.manualMember.id,
+      sourceName: memberDisplayName(
+        state.manualMember.data, state.manualMember.id),
+      targetUid: state.lineMember.id,
+      targetName: memberDisplayName(state.lineMember.data, state.lineMember.id),
+      actorUid: actor.uid,
+      actorName: actor.name,
+      createdAt: mergedAt,
+      previewHash,
+      affectedDocuments: changes.map((change) => change.path),
+      counts: assessment.counts,
+      before: {
+        lineMember: state.lineMember.data,
+        manualMember: state.manualMember.data,
+        candidate: state.candidate.data,
+      },
+      after: {
+        lineMember: changes.find((change) =>
+          change.path === state.lineMember.path).after,
+        manualMember: changes.find((change) =>
+          change.path === state.manualMember.path).after,
+        candidate: changes.find((change) =>
+          change.path === state.candidate.path).after,
+      },
+      changes,
+    });
+    return {ok: true, operationId: operationRef.id, counts: assessment.counts};
+  });
+});
+
+exports.rollbackMemberMerge = onCall({region: 'asia-east1'}, async (request) => {
+  const actor = await getOwnerMergeActor(request);
+  const operationId = cleanString(request.data && request.data.operationId, 200);
+  const reason = cleanString(request.data && request.data.reason, 500);
+  if (!operationId || !reason) {
+    throw new HttpsError('invalid-argument', '缺少合併操作 ID 或 rollback 原因');
+  }
+  const operationRef = bookingDb.collection('memberMergeOperations')
+    .doc(operationId);
+  const rolledBackAt = admin.firestore.Timestamp.now();
+  return bookingDb.runTransaction(async (transaction) => {
+    const operationSnap = await transaction.get(operationRef);
+    if (!operationSnap.exists) throw new HttpsError('not-found', '找不到合併操作');
+    const operation = operationSnap.data() || {};
+    if (operation.status !== 'completed' || !Array.isArray(operation.changes)) {
+      throw new HttpsError('failed-precondition', '此合併操作不可 rollback');
+    }
+    const currentSnaps = [];
+    for (const change of operation.changes) {
+      currentSnaps.push(await transaction.get(bookingDb.doc(change.path)));
+    }
+    currentSnaps.forEach((snap, index) => {
+      const change = operation.changes[index];
+      const current = snap.exists ? snap.data() || {} : null;
+      if (memberMergeHash(current) !== change.afterHash) {
+        throw new HttpsError(
+          'aborted', `合併後資料已變更，無法安全 rollback：${change.path}`);
+      }
+    });
+    operation.changes.forEach((change) => {
+      const ref = bookingDb.doc(change.path);
+      if (change.beforeExists) transaction.set(ref, change.before);
+      else transaction.delete(ref);
+    });
+    transaction.update(operationRef, {
+      status: 'rolled_back',
+      rolledBackAt,
+      rolledBackByUid: actor.uid,
+      rolledBackByName: actor.name,
+      rollbackReason: reason,
+    });
+    return {ok: true, operationId};
+  });
 });
 
 // ── detectDuplicateManualMember ──────────────────────────────────────

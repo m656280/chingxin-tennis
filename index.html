@@ -2429,7 +2429,7 @@ function _canEnter(d){
   var role   = d.role   || '';
   var status = d.status || '';
   // hard block: deleted/blocked members can never enter regardless of role
-  if(status === 'deleted' || status === 'blocked') return false;
+  if(status === 'deleted' || status === 'blocked' || status === 'merged' || d.mergedInto) return false;
   // role-based: owner / admin always enter regardless of status field
   if(role === 'owner' || role === 'admin') return true;
   // status-based: active OR approved (both mean "cleared by admin")
@@ -3092,6 +3092,7 @@ let notificationsCache = []; // user's personal notifications (booking cancelled
 let _notifUnsubscribe  = null; // Firestore onSnapshot unsubscribe fn for notifications
 let duplicateMemberCandidatesCache = [];
 let _duplicateMemberCandidatesUnsubscribe = null;
+let _memberMergePreview = null;
 let bookingViolationSummariesCache = {};
 let myBookingViolationsCache = [];
 let _violationSummaryUnsubscribe = null;
@@ -4700,6 +4701,9 @@ function _duplicateMemberEntryHtml(){
         _duplicateMemberSnapshotHtml(item.lineMember,'LINE 本人登入會員')+
         _duplicateMemberSnapshotHtml(item.manualMember,'疑似對應手動會員')+
       '</div>'+
+      '<div style="display:flex;justify-content:flex-end;margin-top:9px">'+
+        '<button type="button" style="font-size:11px;padding:6px 12px;border-radius:7px;border:1px solid rgba(201,145,42,0.55);background:transparent;color:#8b611f;cursor:pointer" onclick="openMemberMergePreview(\''+item.id+'\')">確認合併</button>'+
+      '</div>'+
     '</div>';
   }).join('');
   return '<details class="duplicateMemberEntry">'+
@@ -4880,6 +4884,77 @@ function _renderMembersTab(el){
   html+='</div>';
   el.innerHTML+=html;
   _renderMemberListInTab();
+}
+
+function closeMemberMergePreview(){
+  var modal=document.getElementById('memberMergePreviewModal');
+  if(modal) modal.remove();
+  _memberMergePreview=null;
+}
+
+function _memberMergeCountRow(label,value){
+  return '<div style="display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--color-border-soft)"><span>'+_esc(label)+'</span><strong>'+Number(value||0)+' 筆</strong></div>';
+}
+
+function _renderMemberMergePreview(candidateId,preview){
+  closeMemberMergePreview();
+  _memberMergePreview={candidateId:candidateId,previewHash:preview.previewHash};
+  var blockers=(preview.blockers||[]).map(function(msg){return '<li>'+_esc(msg)+'</li>';}).join('');
+  var warnings=(preview.warnings||[]).map(function(msg){return '<li>'+_esc(msg)+'</li>';}).join('');
+  var counts=preview.counts||{};
+  var docs=(preview.affectedDocuments||[]).map(function(path){return '<li style="word-break:break-all">'+_esc(path)+'</li>';}).join('');
+  var modal=document.createElement('div');
+  modal.id='memberMergePreviewModal';
+  modal.style.cssText='position:fixed;inset:0;z-index:10020;background:rgba(0,0,0,.42);display:flex;align-items:flex-end;justify-content:center';
+  modal.innerHTML='<div style="width:100%;max-width:680px;max-height:90vh;overflow:auto;background:var(--color-surface);border-radius:18px 18px 0 0;padding:18px 18px 28px">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px"><strong style="font-size:18px">會員合併預覽</strong><button type="button" onclick="closeMemberMergePreview()" style="border:0;background:none;font-size:24px;cursor:pointer">×</button></div>'+
+    '<div style="padding:10px;border:1px solid var(--color-border-soft);border-radius:9px;margin-bottom:10px"><b>LINE 主帳號</b><br>'+_esc(preview.lineMember.realName)+'（'+_esc(preview.lineMember.displayName||'—')+'）<br><span style="font-size:10px;word-break:break-all">'+_esc(preview.lineMember.uid)+'</span></div>'+
+    '<div style="padding:10px;border:1px solid var(--color-border-soft);border-radius:9px;margin-bottom:10px"><b>手動來源帳號</b><br>'+_esc(preview.manualMember.realName)+'<br><span style="font-size:10px;word-break:break-all">'+_esc(preview.manualMember.uid)+'</span><br><span style="font-size:11px;color:var(--color-text-muted)">合併後：封存為 merged，指向 LINE 主帳號</span></div>'+
+    '<div style="padding:10px;border:1px solid var(--color-border-soft);border-radius:9px;margin-bottom:10px"><b>將保留的會員資格</b><br>'+_esc(preview.membershipType||'未設定')+'｜到期日 '+_esc(preview.membershipExpiry||'—')+'</div>'+
+    '<div style="font-size:13px;margin-bottom:10px">'+
+      _memberMergeCountRow('財務紀錄',counts.financialRecords)+
+      _memberMergeCountRow('預約',counts.bookings)+
+      _memberMergeCountRow('違規紀錄',counts.violations)+
+      _memberMergeCountRow('違規彙總',counts.violationSummaries)+
+      _memberMergeCountRow('教練認領關係',counts.coachStudents)+
+      _memberMergeCountRow('通知',counts.notifications)+
+      _memberMergeCountRow('加時申請',counts.extensionRequests)+
+    '</div>'+
+    (blockers?'<div style="padding:10px;background:rgba(180,60,50,.08);color:#9b3d32;border-radius:8px;margin-bottom:10px"><b>禁止合併</b><ul style="margin:6px 0 0;padding-left:18px">'+blockers+'</ul></div>':'')+
+    (warnings?'<div style="padding:10px;background:rgba(201,145,42,.08);color:#80601f;border-radius:8px;margin-bottom:10px"><b>注意</b><ul style="margin:6px 0 0;padding-left:18px">'+warnings+'</ul></div>':'')+
+    '<details style="font-size:11px;color:var(--color-text-muted);margin-bottom:14px"><summary>預計影響 documents（'+(preview.affectedDocuments||[]).length+'）</summary><ul style="padding-left:18px">'+docs+'</ul></details>'+
+    (preview.canMerge?'<button type="button" onclick="executeMemberMergeFromPreview()" style="width:100%;padding:12px;border:0;border-radius:9px;background:#8b611f;color:#fff;font-weight:600;cursor:pointer">執行合併</button>':'<button type="button" disabled style="width:100%;padding:12px;border:0;border-radius:9px;background:#bbb;color:#fff">安全檢查未通過</button>')+
+    '<div style="font-size:10px;color:var(--color-text-muted);margin-top:8px;text-align:center">此畫面只是預覽；只有按下「執行合併」才會寫入資料。</div>'+
+  '</div>';
+  modal.addEventListener('click',function(event){if(event.target===modal) closeMemberMergePreview();});
+  document.body.appendChild(modal);
+}
+
+function openMemberMergePreview(candidateId){
+  if(_currentRole()!=='owner'){showToast('僅 Owner 可執行會員合併');return;}
+  if(!/^[A-Za-z0-9_-]+$/.test(candidateId||'')){showToast('候選 ID 無效');return;}
+  showToast('正在執行合併前安全檢查…');
+  firebase.app().functions('asia-east1').httpsCallable('previewMemberMerge')({candidateId:candidateId})
+    .then(function(result){_renderMemberMergePreview(candidateId,result.data||{});})
+    .catch(function(error){showToast((error&&error.message)||'無法產生合併預覽');});
+}
+
+function executeMemberMergeFromPreview(){
+  var preview=_memberMergePreview;
+  if(!preview||!preview.candidateId||!preview.previewHash){showToast('請重新產生合併預覽');return;}
+  if(!confirm('確定執行會員合併嗎？\n\nLINE 帳號會成為主會員，手動帳號將封存但不刪除。')) return;
+  var button=document.querySelector('#memberMergePreviewModal button[onclick="executeMemberMergeFromPreview()"]');
+  if(button){button.disabled=true;button.textContent='合併處理中…';}
+  firebase.app().functions('asia-east1').httpsCallable('executeMemberMerge')({
+    candidateId:preview.candidateId,
+    previewHash:preview.previewHash
+  }).then(function(){
+    closeMemberMergePreview();
+    showToast('會員合併完成');
+  }).catch(function(error){
+    if(button){button.disabled=false;button.textContent='執行合併';}
+    showToast((error&&error.message)||'會員合併失敗');
+  });
 }
 
 /* ── 會員名錄：即時過濾列表（所有角色統一） ── */
@@ -10626,7 +10701,9 @@ function loadUsersCache(){
   db.collection('members').onSnapshot(function(snap){
     var fresh = {};
     snap.docs.forEach(function(d){
-      fresh[d.id] = Object.assign({userId: d.id}, d.data());
+      var memberData=d.data()||{};
+      if(memberData.status==='merged'||memberData.mergedInto) return;
+      fresh[d.id] = Object.assign({userId: d.id}, memberData);
     });
 
     // Deduplicate: same displayName → prefer current user's uid
@@ -11810,7 +11887,7 @@ function _teachingStudentEligibilityMessage(studentUids,date){
     var eligible=(role==='owner'||role==='admin')
       ? status!=='deleted'&&status!=='blocked'
       : status==='active'||status==='approved'||member.approved===true;
-    if(status==='deleted'||status==='blocked'||status==='resigned'||status==='rejected'||status==='pending') eligible=false;
+    if(status==='deleted'||status==='blocked'||status==='merged'||member.mergedInto||status==='resigned'||status==='rejected'||status==='pending') eligible=false;
     var expiry=String(member.membershipExpiry||member.expireDate||'').trim().replace(/\//g,'-').slice(0,10);
     if(!/^\d{4}-\d{2}-\d{2}$/.test(expiry)||date>expiry) eligible=false;
     if(!eligible) invalidNames.push(_mName(member)||uid);
