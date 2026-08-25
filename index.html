@@ -837,6 +837,22 @@ button {
 .sourceBadge { display:inline-block; font-size:9px; font-weight:600; letter-spacing:0.05em; border-radius:3px; padding:1px 5px; white-space:nowrap; line-height:1.6; }
 .sourceBadge.line   { background:#06c755; color:#fff; }
 .sourceBadge.manual { background:#8a7f6e; color:#fff; }
+.memberSourceFilters { display:flex; gap:6px; margin-top:8px; }
+.memberSourceFilterBtn {
+  flex:1; padding:6px 8px; border-radius:8px; border:1px solid var(--color-border);
+  background:transparent; color:var(--color-text-muted); font-size:12px; cursor:pointer;
+}
+.memberSourceFilterBtn.active {
+  background:var(--color-text-primary); border-color:var(--color-text-primary); color:var(--color-surface);
+}
+.duplicateMemberEntry {
+  margin-bottom:14px; border:1px solid rgba(201,145,42,0.45); border-radius:10px;
+  background:rgba(201,145,42,0.07); overflow:hidden;
+}
+.duplicateMemberEntry summary {
+  padding:11px 12px; cursor:pointer; font-size:12px; font-weight:600;
+  color:#9a681f; list-style:none; user-select:none;
+}
 .feeStatusBadge.paid     { background:rgba(39,174,96,0.12); border:1px solid rgba(39,174,96,0.35); color:#27ae60; }
 .feeStatusBadge.expiring { background:rgba(243,156,18,0.12); border:1px solid rgba(243,156,18,0.40); color:#c8860a; }
 .feeStatusBadge.overdue  { background:rgba(231,76,60,0.10); border:1px solid rgba(231,76,60,0.35); color:#c0392b; }
@@ -3065,6 +3081,7 @@ let _memberPosFilter='';     // member directory: position filter
 let _memberFeeFilter='';     // member directory: fee status filter ('paid'|'expiring'|'overdue'|'none'|'')
 let _memberRoleFilter='';     // member directory: role filter ('owner'|'admin'|'coach'|'member'|'')
 let _memberMsTypeFilter='';   // member directory: membershipType filter (''|'annual'|'monthly')
+let _memberSourceFilter='';   // member directory: memberSource filter (''|'line'|'manual')
 let _coachTabSelected  = null;   // manage: currently viewed coach uid
 let _coachStatsYear    = new Date().getFullYear(); // coach stats: selected year
 let _coachStatsMonth   = new Date().getMonth() + 1; // coach stats: selected month (1-12)
@@ -3073,6 +3090,8 @@ let announcementsCache = [];  // manage: announcements from Firestore
 let _announceLastReadTs = parseInt(localStorage.getItem('qx_announceLastRead')||'0',10); // 未讀追蹤
 let notificationsCache = []; // user's personal notifications (booking cancelled etc.)
 let _notifUnsubscribe  = null; // Firestore onSnapshot unsubscribe fn for notifications
+let duplicateMemberCandidatesCache = [];
+let _duplicateMemberCandidatesUnsubscribe = null;
 let bookingViolationSummariesCache = {};
 let myBookingViolationsCache = [];
 let _violationSummaryUnsubscribe = null;
@@ -3803,6 +3822,7 @@ function renderManage(){
   var adminLike=isAdminLike();
   var role=_currentRole();
   var isCoach=role==='coach';
+  if(role==='owner') loadDuplicateMemberCandidates();
 
   /* pending is routable but not a tab button — shown as entry card above tab bar */
   var ALL_TABS=[
@@ -4632,6 +4652,62 @@ function _memberFeeStatusHtml(m){
   return '<div style="display:flex;flex-direction:column;gap:3px">'+lines.join('')+'</div>';
 }
 
+function _duplicateMemberSnapshotHtml(member, heading){
+  if(!member || !member.uid){
+    return '<div style="padding:10px;border:1px solid var(--color-border-soft);border-radius:8px;color:var(--color-text-muted);font-size:12px">會員資料已不存在</div>';
+  }
+  var msLabel=member.membershipType==='annual'?'年費會員'
+    :member.membershipType==='monthly'?'月費會員':'未設定';
+  var roleLabel={owner:'開發者',admin:'管理員',coach:'教練',member:'會員'}[member.role]||member.role||'會員';
+  var created='—';
+  if(member.createdAt){
+    var createdDate=member.createdAt.toDate?member.createdAt.toDate():new Date(member.createdAt);
+    if(!isNaN(createdDate.getTime())) created=createdDate.toLocaleDateString('zh-TW',{timeZone:'Asia/Taipei'});
+  }
+  var source=member.memberSource==='manual'?'手動建立':'本人登入';
+  var detail=[];
+  if(member.displayName) detail.push('顯示名稱：'+_esc(member.displayName));
+  detail.push('會員類型：'+_esc(msLabel));
+  detail.push('角色：'+_esc(roleLabel));
+  if(member.ntrp) detail.push('NTRP：'+_esc(member.ntrp));
+  if(member.preferredPosition) detail.push('位置：'+_esc(member.preferredPosition));
+  detail.push('建立日期：'+_esc(created));
+  return '<div style="padding:10px;border:1px solid var(--color-border-soft);border-radius:8px;background:var(--color-surface)">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">'+
+      '<span style="font-size:11px;color:var(--color-text-muted)">'+_esc(heading)+'</span>'+
+      '<span class="sourceBadge '+(member.memberSource==='manual'?'manual':'line')+'">'+_esc(source)+'</span>'+
+    '</div>'+
+    '<div style="font-size:14px;font-weight:600;color:var(--color-text-primary);margin-bottom:5px">'+_esc(member.realName||member.displayName||member.uid)+'</div>'+
+    '<div style="font-size:11px;color:var(--color-text-muted);line-height:1.65">'+detail.join('<br>')+'</div>'+
+  '</div>';
+}
+
+function _duplicateMemberEntryHtml(){
+  var pending=duplicateMemberCandidatesCache.filter(function(item){ return item.status==='pending'; });
+  if(!pending.length) return '';
+  var cards=pending.map(function(item){
+    var detected='—';
+    if(item.firstDetectedAt){
+      var detectedDate=item.firstDetectedAt.toDate?item.firstDetectedAt.toDate():new Date(item.firstDetectedAt);
+      if(!isNaN(detectedDate.getTime())) detected=detectedDate.toLocaleString('zh-TW',{timeZone:'Asia/Taipei'});
+    }
+    return '<div style="padding:12px 0;border-top:1px solid rgba(201,145,42,0.22)">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">'+
+        '<span style="font-size:11px;color:var(--color-text-muted)">偵測時間：'+_esc(detected)+'</span>'+
+        '<span style="font-size:10px;color:#9a681f;border:1px solid rgba(201,145,42,0.45);border-radius:99px;padding:2px 7px">待確認合併</span>'+
+      '</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">'+
+        _duplicateMemberSnapshotHtml(item.lineMember,'LINE 本人登入會員')+
+        _duplicateMemberSnapshotHtml(item.manualMember,'疑似對應手動會員')+
+      '</div>'+
+    '</div>';
+  }).join('');
+  return '<details class="duplicateMemberEntry">'+
+    '<summary>⚠️ 疑似重複會員（'+pending.length+'）</summary>'+
+    '<div style="padding:0 12px 4px">'+cards+'</div>'+
+  '</details>';
+}
+
 function _renderMembersTab(el){
   var _cu    = currentUser || {};
   var _myId  = _cu.uid || _cu.userId || '';
@@ -4640,6 +4716,7 @@ function _renderMembersTab(el){
   var isOwner   = (_cuRole === 'owner');
 
   var html='<div style="padding:0 2px">';
+  if(isOwner) html+=_duplicateMemberEntryHtml();
 
   // ── Admin-only: 未繳費快速摘要 + 已離會 / 已封鎖 accordion ──
   if(adminLike){
@@ -4754,6 +4831,11 @@ function _renderMembersTab(el){
         ' style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-primary);font-size:13px;outline:none"'+
         ' value="'+_sv(_memberSearch)+'"'+
         ' oninput="_memberSearch=this.value;_renderMemberListInTab()">'+
+      '<div class="memberSourceFilters" id="memberSourceFilters">'+
+        '<button type="button" class="memberSourceFilterBtn'+(_memberSourceFilter===''?' active':'')+'" data-source="" onclick="_setMemberSourceFilter(&quot;&quot;,this)">全部</button>'+
+        '<button type="button" class="memberSourceFilterBtn'+(_memberSourceFilter==='line'?' active':'')+'" data-source="line" onclick="_setMemberSourceFilter(&quot;line&quot;,this)">本人登入</button>'+
+        '<button type="button" class="memberSourceFilterBtn'+(_memberSourceFilter==='manual'?' active':'')+'" data-source="manual" onclick="_setMemberSourceFilter(&quot;manual&quot;,this)">手動建立</button>'+
+      '</div>'+
       '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">'+
         '<select id="memberDirNtrp"'+
           ' style="flex:1;min-width:80px;padding:6px 8px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-primary);font-size:12px"'+
@@ -4801,6 +4883,13 @@ function _renderMembersTab(el){
 }
 
 /* ── 會員名錄：即時過濾列表（所有角色統一） ── */
+function _setMemberSourceFilter(value, btn){
+  _memberSourceFilter=value;
+  var buttons=document.querySelectorAll('#memberSourceFilters .memberSourceFilterBtn');
+  buttons.forEach(function(item){ item.classList.toggle('active', item===btn); });
+  _renderMemberListInTab();
+}
+
 function _renderMemberListInTab(){
   var el=document.getElementById('memberDirList');
   if(!el) return;
@@ -4827,6 +4916,7 @@ function _renderMemberListInTab(){
     }
     if(_memberNtrpFilter&&String(m.ntrp||'')!==_memberNtrpFilter) return false;
     if(_memberPosFilter&&(m.preferredPosition||'')!==_memberPosFilter) return false;
+    if(_memberSourceFilter&&(m.memberSource||'line')!==_memberSourceFilter) return false;
     /* ── 角色篩選（純 role 欄位，不混入 membershipType）── */
     if(_memberRoleFilter && m.role !== _memberRoleFilter) return false;
     if(_memberFeeFilter && _calcMemberFeeStatus(m).status !== _memberFeeFilter) return false;
@@ -10514,6 +10604,23 @@ function submitManualMember(){
 
 
 /* ── Load Users Cache from Firestore (real-time) ── */
+function loadDuplicateMemberCandidates(){
+  if(!db || _currentRole()!=='owner' || _duplicateMemberCandidatesUnsubscribe) return;
+  _duplicateMemberCandidatesUnsubscribe=db.collection('duplicateMemberCandidates')
+    .where('status','==','pending')
+    .onSnapshot(function(snap){
+      duplicateMemberCandidatesCache=snap.docs.map(function(doc){
+        return Object.assign({id:doc.id},doc.data());
+      }).sort(function(a,b){
+        var aMs=a.firstDetectedAt&&a.firstDetectedAt.toMillis?a.firstDetectedAt.toMillis():0;
+        var bMs=b.firstDetectedAt&&b.firstDetectedAt.toMillis?b.firstDetectedAt.toMillis():0;
+        return bMs-aMs;
+      });
+      var manage=document.getElementById('screen-manage');
+      if(manage&&manage.classList.contains('active')&&_manageTab==='members') renderManage();
+    },function(e){ console.warn('loadDuplicateMemberCandidates error:',e); });
+}
+
 function loadUsersCache(){
   if(!db) return;
   db.collection('members').onSnapshot(function(snap){

@@ -14,8 +14,10 @@
 
 'use strict';
 
+const crypto = require('crypto');
 const admin     = require('firebase-admin');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 
 admin.initializeApp();
 
@@ -38,6 +40,42 @@ const VIOLATION_REASON_LABELS = {
 
 function cleanString(value, maxLength = 200) {
   return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
+}
+
+function normaliseMemberName(value) {
+  return cleanString(value, 100)
+    .normalize('NFKC')
+    .replace(/\s+/g, '')
+    .toLocaleLowerCase('zh-TW');
+}
+
+function shouldDetectDuplicateMember(before, after, beforeExists) {
+  if (!after || after.memberSource === 'manual') return false;
+  const afterName = normaliseMemberName(after.realName);
+  if (!afterName) return false;
+  if (!beforeExists) return true;
+  return normaliseMemberName(before && before.realName) !== afterName;
+}
+
+function duplicateMemberPairId(lineMemberUid, manualMemberUid) {
+  return crypto.createHash('sha256')
+    .update(`${lineMemberUid}\n${manualMemberUid}`, 'utf8')
+    .digest('hex');
+}
+
+function duplicateMemberSnapshot(uid, member, source) {
+  return {
+    uid,
+    realName: cleanString(member.realName, 50),
+    displayName: cleanString(member.displayName, 50),
+    role: cleanString(member.role, 30),
+    status: cleanString(member.status, 30),
+    membershipType: cleanString(member.membershipType, 30),
+    memberSource: source,
+    ntrp: member.ntrp == null ? '' : cleanString(String(member.ntrp), 10),
+    preferredPosition: cleanString(member.preferredPosition, 20),
+    createdAt: member.createdAt || null,
+  };
 }
 
 function isActiveBooking(booking) {
@@ -2879,6 +2917,56 @@ exports.restoreFinancialRecord = onCall({region: 'asia-east1'}, async (request) 
   await batch.commit();
   return {ok: true, recordId};
 });
+
+// ── detectDuplicateManualMember ──────────────────────────────────────
+// LINE member 首次建立或 realName 實質變更時，唯讀比對既有手動會員。
+// 僅建立待確認候選，不修改或合併任何 member 關聯資料。
+exports.detectDuplicateManualMember = onDocumentWritten(
+  {document: 'members/{memberId}', region: 'asia-east1'},
+  async (event) => {
+    const afterSnap = event.data && event.data.after;
+    if (!afterSnap || !afterSnap.exists) return;
+    const beforeSnap = event.data.before;
+    const beforeExists = Boolean(beforeSnap && beforeSnap.exists);
+    const before = beforeExists ? beforeSnap.data() || {} : null;
+    const after = afterSnap.data() || {};
+    if (!shouldDetectDuplicateMember(before, after, beforeExists)) return;
+
+    const lineMemberUid = event.params.memberId;
+    const normalisedName = normaliseMemberName(after.realName);
+    const manualSnap = await bookingDb.collection('members')
+      .where('memberSource', '==', 'manual')
+      .get();
+    const matches = manualSnap.docs.filter((doc) =>
+      doc.id !== lineMemberUid &&
+      normaliseMemberName((doc.data() || {}).realName) === normalisedName,
+    );
+    if (!matches.length) return;
+
+    const detectionSource = beforeExists ? 'real_name_change' : 'member_create';
+    await Promise.all(matches.map(async (manualDoc) => {
+      const manual = manualDoc.data() || {};
+      const pairId = duplicateMemberPairId(lineMemberUid, manualDoc.id);
+      const candidateRef = bookingDb.collection('duplicateMemberCandidates')
+        .doc(pairId);
+      await bookingDb.runTransaction(async (transaction) => {
+        const candidateSnap = await transaction.get(candidateRef);
+        if (candidateSnap.exists) return;
+        transaction.set(candidateRef, {
+          lineMemberUid,
+          manualMemberUid: manualDoc.id,
+          matchedName: cleanString(after.realName, 50),
+          matchReasons: ['exact_real_name'],
+          status: 'pending',
+          source: detectionSource,
+          lineMember: duplicateMemberSnapshot(lineMemberUid, after, 'line'),
+          manualMember: duplicateMemberSnapshot(manualDoc.id, manual, 'manual'),
+          firstDetectedAt: SERVER_TS(),
+        });
+      });
+    }));
+  },
+);
 
 // ── createManualMember ────────────────────────────────────────────────
 // 管理員手動建立會員（無 LINE 帳號者）。

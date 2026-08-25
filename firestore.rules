@@ -361,6 +361,12 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // 疑似重複會員候選：僅 Owner / Developer 可查看，僅後端 trigger 可寫。
+    match /duplicateMemberCandidates/{candidateId} {
+      allow read: if isOwner();
+      allow create, update, delete: if false;
+    }
+
     // ──────────────────────────────────────────────────────────────────────
     // financialRecords
     // ──────────────────────────────────────────────────────────────────────
