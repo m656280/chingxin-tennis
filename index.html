@@ -12124,6 +12124,11 @@ function hasParticipantTimeConflict(draft, excludeId){
     });
 }
 
+function _shouldBypassParticipantConflict(mode){
+  return _currentRole()==='owner' &&
+    (_normaliseMode(mode)==='groupClass'||_normaliseMode(mode)==='event_lock');
+}
+
 /* Build human-readable conflict toast */
 function _bookingConflictMsg(c){
   if(!c) return '此成員已在同時段參與其他場地，無法重複預約。';
@@ -12269,7 +12274,9 @@ function _submitBookingEdit(){
       // ── Cross-court participant conflict check ──────────────────────────
       var _editUids4 = _bookingParticipantUids(Object.assign({}, origBk||{}, upd));
       var _editDraft4 = {date:date, startTime:start, endTime:end, court:court, participantUids:_editUids4};
-      return hasParticipantTimeConflict(_editDraft4, editId).then(function(_editConflict4){
+      var _editParticipantCheck4=_shouldBypassParticipantConflict(normMode)
+        ?Promise.resolve(null):hasParticipantTimeConflict(_editDraft4, editId);
+      return _editParticipantCheck4.then(function(_editConflict4){
         if(_editConflict4){
           showToast(_bookingConflictMsg(_editConflict4));
           if(btn){ btn.disabled=false; btn.textContent='儲存變更'; }
@@ -12459,7 +12466,9 @@ function submitBooking(){
           if(btn){ btn.disabled=false; btn.textContent='確認預約'; }
           return;
         }
-        return hasParticipantTimeConflict(_newDraft, null).then(function(_newConflict){
+        var _newParticipantCheck=_shouldBypassParticipantConflict(mode)
+          ?Promise.resolve(null):hasParticipantTimeConflict(_newDraft, null);
+        return _newParticipantCheck.then(function(_newConflict){
         if(_newConflict){
           showToast(_bookingConflictMsg(_newConflict));
           if(btn){ btn.disabled=false; btn.textContent='確認預約'; }

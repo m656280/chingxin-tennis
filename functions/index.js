@@ -224,6 +224,11 @@ function findParticipantConflictUid(bookings, candidate, excludeId) {
   return '';
 }
 
+function shouldBypassParticipantConflict(actorRole, mode) {
+  return actorRole === 'owner' &&
+    ['groupClass', 'event_lock'].includes(normaliseBookingMode(mode));
+}
+
 function generalMinutesForUid(bookings, uid) {
   return bookings.reduce((total, booking) => {
     if (!isActiveBooking(booking) ||
@@ -870,7 +875,8 @@ exports.createBooking = onCall({region: 'asia-east1'}, async (request) => {
           '此場地該時段已有預約，請選擇其他時段。',
         );
       }
-      if (findParticipantConflictUid(sameDateBookings, booking, '')) {
+      if (!shouldBypassParticipantConflict(actorRole, mode) &&
+          findParticipantConflictUid(sameDateBookings, booking, '')) {
         throw new HttpsError(
           'failed-precondition',
           '此會員已在同時段參與其他預約。',
@@ -1083,7 +1089,8 @@ exports.updateBooking = onCall({region: 'asia-east1'}, async (request) => {
         '此場地該時段已有預約，請選擇其他時段。',
       );
     }
-    if (findParticipantConflictUid(
+    if (!shouldBypassParticipantConflict(context.actorRole, mode) &&
+        findParticipantConflictUid(
       sameDateBookings, booking, context.bookingId,
     )) {
       throw new HttpsError(
