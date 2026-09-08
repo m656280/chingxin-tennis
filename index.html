@@ -1434,9 +1434,14 @@ button {
 .finExportRadioRow input[type=radio] {
   accent-color:var(--color-text-primary); width:17px; height:17px; cursor:pointer;
 }
-/* 起訖年月 */
+/* 起訖日期 */
 .finExportDateRow { display:flex; gap:8px; }
-.finExportDateSel { flex:1; min-width:0; }
+.finExportDateField { flex:1; min-width:0; }
+.finExportDateInput {
+  width:100%; box-sizing:border-box; padding:10px 12px; border-radius:8px;
+  border:1px solid var(--color-border); color:var(--color-text-primary);
+  background:var(--color-surface); font-size:16px; font-family:var(--font-body);
+}
 .finExportRangeSepRow {
   text-align:center; padding:4px 0;
   font-size:14px; color:var(--color-text-muted);
@@ -1636,13 +1641,17 @@ button {
     <div class="finExportModalTitle">匯出範圍</div>
     <div class="finExportSection">
       <div class="finExportDateRow">
-        <select class="finExportSelect finExportDateSel" id="finExportStartYearSel" onchange="_onExportRangeChange()"></select>
-        <select class="finExportSelect finExportDateSel" id="finExportStartMonthSel" onchange="_onExportRangeChange()"></select>
+        <label class="finExportDateField">
+          <div class="finExportSectionLabel">起始日期</div>
+          <input class="finExportDateInput" id="finExportStartDateInput" type="date" lang="zh-TW" onchange="_onExportRangeChange()">
+        </label>
       </div>
       <div class="finExportRangeSepRow">～</div>
       <div class="finExportDateRow">
-        <select class="finExportSelect finExportDateSel" id="finExportEndYearSel" onchange="_onExportRangeChange()"></select>
-        <select class="finExportSelect finExportDateSel" id="finExportEndMonthSel" onchange="_onExportRangeChange()"></select>
+        <label class="finExportDateField">
+          <div class="finExportSectionLabel">結束日期</div>
+          <input class="finExportDateInput" id="finExportEndDateInput" type="date" lang="zh-TW" onchange="_onExportRangeChange()">
+        </label>
       </div>
     </div>
     <div class="finExportActionRow">
@@ -7513,62 +7522,76 @@ function _getYearMonthPairs(startYear, startMonth, endYear, endMonth){
   return pairs;
 }
 
-/* ── Finance: 匯出範圍判斷（年月序號比較）────────────────────────────────────
-   以年月序號 (year*12 + month) 比較，跨年正確且無 leading-zero 字串問題。
-   ⚠ 年/月一律以 r.date 為準（source of truth），r.year/r.month 僅在 date 無法
-   解析時備援。原因：submitFinanceRecord 把 r.year 寫成「記錄當下作用中的帳本
-   年度 (_finYear)」，並非該筆記錄真正所屬年份（例：2025-12 的記錄被存成
-   year:2026），若優先採用 r.year 會把跨年記錄判到錯誤年份而漏掉。
+/* ── Finance: 匯出範圍判斷（包含起訖日）──────────────────────────────────────
+   財務日期以 r.date（YYYY-MM-DD）為 source of truth，直接比較 ISO 日期字串，
+   可正確涵蓋跨月、跨年與起訖日邊界。
    ─────────────────────────────────────────────────────────────────────────── */
-function _inExportRange(r, startYear, startMonth, endYear, endMonth){
-  var ry = parseInt((r.date||'').slice(0,4), 10) || r.year;
-  var rm = parseInt((r.date||'').slice(5,7), 10) || r.month;
-  if(!ry || !rm || isNaN(ry) || isNaN(rm)) return false;
-  var recordYM = ry*12 + rm;
-  var startYM  = startYear*12 + startMonth;
-  var endYM    = endYear*12 + endMonth;
-  return recordYM >= startYM && recordYM <= endYM;
+function _inExportRange(r, startDate, endDate){
+  var recordDate = String(r.date||'').slice(0,10);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(recordDate)) return false;
+  return recordDate >= startDate && recordDate <= endDate;
+}
+
+function _localISODate(d){
+  var p = function(n){ return String(n).padStart(2,'0'); };
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+}
+
+function _defaultExportRange(now){
+  var d = now || new Date();
+  return {
+    startDate: _localISODate(new Date(d.getFullYear(), d.getMonth(), 1)),
+    endDate: _localISODate(d)
+  };
+}
+
+function _lastDateOfMonth(year, month){
+  return _localISODate(new Date(year, month, 0));
 }
 
 /* ── Finance: 資料準備（CSV 與 PDF 共用）────────────────────────────────────
    使用呼叫當下的全域 financeRecords / usersCache / _finExportName()。
    兩種呼叫方式：
      legacy: (targetYear:number[, month:number])                          → 全年或單月（standalone report page 用）
-     range : ({range:{startYear,startMonth,endYear,endMonth}, title})      → 跨年月範圍報表
-   篩選一律走 _inExportRange（年月序號比較、date 為準），不依賴 r.year。
+     range : ({range:{startDate,endDate}, title})                          → 日期範圍報表
+   篩選一律走 _inExportRange（包含起訖日、date 為準），不依賴 r.year。
    ─────────────────────────────────────────────────────────────────────────── */
 function _prepFinancePDFData(arg1, arg2){
-  var startYear, startMonth, endYear, endMonth, reportTitle;
+  var startDate, endDate, reportTitle;
   if(arg1 && typeof arg1 === 'object' && arg1.range){
-    // ── range mode：{range:{startYear,startMonth,endYear,endMonth}, title} ──
-    startYear  = arg1.range.startYear;  startMonth = arg1.range.startMonth;
-    endYear    = arg1.range.endYear;    endMonth   = arg1.range.endMonth;
+    // ── range mode：{range:{startDate,endDate}, title} ──
+    startDate = arg1.range.startDate;
+    endDate   = arg1.range.endDate;
     reportTitle = arg1.title || '';
   } else {
     // ── legacy mode：(targetYear[, month]) → 全年或單月（standalone report page 用）──
     var targetYear = arg1;
     var m = (arg2 && typeof arg2 === 'number' && arg2 > 0) ? arg2 : 0;
-    startYear = endYear = targetYear;
     if(m){
-      startMonth = endMonth = m;
+      startDate = targetYear+'-'+String(m).padStart(2,'0')+'-01';
+      endDate = _lastDateOfMonth(targetYear, m);
       reportTitle = String(targetYear)+'年'+m+'月財務報表';
     } else {
-      startMonth = 1; endMonth = 12;
+      startDate = targetYear+'-01-01';
+      endDate = targetYear+'-12-31';
       reportTitle = String(targetYear)+'年度財務報表';
     }
   }
   // 正規化：start 不得大於 end（防呆）
-  if(startYear*12+startMonth > endYear*12+endMonth){
-    var ty=startYear; startYear=endYear; endYear=ty;
-    var tm=startMonth; startMonth=endMonth; endMonth=tm;
+  if(startDate > endDate){
+    var td=startDate; startDate=endDate; endDate=td;
   }
+  var startYear = parseInt(startDate.slice(0,4),10);
+  var startMonth = parseInt(startDate.slice(5,7),10);
+  var endYear = parseInt(endDate.slice(0,4),10);
+  var endMonth = parseInt(endDate.slice(5,7),10);
   var _monthCount = (endYear*12+endMonth) - (startYear*12+startMonth) + 1;
   var anchorYear  = endYear;
 
   var EXCL    = {void:1, cancelled:1, deleted:1, archived:1};
   var allRecs  = financeRecords;
   var yearRecs = allRecs.filter(function(r){
-    return _inExportRange(r, startYear, startMonth, endYear, endMonth);
+    return _inExportRange(r, startDate, endDate);
   });
 
   var byDate = function(a,b){ return a.date.localeCompare(b.date); };
@@ -7599,12 +7622,7 @@ function _prepFinancePDFData(arg1, arg2){
   allRecs.forEach(function(r){
     if((r.status||'active')!=='active') return;
     if(r.type!=='annual'&&r.type!=='monthly') return;
-    // 年費優先用 membershipYear（會籍年度），涵蓋 2025/12 預收 2026 年費的過渡情境；
-    // 月費或無 membershipYear 則 fallback 到付款日年份。
-    var ry = (r.type==='annual' && r.membershipYear)
-      ? parseInt(r.membershipYear, 10)
-      : (parseInt((r.date||'').slice(0,4),10) || r.year || 0);
-    if(ry < startYear || ry > endYear) return;
+    if(!_inExportRange(r, startDate, endDate)) return;
     var mid = r.memberId||''; if(!mid) return;
     (paidMap[mid]=paidMap[mid]||[]).push({type:r.type,date:r.date||'',amount:r.amount||0});
   });
@@ -7655,13 +7673,11 @@ function _prepFinancePDFData(arg1, arg2){
 }
 
 /* ── Finance: Export Range Modal ─────────────────────────────────────────────
-   PDF 與 CSV 共用此 modal。直接顯示起訖年月（無 radio），支援跨年。
-   年份固定 2025–2036。
+   PDF 與 CSV 共用此 modal。直接顯示起訖日期，支援跨月與跨年。
    ─────────────────────────────────────────────────────────────────────────── */
-var _exportStartYear   = new Date().getFullYear();
-var _exportStartMonth  = 1;
-var _exportEndYear     = new Date().getFullYear();
-var _exportEndMonth    = new Date().getMonth() + 1;
+var _initialExportRange = _defaultExportRange();
+var _exportStartDate = _initialExportRange.startDate;
+var _exportEndDate = _initialExportRange.endDate;
 
 function exportFinancePDF(){
   if(!isAdminLike()){ showToast('僅管理員可匯出'); return; }
@@ -7674,15 +7690,9 @@ function exportFinanceCSV(){
 }
 
 function openFinExportModal(){
-  var now = new Date();
-  var curY = now.getFullYear();
-  var curM = now.getMonth() + 1;
-  // 開始：頁面年份 + 1月
-  _exportStartYear  = _finYear;
-  _exportStartMonth = 1;
-  // 結束：頁面年份 + 當月（若頁面是今年）；否則 + 12月
-  _exportEndYear    = _finYear;
-  _exportEndMonth   = (_finYear === curY) ? curM : 12;
+  var defaults = _defaultExportRange();
+  _exportStartDate = defaults.startDate;
+  _exportEndDate = defaults.endDate;
   _renderFinExportModal();
   document.getElementById('finExportBackdrop').classList.add('open');
   setTimeout(function(){ document.getElementById('finExportModal').classList.add('open'); }, 10);
@@ -7696,39 +7706,17 @@ function _closeFinExportModal(){
 }
 
 function _renderFinExportModal(){
-  function _yearOpts(selected){
-    var h = '';
-    for(var y = 2025; y <= 2036; y++){
-      h += '<option value="'+y+'"'+(y===selected?' selected':'')+'>'+y+' 年</option>';
-    }
-    return h;
-  }
-  function _monthOpts(selected){
-    var h = '';
-    for(var m = 1; m <= 12; m++){
-      h += '<option value="'+m+'"'+(m===selected?' selected':'')+'>'+m+' 月</option>';
-    }
-    return h;
-  }
-  var sy = document.getElementById('finExportStartYearSel');
-  var sm = document.getElementById('finExportStartMonthSel');
-  var ey = document.getElementById('finExportEndYearSel');
-  var em = document.getElementById('finExportEndMonthSel');
-  if(sy) sy.innerHTML = _yearOpts(_exportStartYear);
-  if(sm) sm.innerHTML = _monthOpts(_exportStartMonth);
-  if(ey) ey.innerHTML = _yearOpts(_exportEndYear);
-  if(em) em.innerHTML = _monthOpts(_exportEndMonth);
+  var startInput = document.getElementById('finExportStartDateInput');
+  var endInput = document.getElementById('finExportEndDateInput');
+  if(startInput) startInput.value = _exportStartDate;
+  if(endInput) endInput.value = _exportEndDate;
 }
 
 function _onExportRangeChange(){
-  var sy = document.getElementById('finExportStartYearSel');
-  var sm = document.getElementById('finExportStartMonthSel');
-  var ey = document.getElementById('finExportEndYearSel');
-  var em = document.getElementById('finExportEndMonthSel');
-  if(sy) _exportStartYear  = parseInt(sy.value, 10);
-  if(sm) _exportStartMonth = parseInt(sm.value, 10);
-  if(ey) _exportEndYear    = parseInt(ey.value, 10);
-  if(em) _exportEndMonth   = parseInt(em.value, 10);
+  var startInput = document.getElementById('finExportStartDateInput');
+  var endInput = document.getElementById('finExportEndDateInput');
+  if(startInput) _exportStartDate = startInput.value;
+  if(endInput) _exportEndDate = endInput.value;
 }
 
 // 舊版呼叫相容（保留防報錯）
@@ -7740,48 +7728,39 @@ function _onExportScopeChange(){}
 
 function _normExportRange(){
   return {
-    startYear:  _exportStartYear,
-    startMonth: _exportStartMonth,
-    endYear:    _exportEndYear,
-    endMonth:   _exportEndMonth
+    startDate: _exportStartDate,
+    endDate: _exportEndDate
   };
 }
 
-/* 驗證：開始年月不可晚於結束年月；回傳 true 代表通過 */
+function _isValidISODate(value){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(value||'')) return false;
+  var parts = value.split('-').map(Number);
+  var d = new Date(parts[0], parts[1]-1, parts[2]);
+  return d.getFullYear()===parts[0] && d.getMonth()===parts[1]-1 && d.getDate()===parts[2];
+}
+
+/* 驗證：開始日期不可晚於結束日期；回傳 true 代表通過 */
 function _validateExportRange(rg){
-  if(rg.startYear * 12 + rg.startMonth > rg.endYear * 12 + rg.endMonth){
-    showToast('開始月份不可晚於結束月份');
+  if(!_isValidISODate(rg.startDate) || !_isValidISODate(rg.endDate)){
+    showToast('請選擇完整的起始與結束日期');
+    return false;
+  }
+  if(rg.startDate > rg.endDate){
+    showToast('起始日期不可晚於結束日期');
     return false;
   }
   return true;
 }
 
 function _exportRangeTitle(rg){
-  var p = function(n){ return String(n).padStart(2,'0'); };
-  // 全部期間（通配）
-  if(rg.startYear === 2000 && rg.endYear === 2099){
-    return '全部期間財務報表';
-  }
-  // 同年全年度
-  if(rg.startYear === rg.endYear && rg.startMonth === 1 && rg.endMonth === 12){
-    return rg.startYear + ' 年全年度財務報表';
-  }
-  // 同年同月（單月）
-  if(rg.startYear === rg.endYear && rg.startMonth === rg.endMonth){
-    return rg.startYear + ' 年 ' + rg.startMonth + ' 月財務報表';
-  }
-  // 跨年或多月範圍
-  return rg.startYear+'/'+p(rg.startMonth)+' ～ '+rg.endYear+'/'+p(rg.endMonth)+' 財務報表';
+  var displayDate = function(value){ return value.replace(/-/g,'/'); };
+  return displayDate(rg.startDate)+' ～ '+displayDate(rg.endDate)+' 財務報表';
 }
 
 /* 匯出檔名 — CSV 同一套，在 _runExportCSV 裡另算 */
 function _exportPDFFilename(rg){
-  var p = function(n){ return String(n).padStart(2,'0'); };
-  if(rg.startYear === 2000) return '清心網球財務_全部期間.pdf';
-  if(rg.startYear === rg.endYear && rg.startMonth === 1 && rg.endMonth === 12){
-    return '清心網球財務_'+rg.startYear+'.pdf';
-  }
-  return '清心網球財務_'+rg.startYear+p(rg.startMonth)+'-'+rg.endYear+p(rg.endMonth)+'.pdf';
+  return '清心網球財務_'+rg.startDate.replace(/-/g,'')+'-'+rg.endDate.replace(/-/g,'')+'.pdf';
 }
 
 function _doExportPDF(){
@@ -8288,20 +8267,19 @@ function _closePDFSheet(){
 
 /* ── Finance: Export CSV ── */
 function _runExportCSV(rg){
-  // rg: {startYear,startMonth,endYear,endMonth} 跨年月範圍
+  // rg: {startDate,endDate} 日期範圍（包含起訖日）
   if(!isAdminLike()){ showToast('僅管理員可匯出'); return; }
 
   if(!rg){
-    var _ny = new Date().getFullYear();
-    rg = {startYear:_ny, startMonth:1, endYear:_ny, endMonth:12};
+    rg = _defaultExportRange();
   }
-  var _sy = rg.startYear, _sm = rg.startMonth, _ey = rg.endYear, _em = rg.endMonth;
+  var _sd = rg.startDate, _ed = rg.endDate;
 
   var EXCL = {void:1, cancelled:1, deleted:1, archived:1};
   var yearRecs = financeRecords.filter(function(r){
-    return _inExportRange(r, _sy, _sm, _ey, _em);
+    return _inExportRange(r, _sd, _ed);
   });
-  var _csvTitle = _exportRangeTitle({startYear:_sy,startMonth:_sm,endYear:_ey,endMonth:_em});
+  var _csvTitle = _exportRangeTitle(rg);
   if(!yearRecs.length){ showToast(_csvTitle+' 沒有資料可匯出'); return; }
 
   var byDate = function(a,b){ return a.date.localeCompare(b.date); };
@@ -8432,19 +8410,14 @@ function _runExportCSV(rg){
   // 目的：查誰沒繳、誰資料異常。已繳明細已在三～九，不重複列出。
   // 已繳定義：當年度有 active 的 annual/monthly finance record
 
-  var _yrStr = _sy+'年'+_sm+'月～'+_ey+'年'+_em+'月';
+  var _yrStr = _sd.replace(/-/g,'/')+'～'+_ed.replace(/-/g,'/');
 
-  // 建 paidMap：memberId → [{type, date, amount, msType}]（範圍涵蓋年份內的有效繳費）
+  // 建 paidMap：memberId → [{type, date, amount, msType}]（選定日期內的有效繳費）
   var _paidMap = {};
   financeRecords.forEach(function(r){
     if((r.status||'active')!=='active') return;
     if(r.type!=='annual'&&r.type!=='monthly') return;
-    // 年費優先用 membershipYear（會籍年度），涵蓋 2025/12 預收 2026 年費的過渡情境；
-    // 月費或無 membershipYear 則 fallback 到付款日年份。
-    var recYear = (r.type==='annual' && r.membershipYear)
-      ? parseInt(r.membershipYear, 10)
-      : (parseInt((r.date||'').slice(0,4),10) || r.year || 0);
-    if(recYear < _sy || recYear > _ey) return;
+    if(!_inExportRange(r, _sd, _ed)) return;
     var mid = r.memberId || '';
     if(!mid) return;
     if(!_paidMap[mid]) _paidMap[mid] = [];
@@ -8518,15 +8491,7 @@ function _runExportCSV(rg){
   // ── Build & Download ─────────────────────────────────────────────────
   var csv      = '﻿' + L.join('\r\n');  // UTF-8 BOM for Numbers/Excel
   var blob     = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-  var filename = (function(){
-    var p = function(n){ return String(n).padStart(2,'0'); };
-    // 全部期間（通配）
-    if(_sy === 2000 && _ey === 2099) return '清心網球財務_全部期間.csv';
-    // 全年度
-    if(_sy === _ey && _sm === 1 && _em === 12) return '清心網球財務_'+_sy+'.csv';
-    // 跨年或月份範圍
-    return '清心網球財務_'+_sy+p(_sm)+'-'+_ey+p(_em)+'.csv';
-  })();
+  var filename = '清心網球財務_'+_sd.replace(/-/g,'')+'-'+_ed.replace(/-/g,'')+'.csv';
 
   _deliverCSVExport(csv, blob, filename);
 }
