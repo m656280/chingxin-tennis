@@ -239,6 +239,42 @@ async function main() {
     seedMember('F', '並發記點會員'),
     seedMember('COACH', '測試教練', 'coach'),
   ]);
+  await db.collection('bookingHolidayCalendars').doc('2030').set({
+    year: 2030,
+    officialHolidayDates: [],
+    schoolHolidayRanges: [{start: '2030-01-01', end: '2030-12-31'}],
+  });
+  await db.collection('bookingHolidayCalendars').doc('2032').set({
+    year: 2032,
+    officialHolidayDates: ['2032-01-01'],
+    dataHash: 'last-success',
+  });
+  const originalFetch = global.fetch;
+  global.fetch = async () => { throw new Error('simulated DGPA outage'); };
+  await assert.rejects(call(functions.syncBookingHolidayCalendar, 'OWNER', {
+    year: 2032,
+  }), /繼續使用上次成功資料/);
+  global.fetch = originalFetch;
+  const retainedCalendar = (await db.collection('bookingHolidayCalendars')
+    .doc('2032').get()).data();
+  assert.deepStrictEqual(retainedCalendar.officialHolidayDates, ['2032-01-01']);
+  assert.strictEqual(retainedCalendar.dataHash, 'last-success');
+
+  const officialHolidayBooking = await call(functions.createBooking, 'ADMIN', {
+    booking: normalBooking('2026-09-25', '08:00', '09:00', 'hard_a', ['D']),
+  });
+  assert(officialHolidayBooking.bookingId);
+  await assert.rejects(call(functions.createBooking, 'ADMIN', {
+    booking: normalBooking('2026-09-24', '08:00', '09:00', 'hard_a', ['D']),
+  }), /17:30–21:30/);
+  const weekdayBooking = await call(functions.createBooking, 'ADMIN', {
+    booking: normalBooking('2026-09-24', '17:30', '18:30', 'hard_a', ['D']),
+  });
+  await assert.rejects(call(functions.updateBooking, 'ADMIN', {
+    bookingId: weekdayBooking.bookingId,
+    booking: {date: '2026-09-24', startTime: '08:00', endTime: '09:00',
+      court: 'hard_a', mode: 'general'},
+  }), /17:30–21:30/);
 
   const approvalDate = '2030-08-20';
   await seedTwoHours(approvalDate, ['B', 'C']);
@@ -826,6 +862,9 @@ async function main() {
   assert(violationAudits.some((audit) =>
     audit.action === 'suspended_player_add_rejected'));
 
+  console.log('PASS callable accepts 2026-09-25 holiday hours and rejects weekday daytime');
+  console.log('PASS updateBooking rejects time outside the effective open hours');
+  console.log('PASS failed official sync preserves the last successful calendar');
   console.log('PASS submit creates only a pending extension request');
   console.log('PASS concurrent approvals create exactly one booking for one court slot');
   console.log('PASS approved booking keeps general mode and requester ownership');

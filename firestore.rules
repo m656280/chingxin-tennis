@@ -346,6 +346,19 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // 官方假日、年度同步狀態及 Owner override 統一由 Callable 管理。
+    match /bookingHolidayCalendars/{year} {
+      allow read, write: if false;
+    }
+
+    match /bookingHolidayOverrides/{date} {
+      allow read, write: if false;
+    }
+
+    match /bookingHolidaySyncLogs/{logId} {
+      allow read, write: if false;
+    }
+
     // 違規歷史：會員只能讀自己的紀錄；admin/owner 可讀全部。
     // 所有狀態轉移均由 Callable / Admin SDK 執行。
     match /bookingViolations/{violationId} {

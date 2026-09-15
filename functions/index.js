@@ -18,6 +18,17 @@ const crypto = require('crypto');
 const admin     = require('firebase-admin');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { onDocumentWritten } = require('firebase-functions/v2/firestore');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
+const {
+  BOOKING_HOURS,
+  DGPA_DATASET_ID,
+  DGPA_DATASET_URL,
+  dateParts: bookingCalendarDateParts,
+  findDgpaDistribution,
+  getBookingOpenHours,
+  getFallbackCalendar,
+  parseDgpaCalendarCsv,
+} = require('./booking-holiday-service');
 
 admin.initializeApp();
 
@@ -37,6 +48,131 @@ const VIOLATION_REASON_LABELS = {
   roster_mismatch: '預約名單與實際使用人員不符',
   other: '其他原因',
 };
+
+function bookingHolidayCalendarRef(year) {
+  return bookingDb.collection('bookingHolidayCalendars').doc(String(year));
+}
+
+function bookingHolidayOverrideRef(date) {
+  return bookingDb.collection('bookingHolidayOverrides').doc(date);
+}
+
+async function loadBookingHolidayContext(date, transaction) {
+  const parts = bookingCalendarDateParts(date);
+  if (!parts) throw new HttpsError('invalid-argument', '預約日期格式不正確');
+  const calendarRef = bookingHolidayCalendarRef(parts.year);
+  const overrideRef = bookingHolidayOverrideRef(date);
+  const [calendarSnap, overrideSnap] = transaction ?
+    await Promise.all([transaction.get(calendarRef), transaction.get(overrideRef)]) :
+    await bookingDb.getAll(calendarRef, overrideRef);
+  const fallback = getFallbackCalendar(parts.year);
+  const calendar = calendarSnap.exists ?
+    Object.assign({}, fallback, calendarSnap.data() || {}, {isFallback: false}) :
+    fallback;
+  return {
+    calendar,
+    override: overrideSnap.exists ? overrideSnap.data() || {} : null,
+  };
+}
+
+async function assertBookingWithinOpenHours(
+  date, startTime, endTime, transaction,
+) {
+  const context = await loadBookingHolidayContext(date, transaction);
+  const hours = getBookingOpenHours(date, context.calendar, context.override);
+  if (timeToMinutes(startTime) < timeToMinutes(hours.start) ||
+      timeToMinutes(endTime) > timeToMinutes(hours.end)) {
+    throw new HttpsError(
+      'failed-precondition',
+      `此日期場地開放時間為 ${hours.start}–${hours.end}，請重新選擇時段。`,
+    );
+  }
+  return hours;
+}
+
+async function fetchWithTimeout(url, timeoutMs = 10000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {signal: controller.signal});
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function syncOfficialBookingCalendarYear(year, actorUid, source) {
+  const metadataResponse = await fetchWithTimeout(DGPA_DATASET_URL);
+  const metadata = await metadataResponse.json();
+  const distribution = findDgpaDistribution(metadata, year);
+  const csvResponse = await fetchWithTimeout(distribution.resourceDownloadUrl);
+  const csvBytes = await csvResponse.arrayBuffer();
+  const csvEncoding = String(distribution.resourceCharacterEncoding || '')
+    .toUpperCase().includes('BIG5') ? 'big5' : 'utf-8';
+  const csvText = new TextDecoder(csvEncoding).decode(csvBytes);
+  const officialHolidayDates = parseDgpaCalendarCsv(csvText, year);
+  const dataHash = crypto.createHash('sha256')
+    .update(JSON.stringify(officialHolidayDates)).digest('hex');
+  const calendarRef = bookingHolidayCalendarRef(year);
+  const syncLogRef = bookingDb.collection('bookingHolidaySyncLogs').doc();
+  const batch = bookingDb.batch();
+  batch.set(calendarRef, {
+    year,
+    timezone: 'Asia/Taipei',
+    officialHolidayDates,
+    source: '行政院人事行政總處',
+    sourceDatasetId: String(DGPA_DATASET_ID),
+    sourceUrl: distribution.resourceDownloadUrl,
+    sourceRevision: distribution.resourceQualityCheckTime || '',
+    dataHash,
+    lastSuccessfulSyncAt: SERVER_TS(),
+    lastSuccessfulSyncBy: actorUid || 'scheduler',
+    lastSuccessfulSyncSource: source || 'scheduler',
+    syncStatus: 'success',
+  }, {merge: true});
+  batch.set(syncLogRef, {
+    year,
+    status: 'success',
+    holidayCount: officialHolidayDates.length,
+    dataHash,
+    actorUid: actorUid || 'scheduler',
+    source: source || 'scheduler',
+    createdAt: SERVER_TS(),
+  });
+  await batch.commit();
+  return {year, holidayCount: officialHolidayDates.length, dataHash};
+}
+
+async function runBookingHolidaySync(years, actorUid, source) {
+  const results = [];
+  for (const year of years) {
+    try {
+      results.push(Object.assign(
+        {ok: true},
+        await syncOfficialBookingCalendarYear(year, actorUid, source),
+      ));
+    } catch (error) {
+      await bookingDb.collection('bookingHolidaySyncLogs').add({
+        year,
+        status: 'failed',
+        error: cleanString(error && error.message, 500),
+        actorUid: actorUid || 'scheduler',
+        source: source || 'scheduler',
+        createdAt: SERVER_TS(),
+      });
+      results.push({year, ok: false, error: error && error.message || 'sync failed'});
+    }
+  }
+  return results;
+}
+
+function currentTaipeiYear() {
+  return Number(new Intl.DateTimeFormat('en', {
+    year: 'numeric',
+    timeZone: 'Asia/Taipei',
+  }).format(new Date()));
+}
 
 function cleanString(value, maxLength = 200) {
   return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
@@ -696,6 +832,122 @@ async function getBookingActorContext(request) {
   };
 }
 
+exports.getBookingHolidayCalendar = onCall(
+  {region: 'asia-east1'},
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError('unauthenticated', '請重新登入 LINE 後再試');
+    }
+    const year = Number(request.data && request.data.year);
+    if (!Number.isInteger(year) || year < 2020 || year > 2100) {
+      throw new HttpsError('invalid-argument', '年度格式不正確');
+    }
+    const calendarSnap = await bookingHolidayCalendarRef(year).get();
+    const fallback = getFallbackCalendar(year);
+    const calendar = calendarSnap.exists ?
+      Object.assign({}, fallback, calendarSnap.data() || {}, {isFallback: false}) :
+      fallback;
+    const overrideSnap = await bookingDb.collection('bookingHolidayOverrides')
+      .where('date', '>=', `${year}-01-01`)
+      .where('date', '<=', `${year}-12-31`)
+      .get();
+    return {
+      calendar,
+      overrides: overrideSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() || {}),
+      })),
+    };
+  },
+);
+
+exports.setBookingHolidayOverride = onCall(
+  {region: 'asia-east1'},
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError('unauthenticated', '請重新登入 LINE 後再試');
+    }
+    const actorUid = request.auth.uid;
+    const actorSnap = await bookingDb.collection('members').doc(actorUid).get();
+    const actor = actorSnap.exists ? actorSnap.data() || {} : {};
+    if (!actorSnap.exists || actor.role !== 'owner') {
+      throw new HttpsError('permission-denied', '僅 Owner 可調整特殊假日');
+    }
+    const date = cleanString(request.data && request.data.date, 10);
+    const mode = cleanString(request.data && request.data.mode, 20);
+    const reason = cleanString(request.data && request.data.reason, 200);
+    if (!bookingCalendarDateParts(date) ||
+        !['holiday', 'weekday', 'inactive'].includes(mode)) {
+      throw new HttpsError('invalid-argument', '特殊假日設定格式不正確');
+    }
+    const ref = bookingHolidayOverrideRef(date);
+    if (mode === 'inactive') {
+      await ref.set({
+        date,
+        active: false,
+        updatedAt: SERVER_TS(),
+        updatedByUid: actorUid,
+        updatedByName: memberDisplayName(actor, actorUid),
+      }, {merge: true});
+    } else {
+      if (!reason) throw new HttpsError('invalid-argument', '請填寫調整原因');
+      await ref.set({
+        date,
+        mode,
+        active: true,
+        reason,
+        updatedAt: SERVER_TS(),
+        updatedByUid: actorUid,
+        updatedByName: memberDisplayName(actor, actorUid),
+      }, {merge: true});
+    }
+    return {ok: true};
+  },
+);
+
+exports.syncBookingHolidayCalendar = onCall(
+  {region: 'asia-east1', timeoutSeconds: 60},
+  async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError('unauthenticated', '請重新登入 LINE 後再試');
+    }
+    const actorUid = request.auth.uid;
+    const actorSnap = await bookingDb.collection('members').doc(actorUid).get();
+    if (!actorSnap.exists || (actorSnap.data() || {}).role !== 'owner') {
+      throw new HttpsError('permission-denied', '僅 Owner 可同步假日資料');
+    }
+    const year = Number(request.data && request.data.year);
+    if (!Number.isInteger(year) || year < 2020 || year > 2100) {
+      throw new HttpsError('invalid-argument', '年度格式不正確');
+    }
+    const results = await runBookingHolidaySync(
+      [year], actorUid, 'owner_manual',
+    );
+    if (!results[0].ok) {
+      throw new HttpsError(
+        'unavailable', '官方假日資料同步失敗，系統將繼續使用上次成功資料。',
+      );
+    }
+    return results[0];
+  },
+);
+
+exports.syncBookingHolidayCalendars = onSchedule(
+  {schedule: '15 3 1 1 *', timeZone: 'Asia/Taipei', timeoutSeconds: 120},
+  async () => {
+    const year = currentTaipeiYear();
+    await runBookingHolidaySync([year, year + 1], '', 'annual_confirm');
+  },
+);
+
+exports.prefetchNextBookingHolidayCalendar = onSchedule(
+  {schedule: '15 3 1 7-12 *', timeZone: 'Asia/Taipei', timeoutSeconds: 120},
+  async () => {
+    const nextYear = currentTaipeiYear() + 1;
+    await runBookingHolidaySync([nextYear], '', 'annual_prefetch');
+  },
+);
+
 exports.createBooking = onCall({region: 'asia-east1'}, async (request) => {
   if (!request.auth || !request.auth.uid) {
     throw new HttpsError('unauthenticated', '請重新登入 LINE 後再試');
@@ -731,6 +983,7 @@ exports.createBooking = onCall({region: 'asia-east1'}, async (request) => {
   if (!['hard_a', 'hard_b', 'clay_a', 'clay_b'].includes(court)) {
     throw new HttpsError('invalid-argument', '場地資料不正確');
   }
+  await assertBookingWithinOpenHours(date, startTime, endTime);
   if ((court === 'clay_a' || court === 'clay_b') &&
       !ADMIN_ROLES.has(actorRole)) {
     throw new HttpsError('permission-denied', '紅土場地僅限管理員預約');
@@ -859,6 +1112,9 @@ exports.createBooking = onCall({region: 'asia-east1'}, async (request) => {
   try {
     await bookingDb.runTransaction(async (transaction) => {
       await transaction.get(lockRef);
+      await assertBookingWithinOpenHours(
+        date, startTime, endTime, transaction,
+      );
       const sameDateSnap = await transaction.get(
         bookingDb.collection('bookings').where('date', '==', date),
       );
@@ -947,6 +1203,7 @@ exports.updateBooking = onCall({region: 'asia-east1'}, async (request) => {
   if (!['hard_a', 'hard_b', 'clay_a', 'clay_b'].includes(court)) {
     throw new HttpsError('invalid-argument', '場地資料不正確');
   }
+  await assertBookingWithinOpenHours(date, startTime, endTime);
   if ((court === 'clay_a' || court === 'clay_b') &&
       !ADMIN_ROLES.has(context.actorRole)) {
     throw new HttpsError('permission-denied', '紅土場地僅限管理員預約');
@@ -1066,6 +1323,9 @@ exports.updateBooking = onCall({region: 'asia-east1'}, async (request) => {
     await bookingDb.runTransaction(async (transaction) => {
     const currentBookingSnap = await transaction.get(context.bookingRef);
     for (const lockRef of updateLockRefs) await transaction.get(lockRef);
+    await assertBookingWithinOpenHours(
+      date, startTime, endTime, transaction,
+    );
     const newDateSnap = await transaction.get(
       bookingDb.collection('bookings').where('date', '==', date),
     );
@@ -1960,6 +2220,7 @@ exports.submitBookingExtensionRequest = onCall(
     const startTime = cleanString(input.startTime, 5);
     const endTime = cleanString(input.endTime, 5);
     assertExtensionTimeInput(date, court, startTime, endTime);
+    await assertBookingWithinOpenHours(date, startTime, endTime);
     assertExtensionMemberEligible(member, date);
     await normaliseExpiredViolationCycle(
       requesterUid, requesterUid, requesterName,
@@ -2151,6 +2412,12 @@ exports.approveBookingExtensionRequest = onCall(
         extensionRequest.court,
         extensionRequest.startTime,
         extensionRequest.endTime,
+      );
+      await assertBookingWithinOpenHours(
+        extensionRequest.date,
+        extensionRequest.startTime,
+        extensionRequest.endTime,
+        transaction,
       );
       if (bookingStartMs(extensionRequest) <= Date.now()) {
         expired = true;

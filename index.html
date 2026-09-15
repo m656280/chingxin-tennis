@@ -2182,7 +2182,11 @@ function _showMainApp(){
     var navImg = document.getElementById('navAvatarImg');
     if(navImg) navImg.src = currentUser.photoURL;
   }
-  render();
+  var cachedHolidayCalendar=_bookingHolidayCalendar(today.getFullYear());
+  _bookingHolidayCalendar(today.getFullYear()+1);
+  if(cachedHolidayCalendar) render();
+  _loadBookingHolidayYear(today.getFullYear(),true).then(function(){render();});
+  _loadBookingHolidayYear(today.getFullYear()+1,true);
   startNowLineTicker();
   renderBookings();
   renderManage();
@@ -3026,16 +3030,13 @@ const SLOT_HEIGHT = 32;
 const SLOT_MIN = 30;
 
 /* ── Court Open Hours Config (週視圖開放時間設定) ── */
-/* 國定假日：依高雄市行事曆手動維護，格式 'YYYY-MM-DD' */
-var nationalHolidays = [
-  '2026-01-01','2026-02-28','2026-04-04','2026-04-05',
-  '2026-05-01','2026-06-19','2026-09-28','2026-10-10'
-];
 /* 寒暑假區間：依世隆國小行事曆手動維護 */
 var schoolHolidayRanges = [
   { start:'2026-01-21', end:'2026-02-10', type:'winter' },
   { start:'2026-07-01', end:'2026-08-31', type:'summer' },
 ];
+var bookingHolidayCalendarCache = {};
+var bookingHolidayCalendarLoads = {};
 
 /* ── State ── */
 const today = new Date();
@@ -3237,12 +3238,68 @@ const BUSINESS_HOURS = {
   holiday: { start: '08:00', end: '21:30' },
 };
 
+function _bookingHolidayCalendar(year){
+  if(bookingHolidayCalendarCache[year]) return bookingHolidayCalendarCache[year];
+  try{
+    var saved=localStorage.getItem('qx_bookingHolidayCalendar_'+year);
+    if(saved) bookingHolidayCalendarCache[year]=JSON.parse(saved);
+  }catch(e){}
+  return bookingHolidayCalendarCache[year]||null;
+}
+
+function _loadBookingHolidayYear(year,force){
+  year=parseInt(year,10);
+  if(!force&&_bookingHolidayCalendar(year)) return Promise.resolve(bookingHolidayCalendarCache[year]);
+  if(!year||bookingHolidayCalendarLoads[year]) return bookingHolidayCalendarLoads[year]||Promise.resolve(null);
+  bookingHolidayCalendarLoads[year]=ensureFirebaseAuth().then(function(fbUser){
+    if(!fbUser) throw new Error('Firebase 身份驗證失敗');
+    return firebase.app().functions('asia-east1')
+      .httpsCallable('getBookingHolidayCalendar')({year:year});
+  }).then(function(result){
+    var data=(result&&result.data)||{};
+    var calendar=data.calendar||{};
+    var overrides={};
+    (data.overrides||[]).forEach(function(item){
+      if(item&&item.date) overrides[item.date]=item;
+    });
+    calendar.overrides=overrides;
+    bookingHolidayCalendarCache[year]=calendar;
+    try{localStorage.setItem('qx_bookingHolidayCalendar_'+year,JSON.stringify(calendar));}catch(e){}
+    if(currentView==='week') renderWeekGrid();
+    renderDayHeader();
+    renderGrid();
+    return calendar;
+  }).catch(function(e){
+    console.warn('loadBookingHolidayYear error:',e);
+    return _bookingHolidayCalendar(year);
+  }).finally(function(){
+    delete bookingHolidayCalendarLoads[year];
+  });
+  return bookingHolidayCalendarLoads[year];
+}
+
+function _bookingHolidayCalendarReady(dateStr){
+  var year=parseInt((dateStr||'').slice(0,4),10);
+  return Boolean(year&&_bookingHolidayCalendar(year));
+}
+
 function getCourtOpenHours(date){
   var ds  = formatDate(date);
   var dow = date.getDay();
   if(dow === 0 || dow === 6) return BUSINESS_HOURS.holiday;
-  if(nationalHolidays.indexOf(ds) >= 0) return BUSINESS_HOURS.holiday;
-  var inHoliday = schoolHolidayRanges.some(function(r){ return ds >= r.start && ds <= r.end; });
+  var calendar=_bookingHolidayCalendar(date.getFullYear());
+  if(!calendar&&currentUser) _loadBookingHolidayYear(date.getFullYear());
+  var override=calendar&&calendar.overrides?calendar.overrides[ds]:null;
+  if(override&&override.active!==false){
+    if(override.mode==='weekday') return BUSINESS_HOURS.weekday;
+    if(override.mode==='holiday') return BUSINESS_HOURS.holiday;
+  }
+  var officialDates=calendar&&Array.isArray(calendar.officialHolidayDates)
+    ?calendar.officialHolidayDates:[];
+  if(officialDates.indexOf(ds) >= 0) return BUSINESS_HOURS.holiday;
+  var ranges=calendar&&Array.isArray(calendar.schoolHolidayRanges)
+    ?calendar.schoolHolidayRanges:schoolHolidayRanges;
+  var inHoliday = ranges.some(function(r){ return ds >= r.start && ds <= r.end; });
   if(inHoliday) return BUSINESS_HOURS.holiday;
   return BUSINESS_HOURS.weekday;
 }
@@ -3523,14 +3580,14 @@ function selectWeekDay(dateStr){
 /* ── Render: Day Header ── */
 function renderDayHeader(){
   document.getElementById('dayLabel').textContent=formatDayLabel(selectedDate);
-  document.getElementById('dayMeta').textContent='· '+(isWeekend(selectedDate)?'週末・寒暑假時段':'平日時段');
+  var holidayHours = getCourtOpenHours(selectedDate) === BUSINESS_HOURS.holiday;
+  document.getElementById('dayMeta').textContent='· '+(holidayHours?'週末・國定假日・寒暑假時段':'平日時段');
 }
 
 /* ── Render: Time Grid ── */
 function renderGrid(){
-  const we=isWeekend(selectedDate);
   const _rgh=getCourtOpenHours(selectedDate); const open=_rgh.start;
-  const slots=getDaySlots(we);
+  const slots=getDaySlots(_rgh === BUSINESS_HOURS.holiday);
   const grid=document.getElementById('grid');
   grid.style.gridTemplateRows='repeat('+slots.length+', '+SLOT_HEIGHT+'px)';
   let html='<div class="courtDividers" style="grid-template-rows:repeat('+slots.length+','+SLOT_HEIGHT+'px)">'+
@@ -5499,8 +5556,69 @@ function _renderAdminSettingsTab(el){
     });
   }
 
+  if(isOwner){
+    var holidayYear=today.getFullYear();
+    var holidayCalendar=_bookingHolidayCalendar(holidayYear)||{};
+    var holidayOverrides=Object.values(holidayCalendar.overrides||{})
+      .filter(function(item){return item&&item.active!==false;})
+      .sort(function(a,b){return (a.date||'').localeCompare(b.date||'');});
+    html+='<div style="font-size:11px;font-weight:600;letter-spacing:0.08em;color:var(--color-text-muted);margin:24px 0 8px;padding:0 4px">特殊假日</div>'+
+      '<div style="border:1px solid var(--color-border-soft);border-radius:12px;padding:12px">'+
+      '<input class="formInput" id="holidayOverrideDate" type="date" style="margin-bottom:8px">'+
+      '<select class="formSelect" id="holidayOverrideMode" style="margin-bottom:8px">'+
+        '<option value="holiday">套用六日時段</option><option value="weekday">停用假日時段效果</option>'+
+      '</select>'+
+      '<input class="formInput" id="holidayOverrideReason" placeholder="調整原因" style="margin-bottom:8px">'+
+      '<div style="display:flex;gap:8px">'+
+        '<button class="adminToggleBtn" onclick="saveBookingHolidayOverrideUi()">儲存</button>'+
+        '<button class="adminToggleBtn" onclick="syncBookingHolidayCalendarUi('+holidayYear+')">同步 '+holidayYear+' 官方假日</button>'+
+      '</div>'+
+      (holidayCalendar.isFallback?'<div style="font-size:11px;color:var(--color-text-muted);margin-top:8px">目前使用內建官方快照，正式同步後會自動更新。</div>':'')+
+      (holidayOverrides.length?'<div style="margin-top:10px">'+holidayOverrides.map(function(item){
+        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--color-border-soft);font-size:12px">'+
+          '<span style="flex:1">'+_esc(item.date||'')+' · '+(item.mode==='weekday'?'平日時段':'六日時段')+'</span>'+
+          '<button class="adminToggleBtn" onclick="disableBookingHolidayOverrideUi(\''+_esc(item.date||'')+'\')">停用</button></div>';
+      }).join('')+'</div>':'')+
+      '</div>';
+  }
+
   html+='</div>';
   el.innerHTML+=html;
+}
+
+function _reloadBookingHolidayYearUi(year){
+  return _loadBookingHolidayYear(year,true).then(function(){
+    if(_manageTab==='adminSettings') renderManage();
+  });
+}
+
+function saveBookingHolidayOverrideUi(){
+  if(_currentRole()!=='owner'){showToast('僅 Owner 可調整特殊假日');return;}
+  var date=((document.getElementById('holidayOverrideDate')||{}).value)||'';
+  var mode=((document.getElementById('holidayOverrideMode')||{}).value)||'holiday';
+  var reason=(((document.getElementById('holidayOverrideReason')||{}).value)||'').trim();
+  if(!date||!reason){showToast('請選擇日期並填寫調整原因');return;}
+  _callBookingFunction('setBookingHolidayOverride',{date:date,mode:mode,reason:reason})
+    .then(function(){return _reloadBookingHolidayYearUi(parseInt(date.slice(0,4),10));})
+    .then(function(){showToast('特殊假日設定已儲存');})
+    .catch(function(e){showToast('儲存失敗：'+(e&&e.message||''));});
+}
+
+function disableBookingHolidayOverrideUi(date){
+  if(_currentRole()!=='owner'){showToast('僅 Owner 可調整特殊假日');return;}
+  _callBookingFunction('setBookingHolidayOverride',{date:date,mode:'inactive'})
+    .then(function(){return _reloadBookingHolidayYearUi(parseInt(date.slice(0,4),10));})
+    .then(function(){showToast('特殊假日設定已停用');})
+    .catch(function(e){showToast('停用失敗：'+(e&&e.message||''));});
+}
+
+function syncBookingHolidayCalendarUi(year){
+  if(_currentRole()!=='owner'){showToast('僅 Owner 可同步假日資料');return;}
+  showToast('正在同步官方假日資料…');
+  _callBookingFunction('syncBookingHolidayCalendar',{year:year})
+    .then(function(){return _reloadBookingHolidayYearUi(year);})
+    .then(function(){showToast('官方假日資料同步完成');})
+    .catch(function(e){showToast((e&&e.message)||'同步失敗，已保留原有假日資料');});
 }
 
 
@@ -11473,7 +11591,14 @@ function openBookingForm(){
   if(di){
     di.value=formatDate(today); di.min=formatDate(today);
     /* Re-populate time selectors whenever the user changes the date */
-    di.onchange=function(){ _populateFormTimeSels(di.value); _refreshExtensionButton(); };
+    di.onchange=function(){
+      var dateValue=di.value;
+      _loadBookingHolidayYear(parseInt(dateValue.slice(0,4),10)).then(function(){
+        if(di.value===dateValue) _populateFormTimeSels(dateValue);
+      });
+      _populateFormTimeSels(dateValue);
+      _refreshExtensionButton();
+    };
   }
   /* Populate time selectors based on today's open hours */
   _populateFormTimeSels(formatDate(today));
@@ -11599,7 +11724,13 @@ function openBookingFormEdit(id){
 
   // ── Date + time (must repopulate selectors for booking's date) ─────────
   var _dateSel = document.getElementById('formDate');
-  if(_dateSel){ _dateSel.value = b.date || ''; _populateFormTimeSels(b.date || ''); }
+  if(_dateSel){
+    _dateSel.value = b.date || '';
+    _populateFormTimeSels(b.date || '');
+    _loadBookingHolidayYear(parseInt((b.date||'').slice(0,4),10)).then(function(){
+      if(_dateSel.value===b.date) _populateFormTimeSels(b.date||'');
+    });
+  }
   var _startSel = document.getElementById('formStart');
   var _endSel   = document.getElementById('formEnd');
   if(_startSel) _startSel.value = b.startTime || '';
@@ -12150,6 +12281,11 @@ function _submitBookingEdit(){
   var note     = (((document.getElementById('formNote')||{}).value)||'').trim();
 
   if(!date||!start||!end){ showToast('請填寫完整資料'); return; }
+  if(!_bookingHolidayCalendarReady(date)){
+    _loadBookingHolidayYear(parseInt(date.slice(0,4),10));
+    showToast('假日時段資料載入中，請稍後再試');
+    return;
+  }
   if((court==='clay_a'||court==='clay_b')&&!isAdminLike()){ showToast('紅土場地僅限管理員預約'); return; }
   if(timeToMin(end)<=timeToMin(start)){ showToast('結束時間需晚於開始時間'); return; }
   if(normMode==='general' && timeToMin(end)-timeToMin(start)>60){ showToast('一般會員預約每次以 1 小時為限。'); return; }
@@ -12302,6 +12438,11 @@ function submitBooking(){
   var capacity = parseInt((document.getElementById('formCapacity')||{}).value||'2', 10) || 2;
   var coachId  = ((document.getElementById('formCoach')||{}).value||'') || null;
   var title    = (((document.getElementById('formTitle')||{}).value)||'').trim();
+  if(date&&!_bookingHolidayCalendarReady(date)){
+    _loadBookingHolidayYear(parseInt(date.slice(0,4),10));
+    showToast('假日時段資料載入中，請稍後再試');
+    return;
+  }
   // event_lock: nature value stored as title
   if(mode === 'event_lock'){
     title = ((document.getElementById('formEventNature')||{}).value) || '其他';
