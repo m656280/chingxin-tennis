@@ -604,6 +604,12 @@ button {
   border:1px solid var(--color-border); border-radius:99px; padding:2px 8px;
 }
 .sheetMemberBadge { font-size:11px; color:var(--color-text-secondary); letter-spacing:0.04em; }
+.sheetExpiryReminder {
+  margin:12px 20px 0; padding:11px 13px; border-radius:9px;
+  font-size:13px; line-height:1.6; color:#735a20;
+  background:#fff8e6; border:1px solid #ead9a6;
+}
+.sheetExpiryReminder.warning { color:#8c4637; background:#fff0ec; border-color:#e3b8ad; font-weight:500; }
 .sheetSection { padding:12px 20px 0; }
 .sheetRow {
   display:flex; align-items:center; justify-content:space-between;
@@ -2301,6 +2307,8 @@ function _renderProfileSheet(){
   var _primaryName = _realName || _displayName;
   var _profileUid = u.uid || u.userId || '';
   var _profileViolationSummary = _violationSummary(_profileUid);
+  var _profileExpiryReminder = _memberExpiryReminder(_fsM);
+  var _profileExpiryRaw = String(_fsM.membershipExpiry || _fsM.expireDate || '').trim();
   var _safeVal     = function(v){ return _esc(v).replace(/"/g,'&quot;'); };
 
   // ── 資訊卡 rows ────────────────────────────────────────────────────
@@ -2312,8 +2320,8 @@ function _renderProfileSheet(){
     _infoRows += '<div class="sheetRow"><span class="sheetRowLabel">NTRP</span><span class="sheetRowValue">' + _esc(_ntrpDisplay(_fsM.ntrp)) + '</span></div>';
   if(_fsM.preferredPosition)
     _infoRows += '<div class="sheetRow"><span class="sheetRowLabel">擅長位置</span><span class="sheetRowValue">' + _esc(_fsM.preferredPosition) + '</span></div>';
-  if(_fsM.expireDate)
-    _infoRows += '<div class="sheetRow"><span class="sheetRowLabel">會費到期日</span><span class="sheetRowValue">' + String(_fsM.expireDate).replace(/\//g,' / ') + '</span></div>';
+  if(_profileExpiryRaw)
+    _infoRows += '<div class="sheetRow"><span class="sheetRowLabel">會費到期日</span><span class="sheetRowValue">' + _esc(_profileExpiryRaw.replace(/-/g,'/')) + '</span></div>';
   _infoRows += '<div class="sheetRow"><span class="sheetRowLabel">LINE 暱稱</span><span class="sheetRowValue" style="color:var(--color-text-muted)">' + _esc(_displayName) + '</span></div>';
   var _profilePoints = _effectiveViolationPoints(_profileViolationSummary);
   var _profileSuspension = _isBookingSuspended(_profileUid) ? _violationSuspensionMessage(_profileUid) : '';
@@ -2323,6 +2331,9 @@ function _renderProfileSheet(){
   // ── 正式姓名未設定提示 ─────────────────────────────────────────────
   var _rnPrompt = !_realName
     ? '<div style="margin:10px 20px 0;padding:10px 14px;background:rgba(184,92,74,0.07);border-radius:8px;font-size:12px;color:#8C4637;line-height:1.6">請補上正式姓名，供財務紀錄使用。</div>'
+    : '';
+  var _expiryPrompt = _profileExpiryReminder
+    ? '<div class="sheetExpiryReminder '+(_profileExpiryReminder.kind==='notice'?'':'warning')+'">'+_esc(_profileExpiryReminder.message)+'</div>'
     : '';
 
   // ── 編輯區下拉選項 ─────────────────────────────────────────────────
@@ -2348,6 +2359,7 @@ function _renderProfileSheet(){
       '</div>' +
     '</div>' +
     _rnPrompt +
+    _expiryPrompt +
     '<div class="sheetSection">' +
       _infoRows +
     '</div>' +
@@ -4661,6 +4673,32 @@ function _mPic(m){
   return m.photoURL || m.lineAvatar || m.pictureUrl || '';
 }
 
+/* 會員本人到期提醒：只讀 members 的實際到期日，不從財務紀錄推算。 */
+function _memberExpiryReminder(member, nowDate){
+  if(!member) return null;
+  var status = String(member.status || '').toLowerCase();
+  if(status !== 'approved' && status !== 'active') return null;
+  var raw = String(member.membershipExpiry || member.expireDate || '').trim().replace(/\//g,'-');
+  var match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!match) return null;
+  var expiry = new Date(Number(match[1]), Number(match[2])-1, Number(match[3]));
+  if(expiry.getFullYear()!==Number(match[1]) || expiry.getMonth()!==Number(match[2])-1 || expiry.getDate()!==Number(match[3])) return null;
+  expiry.setHours(0,0,0,0);
+  var today = nowDate ? new Date(nowDate) : new Date();
+  today.setHours(0,0,0,0);
+  var diff = Math.round((expiry-today)/86400000);
+  if(diff >= 31) return null;
+  var display = match[1]+'/'+match[2]+'/'+match[3];
+  if(diff >= 8) return {kind:'notice', diff:diff, expiry:display,
+    message:'您的會員資格將於 '+display+' 到期，剩餘 '+diff+' 天。'};
+  if(diff >= 1) return {kind:'warning', diff:diff, expiry:display,
+    message:'您的會員資格將於 '+display+' 到期，剩餘 '+diff+' 天。'};
+  if(diff === 0) return {kind:'today', diff:0, expiry:display,
+    message:'您的會員資格於 '+display+' 今日到期。'};
+  return {kind:'expired', diff:diff, expiry:display,
+    message:'您的會員資格已於 '+display+' 到期，請洽管理員辦理續費。'};
+}
+
 /* ── 會員管理 tab ── */
 /* ── 會費狀態計算（從 financeRecords + membershipExpiry 即時算，不需人工維護）── */
 /* 回傳 {typeLabel, status, statusLabel, diff, expStr}
@@ -5726,20 +5764,28 @@ function _generateSystemAnnouncements(){
     items.push({type:'system', dot:'gray', title: name + ' 尚未建立繳費紀錄', _sort: 1000});
   });
 
-  // 2. 已到期（🔴）/ 3. 即將到期（🟡）— 共用 getExpiringMembers（annual=30d, monthly=12d）
-  getExpiringMembers(members).forEach(function(item){
-    var name = _esc(item.name || '某會員');
-    if(item.diff < 0){
-      items.push({type:'system', dot:'red',
-        title: name + ' 已逾期 ' + Math.abs(item.diff) + ' 天', _sort: 2000 + item.diff});
-    } else if(item.diff === 0){
-      items.push({type:'system', dot:'red',
-        title: name + ' 會籍今日到期', _sort: 1999});
-    } else {
-      items.push({type:'system', dot:'yellow',
-        title: name + ' 會籍將於 ' + item.diff + ' 天後到期', _sort: 3000 + item.diff});
+  // 2. 管理端維持原繳費提醒；會員本人依 members 實際到期日顯示。
+  if(adminLike){
+    getExpiringMembers(members).forEach(function(item){
+      var name = _esc(item.name || '某會員');
+      if(item.diff < 0){
+        items.push({type:'system', dot:'red',
+          title: name + ' 已逾期 ' + Math.abs(item.diff) + ' 天', _sort: 2000 + item.diff});
+      } else if(item.diff === 0){
+        items.push({type:'system', dot:'red',
+          title: name + ' 會籍今日到期', _sort: 1999});
+      } else {
+        items.push({type:'system', dot:'yellow',
+          title: name + ' 會籍將於 ' + item.diff + ' 天後到期', _sort: 3000 + item.diff});
+      }
+    });
+  } else if(members.length){
+    var selfReminder = _memberExpiryReminder(members[0]);
+    if(selfReminder){
+      items.push({type:'system', dot:selfReminder.kind==='notice'?'yellow':'red',
+        title:_esc(selfReminder.message), _sort:2000+selfReminder.diff});
     }
-  });
+  }
 
   // 4. 尚未填寫正式姓名（admin only，🔴，priority 9999）
   if(adminLike){
@@ -10821,6 +10867,8 @@ function loadUsersCache(){
        document.getElementById('screen-manage').classList.contains('active')){
       renderManage();
     }
+    var _profileSheet = document.getElementById('profileSheet');
+    if(_profileSheet && _profileSheet.classList.contains('open')) _renderProfileSheet();
   }, function(e){ console.warn('loadUsersCache error:',e); });
 }
 
