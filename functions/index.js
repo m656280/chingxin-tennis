@@ -3277,6 +3277,61 @@ function memberMergeSnapshotMatches(snapshot, member) {
   });
 }
 
+function memberMergeSnapshotDiffValue(field, value) {
+  if (field === 'approved') return value === true;
+  if (field === 'membershipExpiry') {
+    return normaliseExpiryDate(value || '');
+  }
+  if (field === 'createdAt') {
+    const canonical = canonicalMergeValue(value);
+    if (canonical && canonical.__timestampMillis != null) {
+      return new Date(canonical.__timestampMillis).toISOString();
+    }
+    return canonical || null;
+  }
+  return value == null ? '' : cleanString(String(value), 200);
+}
+
+function memberMergeSnapshotDifferences(snapshot, member, memberType) {
+  if (!snapshot) {
+    return [{memberType, field: 'snapshot', before: null, after: 'missing'}];
+  }
+  const fields = [
+    'uid', 'realName', 'displayName', 'role', 'status', 'membershipType',
+    'membershipExpiry', 'memberSource', 'approved', 'ntrp',
+    'preferredPosition', 'createdAt',
+  ];
+  return fields.reduce((differences, field) => {
+    if (!Object.prototype.hasOwnProperty.call(snapshot, field)) {
+      return differences;
+    }
+    const before = memberMergeSnapshotDiffValue(field, snapshot[field]);
+    const after = memberMergeSnapshotDiffValue(field,
+      field === 'membershipExpiry' ?
+        member.membershipExpiry || member.expireDate || '' : member[field]);
+    if (memberMergeHash(before) !== memberMergeHash(after)) {
+      differences.push({memberType, field, before, after});
+    }
+    return differences;
+  }, []);
+}
+
+function buildRevalidatedMemberMergeCandidate(
+  candidate, lineUid, lineMember, manualUid, manualMember, actor, revalidatedAt,
+) {
+  return Object.assign({}, candidate, {
+    initialLineMember: candidate.initialLineMember || candidate.lineMember,
+    initialManualMember: candidate.initialManualMember || candidate.manualMember,
+    lineMember: duplicateMemberSnapshot(lineUid, lineMember, 'line'),
+    manualMember: duplicateMemberSnapshot(manualUid, manualMember, 'manual'),
+    snapshotVersion: Math.max(1, Number(candidate.snapshotVersion) || 1) + 1,
+    revalidationCount: (Number(candidate.revalidationCount) || 0) + 1,
+    lastRevalidatedAt: revalidatedAt,
+    lastRevalidatedByUid: actor.uid,
+    lastRevalidatedByName: actor.name,
+  });
+}
+
 function memberMergeFinanceKey(record) {
   const status = record.status || 'active';
   if (status !== 'active') return '';
@@ -3303,7 +3358,8 @@ function memberMergeFinanceKey(record) {
   return '';
 }
 
-function assessMemberMergeState(state) {
+function assessMemberMergeState(state, options) {
+  options = options || {};
   const blockers = [];
   const warnings = [];
   const candidate = state.candidate.data;
@@ -3315,6 +3371,12 @@ function assessMemberMergeState(state) {
   const manualRole = manualMember.role || 'member';
   const lineMembership = memberMergeMembership(lineMember);
   const manualMembership = memberMergeMembership(manualMember);
+  const snapshotDifferences = [
+    ...memberMergeSnapshotDifferences(
+      candidate.lineMember, lineMember, 'line'),
+    ...memberMergeSnapshotDifferences(
+      candidate.manualMember, manualMember, 'manual'),
+  ];
 
   if (candidate.status !== 'pending') blockers.push('候選狀態已不是 pending');
   if (normaliseMemberName(lineMember.realName) !==
@@ -3334,8 +3396,7 @@ function assessMemberMergeState(state) {
       ['admin', 'owner'].includes(manualRole)) {
     blockers.push('角色不一致或涉及 admin / owner');
   }
-  if (!memberMergeSnapshotMatches(candidate.lineMember, lineMember) ||
-      !memberMergeSnapshotMatches(candidate.manualMember, manualMember)) {
+  if (!options.ignoreSnapshotMismatch && snapshotDifferences.length) {
     blockers.push('會員重要資料已與候選建立時不同');
   }
   if (lineMembership.membershipType && manualMembership.membershipType &&
@@ -3392,6 +3453,9 @@ function assessMemberMergeState(state) {
   if (!candidate.lineMember || !candidate.manualMember) {
     warnings.push('候選為舊版快照，執行時仍會以本次預覽雜湊防止資料漂移');
   }
+  if (manualMember.status === 'deleted') {
+    warnings.push('手動來源會員目前為 deleted，重新驗證前需由 Owner 明確確認');
+  }
 
   const counts = {
     financialRecords: state.manualFinancialRecords.length,
@@ -3427,6 +3491,7 @@ function assessMemberMergeState(state) {
     warnings,
     counts,
     effectiveMembership,
+    snapshotDifferences,
     previewHash: memberMergeHash(hashPayload),
   };
 }
@@ -3611,7 +3676,7 @@ function buildMemberMergeChanges(state, assessment, actor, operationId, mergedAt
   return changes;
 }
 
-function memberMergePreviewResponse(state, assessment) {
+function memberMergePreviewResponse(state, assessment, revalidationAssessment) {
   const line = state.lineMember.data;
   const manual = state.manualMember.data;
   return {
@@ -3624,16 +3689,24 @@ function memberMergePreviewResponse(state, assessment) {
       realName: cleanString(line.realName || line.displayName, 100),
       displayName: cleanString(line.displayName, 100),
       memberSource: line.memberSource || 'line',
+      status: line.status || '',
+      approved: line.approved === true,
     },
     manualMember: {
       uid: state.manualMember.id,
       realName: cleanString(manual.realName || manual.displayName, 100),
       memberSource: manual.memberSource || 'manual',
+      status: manual.status || '',
+      approved: manual.approved === true,
       resultingStatus: 'merged',
       mergedInto: state.lineMember.id,
     },
     membershipType: assessment.effectiveMembership.membershipType || '',
     membershipExpiry: assessment.effectiveMembership.membershipExpiry || '',
+    snapshotDifferences: assessment.snapshotDifferences || [],
+    canRevalidate: Boolean(
+      assessment.snapshotDifferences && assessment.snapshotDifferences.length &&
+      revalidationAssessment && revalidationAssessment.canMerge),
     counts: assessment.counts,
     affectedDocuments: [
       state.lineMember.path,
@@ -3673,13 +3746,109 @@ async function getOwnerMergeActor(request) {
   };
 }
 
+async function assertMemberMergeAuthIdentity(lineUid, manualUid) {
+  const lineAuthUser = await admin.auth().getUser(lineUid).catch((error) => {
+    if (error && error.code === 'auth/user-not-found') return null;
+    throw error;
+  });
+  if (!lineAuthUser || lineAuthUser.uid !== lineUid) {
+    throw new HttpsError(
+      'failed-precondition', 'LINE 主帳號找不到對應的 Firebase Auth UID');
+  }
+  const manualAuthUser = await admin.auth().getUser(manualUid).catch((error) => {
+    if (error && error.code === 'auth/user-not-found') return null;
+    throw error;
+  });
+  if (manualAuthUser) {
+    throw new HttpsError(
+      'failed-precondition', '手動來源帳號已有 Firebase Auth 身分，禁止自動重新驗證');
+  }
+}
+
 exports.previewMemberMerge = onCall({region: 'asia-east1'}, async (request) => {
   await getOwnerMergeActor(request);
   const candidateId = cleanString(request.data && request.data.candidateId, 200);
   if (!candidateId) throw new HttpsError('invalid-argument', '缺少候選 ID');
   const state = await loadMemberMergeState((ref) => ref.get(), candidateId);
-  return memberMergePreviewResponse(state, assessMemberMergeState(state));
+  const assessment = assessMemberMergeState(state);
+  const revalidationAssessment = assessMemberMergeState(
+    state, {ignoreSnapshotMismatch: true});
+  return memberMergePreviewResponse(
+    state, assessment, revalidationAssessment);
 });
+
+exports.revalidateMemberMergeCandidate = onCall(
+  {region: 'asia-east1'},
+  async (request) => {
+    const actor = await getOwnerMergeActor(request);
+    const candidateId = cleanString(
+      request.data && request.data.candidateId, 200);
+    const confirmDeletedSource = Boolean(
+      request.data && request.data.confirmDeletedSource);
+    if (!candidateId) {
+      throw new HttpsError('invalid-argument', '缺少候選 ID');
+    }
+
+    const candidateRef = bookingDb.collection('duplicateMemberCandidates')
+      .doc(candidateId);
+    const candidateSnap = await candidateRef.get();
+    if (!candidateSnap.exists) {
+      throw new HttpsError('not-found', '找不到疑似重複會員候選');
+    }
+    const candidate = candidateSnap.data() || {};
+    const lineUid = cleanString(candidate.lineMemberUid, 200);
+    const manualUid = cleanString(candidate.manualMemberUid, 200);
+    if (!lineUid || !manualUid ||
+        candidateId !== duplicateMemberPairId(lineUid, manualUid)) {
+      throw new HttpsError('failed-precondition', '候選會員配對識別不一致');
+    }
+    await assertMemberMergeAuthIdentity(lineUid, manualUid);
+
+    const revalidatedAt = admin.firestore.Timestamp.now();
+    return bookingDb.runTransaction(async (transaction) => {
+      const state = await loadMemberMergeState(
+        (ref) => transaction.get(ref), candidateId);
+      if (state.candidate.id !== duplicateMemberPairId(
+        state.lineMember.id, state.manualMember.id)) {
+        throw new HttpsError('failed-precondition', '候選會員配對識別不一致');
+      }
+      if (state.manualMember.data.status === 'deleted' &&
+          !confirmDeletedSource) {
+        throw new HttpsError(
+          'failed-precondition',
+          '手動來源會員目前為 deleted，需由 Owner 明確確認後才能重新驗證',
+        );
+      }
+      const assessment = assessMemberMergeState(
+        state, {ignoreSnapshotMismatch: true});
+      if (!assessment.canMerge) {
+        throw new HttpsError(
+          'failed-precondition', assessment.blockers.join('；'));
+      }
+      const refreshedCandidate = buildRevalidatedMemberMergeCandidate(
+        state.candidate.data,
+        state.lineMember.id,
+        state.lineMember.data,
+        state.manualMember.id,
+        state.manualMember.data,
+        actor,
+        revalidatedAt,
+      );
+      transaction.set(candidateRef, refreshedCandidate);
+      const refreshedState = Object.assign({}, state, {
+        candidate: Object.assign({}, state.candidate, {
+          data: refreshedCandidate,
+        }),
+      });
+      const refreshedAssessment = assessMemberMergeState(refreshedState);
+      return memberMergePreviewResponse(
+        refreshedState, refreshedAssessment,
+        assessMemberMergeState(
+          refreshedState, {ignoreSnapshotMismatch: true}),
+      );
+    });
+  },
+);
 
 exports.executeMemberMerge = onCall({region: 'asia-east1'}, async (request) => {
   const actor = await getOwnerMergeActor(request);

@@ -5000,12 +5000,28 @@ function _memberMergeCountRow(label,value){
   return '<div style="display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--color-border-soft)"><span>'+_esc(label)+'</span><strong>'+Number(value||0)+' 筆</strong></div>';
 }
 
+function _memberMergeDiffHtml(differences){
+  if(!differences||!differences.length) return '';
+  var labels={line:'LINE 主帳號',manual:'手動來源帳號'};
+  return '<div style="padding:10px;background:rgba(180,60,50,.06);border-radius:8px;margin-bottom:10px">'+
+    '<b style="font-size:13px">候選快照差異</b>'+
+    differences.map(function(item){
+      var before=item.before==null?'—':String(item.before);
+      var after=item.after==null?'—':String(item.after);
+      return '<div style="font-size:11px;line-height:1.6;margin-top:5px;word-break:break-all">'+
+        _esc(labels[item.memberType]||item.memberType)+' · '+_esc(item.field)+
+        '：<del>'+_esc(before)+'</del> → <strong>'+_esc(after)+'</strong></div>';
+    }).join('')+
+  '</div>';
+}
+
 function _renderMemberMergePreview(candidateId,preview){
   closeMemberMergePreview();
-  _memberMergePreview={candidateId:candidateId,previewHash:preview.previewHash};
+  _memberMergePreview={candidateId:candidateId,previewHash:preview.previewHash,preview:preview};
   var blockers=(preview.blockers||[]).map(function(msg){return '<li>'+_esc(msg)+'</li>';}).join('');
   var warnings=(preview.warnings||[]).map(function(msg){return '<li>'+_esc(msg)+'</li>';}).join('');
   var counts=preview.counts||{};
+  var snapshotDiffs=_memberMergeDiffHtml(preview.snapshotDifferences||[]);
   var docs=(preview.affectedDocuments||[]).map(function(path){return '<li style="word-break:break-all">'+_esc(path)+'</li>';}).join('');
   var modal=document.createElement('div');
   modal.id='memberMergePreviewModal';
@@ -5015,6 +5031,7 @@ function _renderMemberMergePreview(candidateId,preview){
     '<div style="padding:10px;border:1px solid var(--color-border-soft);border-radius:9px;margin-bottom:10px"><b>LINE 主帳號</b><br>'+_esc(preview.lineMember.realName)+'（'+_esc(preview.lineMember.displayName||'—')+'）<br><span style="font-size:10px;word-break:break-all">'+_esc(preview.lineMember.uid)+'</span></div>'+
     '<div style="padding:10px;border:1px solid var(--color-border-soft);border-radius:9px;margin-bottom:10px"><b>手動來源帳號</b><br>'+_esc(preview.manualMember.realName)+'<br><span style="font-size:10px;word-break:break-all">'+_esc(preview.manualMember.uid)+'</span><br><span style="font-size:11px;color:var(--color-text-muted)">合併後：封存為 merged，指向 LINE 主帳號</span></div>'+
     '<div style="padding:10px;border:1px solid var(--color-border-soft);border-radius:9px;margin-bottom:10px"><b>將保留的會員資格</b><br>'+_esc(preview.membershipType||'未設定')+'｜到期日 '+_esc(preview.membershipExpiry||'—')+'</div>'+
+    snapshotDiffs+
     '<div style="font-size:13px;margin-bottom:10px">'+
       _memberMergeCountRow('財務紀錄',counts.financialRecords)+
       _memberMergeCountRow('預約',counts.bookings)+
@@ -5027,7 +5044,8 @@ function _renderMemberMergePreview(candidateId,preview){
     (blockers?'<div style="padding:10px;background:rgba(180,60,50,.08);color:#9b3d32;border-radius:8px;margin-bottom:10px"><b>禁止合併</b><ul style="margin:6px 0 0;padding-left:18px">'+blockers+'</ul></div>':'')+
     (warnings?'<div style="padding:10px;background:rgba(201,145,42,.08);color:#80601f;border-radius:8px;margin-bottom:10px"><b>注意</b><ul style="margin:6px 0 0;padding-left:18px">'+warnings+'</ul></div>':'')+
     '<details style="font-size:11px;color:var(--color-text-muted);margin-bottom:14px"><summary>預計影響 documents（'+(preview.affectedDocuments||[]).length+'）</summary><ul style="padding-left:18px">'+docs+'</ul></details>'+
-    (preview.canMerge?'<button type="button" onclick="executeMemberMergeFromPreview()" style="width:100%;padding:12px;border:0;border-radius:9px;background:#8b611f;color:#fff;font-weight:600;cursor:pointer">執行合併</button>':'<button type="button" disabled style="width:100%;padding:12px;border:0;border-radius:9px;background:#bbb;color:#fff">安全檢查未通過</button>')+
+    (preview.canMerge?'<button type="button" onclick="executeMemberMergeFromPreview()" style="width:100%;padding:12px;border:0;border-radius:9px;background:#8b611f;color:#fff;font-weight:600;cursor:pointer">執行合併</button>':
+      (preview.canRevalidate?'<button type="button" onclick="revalidateMemberMergeCandidate()" style="width:100%;padding:12px;border:0;border-radius:9px;background:#8b611f;color:#fff;font-weight:600;cursor:pointer">重新驗證最新資料</button>':'<button type="button" disabled style="width:100%;padding:12px;border:0;border-radius:9px;background:#bbb;color:#fff">安全檢查未通過</button>'))+
     '<div style="font-size:10px;color:var(--color-text-muted);margin-top:8px;text-align:center">此畫面只是預覽；只有按下「執行合併」才會寫入資料。</div>'+
   '</div>';
   modal.addEventListener('click',function(event){if(event.target===modal) closeMemberMergePreview();});
@@ -5041,6 +5059,27 @@ function openMemberMergePreview(candidateId){
   firebase.app().functions('asia-east1').httpsCallable('previewMemberMerge')({candidateId:candidateId})
     .then(function(result){_renderMemberMergePreview(candidateId,result.data||{});})
     .catch(function(error){showToast((error&&error.message)||'無法產生合併預覽');});
+}
+
+function revalidateMemberMergeCandidate(){
+  var current=_memberMergePreview;
+  if(!current||!current.candidateId||!current.preview){showToast('請重新產生合併預覽');return;}
+  var manualDeleted=current.preview.manualMember&&current.preview.manualMember.status==='deleted';
+  var message='系統會重新讀取兩筆會員、Firebase Auth 與所有關聯資料，並保留首次候選快照。確定重新驗證嗎？';
+  if(manualDeleted){
+    message='手動來源會員目前為 deleted。請先確認這是同一人的來源帳號，且不是需要保留為獨立會員的刻意刪除。\n\n'+message;
+  }
+  if(!confirm(message)) return;
+  showToast('正在重新驗證候選最新資料…');
+  firebase.app().functions('asia-east1').httpsCallable('revalidateMemberMergeCandidate')({
+    candidateId:current.candidateId,
+    confirmDeletedSource:manualDeleted
+  }).then(function(result){
+    _renderMemberMergePreview(current.candidateId,result.data||{});
+    showToast('候選已重新驗證，請再次確認合併預覽');
+  }).catch(function(error){
+    showToast((error&&error.message)||'候選重新驗證失敗');
+  });
 }
 
 function executeMemberMergeFromPreview(){

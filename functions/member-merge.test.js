@@ -28,12 +28,16 @@ vm.runInContext([
   extractFunction('cleanString'),
   extractFunction('normaliseMemberName'),
   extractFunction('normaliseExpiryDate'),
+  extractFunction('duplicateMemberSnapshot'),
   extractFunction('canonicalMergeValue'),
   extractFunction('memberMergeHash'),
   extractFunction('bookingContainsMemberUid'),
   extractFunction('replaceMemberUidInBooking'),
   extractFunction('memberMergeMembership'),
   extractFunction('memberMergeSnapshotMatches'),
+  extractFunction('memberMergeSnapshotDiffValue'),
+  extractFunction('memberMergeSnapshotDifferences'),
+  extractFunction('buildRevalidatedMemberMergeCandidate'),
   extractFunction('memberMergeFinanceKey'),
   extractFunction('assessMemberMergeState'),
   extractFunction('memberMergeChange'),
@@ -128,6 +132,8 @@ const roleConflict = JSON.parse(JSON.stringify(state));
 roleConflict.manualMember.data.role = 'admin';
 assert(context.assessMemberMergeState(roleConflict).blockers.some((message) =>
   message.includes('角色不一致')));
+assert.strictEqual(context.assessMemberMergeState(
+  roleConflict, {ignoreSnapshotMismatch: true}).canMerge, false);
 
 const duplicateBooking = JSON.parse(JSON.stringify(state));
 duplicateBooking.bookings = [item('bookings/BOTH', {
@@ -143,6 +149,8 @@ financeConflict.lineFinancialRecords = [item('financialRecords/LINE_FINANCE', {
 })];
 assert(context.assessMemberMergeState(financeConflict).blockers.some((message) =>
   message.includes('財務帳期衝突')));
+assert.strictEqual(context.assessMemberMergeState(
+  financeConflict, {ignoreSnapshotMismatch: true}).canMerge, false);
 
 const extensionConflict = JSON.parse(JSON.stringify(state));
 extensionConflict.extensionRequests = [item(
@@ -152,8 +160,77 @@ extensionConflict.extensionRequests = [item(
 assert(context.assessMemberMergeState(extensionConflict).blockers.some((message) =>
   message.includes('加時申請')));
 
+const staleLine = {
+  uid: 'LINE_STALE', realName: '張瑞模', displayName: '瑞模',
+  role: 'member', status: 'approved', memberSource: 'line', approved: true,
+  membershipType: 'monthly', membershipExpiry: '2026/12/31',
+};
+const staleManual = {
+  uid: 'MANUAL_STALE', realName: '張瑞模', displayName: '張瑞模',
+  role: 'member', status: 'deleted', memberSource: 'manual', approved: false,
+  membershipType: 'monthly', membershipExpiry: '2026/12/31',
+};
+const staleCandidate = {
+  status: 'pending', lineMemberUid: 'LINE_STALE',
+  manualMemberUid: 'MANUAL_STALE',
+  lineMember: Object.assign({}, staleLine, {
+    status: 'pending', approved: false, membershipType: '',
+    membershipExpiry: '',
+  }),
+  manualMember: Object.assign({}, staleManual, {
+    status: 'approved', approved: true,
+  }),
+};
+const staleState = {
+  candidate: item('duplicateMemberCandidates/STALE', staleCandidate),
+  lineMember: item('members/LINE_STALE', staleLine),
+  manualMember: item('members/MANUAL_STALE', staleManual),
+  manualFinancialRecords: [],
+  lineFinancialRecords: [item('financialRecords/LINE_FINANCE', {
+    memberId: 'LINE_STALE', type: 'monthly', status: 'active',
+    billingYear: 2026, billingMonth: 11, amount: 800,
+    membershipExpiry: '2026/12/31',
+  })],
+  bookings: [], manualViolations: [], lineViolations: [],
+  manualSummary: null, lineSummary: null, coachMembers: [],
+  notifications: [], extensionRequests: [],
+};
+const staleAssessment = context.assessMemberMergeState(staleState);
+assert.strictEqual(staleAssessment.canMerge, false);
+assert(staleAssessment.snapshotDifferences.some((difference) =>
+  difference.memberType === 'line' && difference.field === 'status' &&
+  difference.before === 'pending' && difference.after === 'approved'));
+assert(staleAssessment.snapshotDifferences.some((difference) =>
+  difference.memberType === 'manual' && difference.field === 'status' &&
+  difference.before === 'approved' && difference.after === 'deleted'));
+const safeRevalidation = context.assessMemberMergeState(
+  staleState, {ignoreSnapshotMismatch: true});
+assert.strictEqual(safeRevalidation.canMerge, true);
+assert(safeRevalidation.warnings.some((message) =>
+  message.includes('deleted')));
+const refreshedCandidate = context.buildRevalidatedMemberMergeCandidate(
+  staleCandidate, 'LINE_STALE', staleLine, 'MANUAL_STALE', staleManual,
+  {uid: 'OWNER_UID', name: 'Owner'}, '2026-11-06T00:00:00.000Z',
+);
+const refreshedState = Object.assign({}, staleState, {
+  candidate: item('duplicateMemberCandidates/STALE', refreshedCandidate),
+});
+assert.strictEqual(context.assessMemberMergeState(refreshedState).canMerge, true);
+assert.strictEqual(refreshedCandidate.initialLineMember.status, 'pending');
+assert.strictEqual(refreshedCandidate.lineMember.status, 'approved');
+assert.strictEqual(refreshedCandidate.manualMember.status, 'deleted');
+assert.strictEqual(refreshedCandidate.revalidationCount, 1);
+const refreshedChanges = context.buildMemberMergeChanges(
+  refreshedState, context.assessMemberMergeState(refreshedState),
+  {uid: 'OWNER_UID', name: 'Owner'}, 'OP_STALE',
+  '2026-11-06T00:01:00.000Z',
+);
+assert(!refreshedChanges.some((change) =>
+  change.path === 'financialRecords/LINE_FINANCE'));
+
 [
   'exports.previewMemberMerge = onCall',
+  'exports.revalidateMemberMergeCandidate = onCall',
   'exports.executeMemberMerge = onCall',
   'exports.rollbackMemberMerge = onCall',
   'bookingDb.runTransaction',
@@ -167,6 +244,8 @@ assert(context.assessMemberMergeState(extensionConflict).blockers.some((message)
 [
   'function openMemberMergePreview',
   "httpsCallable('previewMemberMerge')",
+  'function revalidateMemberMergeCandidate',
+  "httpsCallable('revalidateMemberMergeCandidate')",
   'function executeMemberMergeFromPreview',
   "httpsCallable('executeMemberMerge')",
   '此畫面只是預覽',
