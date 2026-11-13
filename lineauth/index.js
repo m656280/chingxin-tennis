@@ -185,8 +185,14 @@ exports.lineCallback = onRequest(
         return res.redirect(`${APP_BASE_URL}?auth_error=no_user_id`);
       }
 
-      // ── Step 3: Upsert Firestore members/{lineUserId} ────────────────
-      const memberRef  = getDb().collection('members').doc(lineUserId);
+      // ── Step 3: Resolve the permanent member ID, then refresh profile ─
+      const linkSnap = await getDb().collection('memberIdentityLinks')
+        .doc(lineUserId).get();
+      const link = linkSnap.exists ? linkSnap.data() || {} : {};
+      const memberUid = link.status === 'active' && link.lineUid === lineUserId &&
+        typeof link.memberUid === 'string' && link.memberUid ?
+        link.memberUid : lineUserId;
+      const memberRef  = getDb().collection('members').doc(memberUid);
       const memberSnap = await memberRef.get();
       const now        = FieldValue.serverTimestamp();
 
@@ -223,6 +229,7 @@ exports.lineCallback = onRequest(
 
       await getDb().collection('sessions').doc(sessionToken).set({
         lineUserId,
+        memberUid,
         createdAt: now,
         expiresAt: Timestamp.fromDate(expiresAt),
       });
@@ -273,16 +280,24 @@ exports.issueFirebaseToken = onRequest(
         return res.status(401).json({ error: 'no_user_id' });
       }
 
-      // ② Read member doc for latest role / status
-      const memberSnap = await getDb().collection('members').doc(lineUserId).get();
+      // ② Resolve LINE login identity to the permanent member document.
+      const linkSnap = await getDb().collection('memberIdentityLinks')
+        .doc(lineUserId).get();
+      const link = linkSnap.exists ? linkSnap.data() || {} : {};
+      const memberUid = link.status === 'active' && link.lineUid === lineUserId &&
+        typeof link.memberUid === 'string' && link.memberUid ?
+        link.memberUid : lineUserId;
+      const memberSnap = await getDb().collection('members').doc(memberUid).get();
       const role   = memberSnap.exists ? (memberSnap.data().role   || 'member')  : 'member';
       const status = memberSnap.exists ? (memberSnap.data().status || 'pending') : 'pending';
 
       // ③ Issue Firebase Custom Token
-      const customToken = await getAuth().createCustomToken(lineUserId, { role, status });
+      const customToken = await getAuth().createCustomToken(
+        lineUserId, {role, status, memberUid});
 
-      console.info('[issueFirebaseToken] issued for:', lineUserId, '| role:', role, '| status:', status);
-      return res.status(200).json({ customToken });
+      console.info('[issueFirebaseToken] issued for:', lineUserId,
+        '| memberUid:', memberUid, '| role:', role, '| status:', status);
+      return res.status(200).json({customToken, memberUid});
 
     } catch (err) {
       // 完整 stack 進 Functions log；精簡 detail 回傳給前端 STEP3 顯示

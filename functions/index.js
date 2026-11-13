@@ -35,6 +35,7 @@ admin.initializeApp();
 const bookingDb = admin.firestore();
 const SERVER_TS = admin.firestore.FieldValue.serverTimestamp;
 const ADMIN_ROLES = new Set(['owner', 'admin']);
+const LEGACY_MEMBERSHIP_FALLBACK_END = '2026-12-31';
 const GENERAL_DAILY_LIMIT_START = '2026-08-10';
 const GENERAL_DAILY_LIMIT_MESSAGE =
   '一般會員每日最多可預約 2 小時（Hard A、Hard B 合併計算）。';
@@ -48,6 +49,12 @@ const VIOLATION_REASON_LABELS = {
   roster_mismatch: '預約名單與實際使用人員不符',
   other: '其他原因',
 };
+const MEMBERSHIP_PLANS = new Set([
+  'annual_standard', 'annual_senior', 'monthly',
+]);
+const BACKFILL_MEMBERSHIP_PLANS = new Set([
+  ...MEMBERSHIP_PLANS, 'annual_unclassified',
+]);
 
 function bookingHolidayCalendarRef(year) {
   return bookingDb.collection('bookingHolidayCalendars').doc(String(year));
@@ -174,6 +181,15 @@ function currentTaipeiYear() {
   }).format(new Date()));
 }
 
+function taipeiDateString(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    timeZone: 'Asia/Taipei',
+  }).formatToParts(now);
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
 function cleanString(value, maxLength = 200) {
   return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
 }
@@ -218,6 +234,199 @@ function duplicateMemberSnapshot(uid, member, source) {
   };
 }
 
+function memberIdentityLinkRef(lineUid) {
+  return bookingDb.collection('memberIdentityLinks').doc(lineUid);
+}
+
+async function resolveMemberIdentity(authUid, read) {
+  const get = read || ((ref) => ref.get());
+  const linkSnap = await get(memberIdentityLinkRef(authUid));
+  let memberUid = authUid;
+  let link = null;
+  if (linkSnap.exists) {
+    link = linkSnap.data() || {};
+    if (link.status === 'active') {
+      if (cleanString(link.lineUid, 200) !== authUid ||
+          !cleanString(link.memberUid, 200)) {
+        throw new HttpsError(
+          'failed-precondition', '會員身分綁定資料不完整，請聯絡管理員',
+        );
+      }
+      memberUid = cleanString(link.memberUid, 200);
+    }
+  }
+  const memberRef = bookingDb.collection('members').doc(memberUid);
+  const memberSnap = await get(memberRef);
+  return {
+    authUid,
+    memberUid,
+    memberRef,
+    memberSnap,
+    member: memberSnap.exists ? memberSnap.data() || {} : {},
+    link,
+  };
+}
+
+async function getAuthenticatedMember(request, read) {
+  if (!request.auth || !request.auth.uid) {
+    throw new HttpsError('unauthenticated', '請重新登入 LINE 後再試');
+  }
+  const identity = await resolveMemberIdentity(request.auth.uid, read);
+  if (!identity.memberSnap.exists) {
+    throw new HttpsError('permission-denied', '找不到操作者會員資料');
+  }
+  return identity;
+}
+
+// 去敏化會員目錄：一般使用者只取得預約／教練選單所需公開欄位。
+// 完整會員授權資料仍只能由本人或 Admin/Owner 透過 Firestore Rules 讀取。
+exports.getMemberDirectory = onCall({region: 'asia-east1'}, async (request) => {
+  const identity = await getAuthenticatedMember(request);
+  const actor = identity.member || {};
+  if (!isEligibleMember(actor)) {
+    throw new HttpsError('permission-denied', '目前帳號無法讀取會員名錄');
+  }
+  const snapshot = await bookingDb.collection('members').get();
+  const members = snapshot.docs
+    .map((doc) => ({id: doc.id, data: doc.data() || {}}))
+    .filter(({data}) => isEligibleMember(data) && !data.mergedInto)
+    .map(({id, data}) => ({
+      userId: id,
+      uid: id,
+      realName: cleanString(data.realName, 50),
+      displayName: cleanString(data.displayName, 50),
+      photoURL: cleanString(data.photoURL || data.pictureUrl, 500),
+      role: cleanString(data.role, 20) || 'member',
+      ntrp: data.ntrp == null ? '' : cleanString(String(data.ntrp), 10),
+      preferredPosition: cleanString(data.preferredPosition, 20),
+      status: 'approved',
+    }));
+  return {members};
+});
+
+function annualRosterExportStatus(periods, today) {
+  const list = periods || [];
+  if (list.length && list.every((period) => period.status === 'resigned')) {
+    return 'resigned';
+  }
+  const usable = list.filter((period) =>
+    !['revoked', 'cancelled', 'resigned'].includes(period.status));
+  if (usable.some((period) =>
+    (period.status === 'scheduled' && period.startDate && period.startDate <= today) ||
+    (period.status !== 'scheduled' &&
+      ['active', 'expired'].includes(period.status || 'active')))) {
+    return 'qualified';
+  }
+  if (usable.some((period) => period.status === 'scheduled' ||
+      (period.startDate && period.startDate > today))) {
+    return 'scheduled';
+  }
+  return 'missing';
+}
+
+function buildAnnualRosterExportRows(periodItems, memberNames, today) {
+  const grouped = new Map();
+  (periodItems || []).forEach((item) => {
+    const period = item.data || item || {};
+    const memberUid = cleanString(period.memberUid, 128);
+    if (!memberUid || ['revoked', 'cancelled'].includes(period.status)) return;
+    if (!grouped.has(memberUid)) grouped.set(memberUid, []);
+    grouped.get(memberUid).push(period);
+  });
+  return Array.from(grouped.entries()).map(([memberUid, periods]) => {
+    const representative = periods.slice().sort((first, second) =>
+      cleanString(second.expiryDate, 20)
+        .localeCompare(cleanString(first.expiryDate, 20)))[0] || {};
+    const expiryDate = periods.reduce((latest, period) => {
+      const expiry = cleanString(period.expiryDate, 20);
+      return expiry > latest ? expiry : latest;
+    }, '');
+    const status = annualRosterExportStatus(periods, today);
+    return {
+      memberName: cleanString(representative.memberName, 100) ||
+        cleanString((memberNames || {})[memberUid], 100) || '未指定會員',
+      membershipPlan: cleanString(representative.membershipPlan, 30),
+      membershipPlanLabel: membershipPlanLabel(representative.membershipPlan),
+      expiryDate,
+      status,
+      statusLabel: ({
+        qualified: '正式會員',
+        scheduled: '已繳待生效',
+        resigned: '年度離會',
+        missing: '尚無年度紀錄',
+      })[status] || '尚無年度紀錄',
+    };
+  }).sort((first, second) =>
+    first.memberName.localeCompare(second.memberName, 'zh-Hant'));
+}
+
+// 年度名冊匯出只由後端提供必要欄位；不回傳 UID、電話、Email 或 LINE 資料。
+exports.getAnnualMemberRosterExport = onCall(
+  {region: 'asia-east1'}, async (request) => {
+    const identity = await getAuthenticatedMember(request);
+    if (!ADMIN_ROLES.has(identity.member.role || '')) {
+      throw new HttpsError('permission-denied', '僅 Owner／Admin 可匯出年度會員名冊');
+    }
+    const membershipYear = Number((request.data || {}).membershipYear);
+    if (!Number.isInteger(membershipYear) || membershipYear < 2026 ||
+        membershipYear > 2100) {
+      throw new HttpsError('invalid-argument', '會員年度不正確');
+    }
+    const snapshot = await bookingDb.collection('membershipPeriods')
+      .where('membershipYear', '==', membershipYear).get();
+    const periodItems = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      data: doc.data() || {},
+    }));
+    const memberUids = Array.from(new Set(periodItems
+      .map((item) => cleanString(item.data.memberUid, 128))
+      .filter(Boolean)));
+    const memberNames = {};
+    if (memberUids.length) {
+      const memberSnaps = await bookingDb.getAll(...memberUids.map((memberUid) =>
+        bookingDb.collection('members').doc(memberUid)));
+      memberSnaps.forEach((memberSnap) => {
+        if (!memberSnap.exists) return;
+        const member = memberSnap.data() || {};
+        memberNames[memberSnap.id] = cleanString(
+          member.realName || member.displayName, 100,
+        );
+      });
+    }
+    return {
+      membershipYear,
+      rows: buildAnnualRosterExportRows(
+        periodItems, memberNames, taipeiDateString(),
+      ),
+      generatedAt: new Date().toISOString(),
+    };
+  },
+);
+
+// 本人重新送審改由後端限制狀態轉移，避免 client 可任意修改 status。
+exports.requestMemberReapproval = onCall(
+  {region: 'asia-east1'}, async (request) => {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError('unauthenticated', '請重新登入 LINE 後再試');
+    }
+    await bookingDb.runTransaction(async (transaction) => {
+      const identity = await getAuthenticatedMember(
+        request, (ref) => transaction.get(ref),
+      );
+      const status = cleanString(identity.member.status, 30);
+      if (!['deleted', 'removed', 'expired', 'inactive'].includes(status)) {
+        throw new HttpsError('failed-precondition', '目前狀態無法重新申請');
+      }
+      transaction.update(identity.memberRef, {
+        status: 'pending',
+        reappliedAt: SERVER_TS(),
+        updatedAt: SERVER_TS(),
+      });
+    });
+    return {ok: true};
+  },
+);
+
 function isActiveBooking(booking) {
   const status = booking.status || 'active';
   return status === 'active' || status === 'confirmed';
@@ -225,10 +434,10 @@ function isActiveBooking(booking) {
 
 function isEligibleMember(member) {
   if (!member) return false;
-  if (member.status === 'deleted' || member.status === 'merged' ||
-      member.mergedInto) return false;
+  if (['deleted', 'merged', 'blocked', 'resigned', 'rejected', 'pending']
+    .includes(member.status || '') || member.mergedInto) return false;
   if (ADMIN_ROLES.has(member.role || '')) {
-    return member.status !== 'deleted' && member.status !== 'blocked';
+    return true;
   }
   return member.status === 'active' ||
     member.status === 'approved' ||
@@ -275,15 +484,107 @@ function normaliseExpiryDate(value) {
 }
 
 function hasValidMembershipForBooking(member, date) {
-  const status = member.status || '';
-  if (['deleted', 'blocked', 'resigned', 'rejected', 'pending'].includes(status) ||
-      !isEligibleMember(member)) {
-    return false;
+  return evaluateMembershipAccess(member, date, [], {
+    allowAdminOverride: true,
+  }).allowed;
+}
+
+function evaluateMembershipAccess(member, date, periods, options) {
+  options = options || {};
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) {
+    return {allowed: false, reason: 'invalid_date', source: ''};
   }
-  const expiry = normaliseExpiryDate(
-    member.membershipExpiry || member.expireDate || '',
+  if (!isEligibleMember(member)) {
+    return {allowed: false, reason: 'account_ineligible', source: ''};
+  }
+  const role = member.role || '';
+  if (options.allowAdminOverride !== false && ADMIN_ROLES.has(role)) {
+    return {allowed: true, reason: '', source: 'admin_override', expiry: ''};
+  }
+  const validPeriods = (periods || []).filter((period) => {
+    const status = period.status || '';
+    return !['revoked', 'resigned', 'cancelled'].includes(status) &&
+      /^\d{4}-\d{2}-\d{2}$/.test(period.startDate || '') &&
+      /^\d{4}-\d{2}-\d{2}$/.test(period.expiryDate || '') &&
+      period.startDate <= date && date <= period.expiryDate;
+  }).sort((a, b) => String(b.expiryDate).localeCompare(String(a.expiryDate)));
+  if (validPeriods.length) {
+    return {
+      allowed: true, reason: '', source: 'membership_period',
+      expiry: validPeriods[0].expiryDate,
+    };
+  }
+  // Compatibility is deliberately limited to 2026. A members cache value
+  // extending into 2027 must never grant 2027+ access without a period.
+  if (date <= LEGACY_MEMBERSHIP_FALLBACK_END) {
+    const expiry = normaliseExpiryDate(
+      member.membershipExpiry || member.expireDate || '',
+    );
+    if (expiry && date <= expiry) {
+      return {allowed: true, reason: '', source: 'legacy_2026', expiry};
+    }
+  }
+  return {allowed: false, reason: 'no_active_period', source: ''};
+}
+
+async function membershipExpiryForBooking(memberUid, member, date) {
+  const periods = await bookingDb.collection('membershipPeriods')
+    .where('memberUid', '==', memberUid).get();
+  const access = evaluateMembershipAccess(
+    member, date, periods.docs.map((doc) => doc.data() || {}),
   );
-  return Boolean(expiry && date <= expiry);
+  return access.allowed ? access.expiry || date : '';
+}
+
+async function assertMemberHasBookingAccess(memberUid, member, date) {
+  const expiry = await membershipExpiryForBooking(memberUid, member, date);
+  if (!expiry) {
+    const name = memberDisplayName(member, memberUid);
+    throw new HttpsError(
+      'failed-precondition',
+      `${name}於此日期沒有有效會員資格，無法預約。`,
+    );
+  }
+  return expiry;
+}
+
+async function assertMembersHaveBookingAccess(memberUids, date) {
+  const uids = [...new Set((memberUids || []).filter(Boolean))];
+  if (!uids.length) return;
+  const snaps = await bookingDb.getAll(...uids.map((uid) =>
+    bookingDb.collection('members').doc(uid)));
+  await Promise.all(snaps.map(async (snap, index) => {
+    if (!snap.exists) {
+      throw new HttpsError('failed-precondition', '找不到預約會員資料');
+    }
+    await assertMemberHasBookingAccess(uids[index], snap.data() || {}, date);
+  }));
+}
+
+async function assertMembersHaveBookingAccessInTransaction(
+  transaction, memberUids, date,
+) {
+  const uids = [...new Set((memberUids || []).filter(Boolean))];
+  for (const uid of uids) {
+    const memberRef = bookingDb.collection('members').doc(uid);
+    const memberSnap = await transaction.get(memberRef);
+    if (!memberSnap.exists) {
+      throw new HttpsError('failed-precondition', '找不到預約會員資料');
+    }
+    const periodsSnap = await transaction.get(
+      bookingDb.collection('membershipPeriods').where('memberUid', '==', uid),
+    );
+    const member = memberSnap.data() || {};
+    const access = evaluateMembershipAccess(
+      member, date, periodsSnap.docs.map((doc) => doc.data() || {}),
+    );
+    if (!access.allowed) {
+      throw new HttpsError(
+        'failed-precondition',
+        `${memberDisplayName(member, uid)}於此日期沒有有效會員資格，無法預約。`,
+      );
+    }
+  }
 }
 
 async function assertSelectedTeachingStudentsEligible(studentUids, date) {
@@ -291,14 +592,15 @@ async function assertSelectedTeachingStudentsEligible(studentUids, date) {
   if (!selected.length) return;
   const snaps = await bookingDb.getAll(...selected.map((uid) =>
     bookingDb.collection('members').doc(uid)));
-  const invalidNames = snaps.reduce((names, snap, index) => {
+  const checks = await Promise.all(snaps.map(async (snap, index) => {
     const member = snap.exists ? snap.data() || {} : {};
-    if (!snap.exists || !hasValidMembershipForBooking(member, date)) {
-      names.push(member.realName || member.name ||
-        member.displayName || selected[index]);
-    }
-    return names;
-  }, []);
+    const expiry = snap.exists ? await membershipExpiryForBooking(
+      selected[index], member, date,
+    ) : '';
+    return expiry ? '' : member.realName || member.name ||
+      member.displayName || selected[index];
+  }));
+  const invalidNames = checks.filter(Boolean);
   if (invalidNames.length) {
     throw new HttpsError(
       'failed-precondition',
@@ -677,17 +979,32 @@ function assertExtensionTimeInput(date, court, startTime, endTime) {
   }
 }
 
-function assertExtensionMemberEligible(member, date) {
+function assertExtensionMemberEligible(memberUid, member, date) {
+  // Keep the pure two-argument form for existing unit coverage.
+  if (typeof memberUid === 'object') {
+    date = member;
+    member = memberUid;
+    if (!isEligibleMember(member) ||
+        (!ADMIN_ROLES.has(member.role || '') &&
+         !hasValidMembershipForBooking(member, date))) {
+      throw new HttpsError(
+        'failed-precondition', '會員會籍無法涵蓋申請日期，無法申請加時。',
+      );
+    }
+    return;
+  }
   if (!isEligibleMember(member)) {
     throw new HttpsError('failed-precondition', '會員目前不具有效資格');
   }
-  if (!ADMIN_ROLES.has(member.role || '') &&
-      !hasValidMembershipForBooking(member, date)) {
-    throw new HttpsError(
-      'failed-precondition',
-      '會員會籍無法涵蓋申請日期，無法申請加時。',
-    );
-  }
+  if (ADMIN_ROLES.has(member.role || '')) return Promise.resolve();
+  return membershipExpiryForBooking(memberUid, member, date).then((expiry) => {
+    if (!expiry) {
+      throw new HttpsError(
+        'failed-precondition',
+        '會員會籍無法涵蓋申請日期，無法申請加時。',
+      );
+    }
+  });
 }
 
 function generalBookingPlayerUids(booking) {
@@ -790,16 +1107,9 @@ function assertHardCourtUsageAllowed(
 }
 
 async function getBookingActorContext(request) {
-  if (!request.auth || !request.auth.uid) {
-    throw new HttpsError('unauthenticated', '請重新登入 LINE 後再試');
-  }
-
-  const actorUid = request.auth.uid;
-  const actorSnap = await bookingDb.collection('members').doc(actorUid).get();
-  if (!actorSnap.exists) {
-    throw new HttpsError('permission-denied', '找不到操作者會員資料');
-  }
-  const actor = actorSnap.data() || {};
+  const identity = await getAuthenticatedMember(request);
+  const actorUid = identity.memberUid;
+  const actor = identity.member;
 
   const bookingId = cleanString((request.data || {}).bookingId, 128);
   if (!bookingId) {
@@ -864,13 +1174,10 @@ exports.getBookingHolidayCalendar = onCall(
 exports.setBookingHolidayOverride = onCall(
   {region: 'asia-east1'},
   async (request) => {
-    if (!request.auth || !request.auth.uid) {
-      throw new HttpsError('unauthenticated', '請重新登入 LINE 後再試');
-    }
-    const actorUid = request.auth.uid;
-    const actorSnap = await bookingDb.collection('members').doc(actorUid).get();
-    const actor = actorSnap.exists ? actorSnap.data() || {} : {};
-    if (!actorSnap.exists || actor.role !== 'owner') {
+    const identity = await getAuthenticatedMember(request);
+    const actorUid = identity.memberUid;
+    const actor = identity.member;
+    if (actor.role !== 'owner') {
       throw new HttpsError('permission-denied', '僅 Owner 可調整特殊假日');
     }
     const date = cleanString(request.data && request.data.date, 10);
@@ -908,12 +1215,9 @@ exports.setBookingHolidayOverride = onCall(
 exports.syncBookingHolidayCalendar = onCall(
   {region: 'asia-east1', timeoutSeconds: 60},
   async (request) => {
-    if (!request.auth || !request.auth.uid) {
-      throw new HttpsError('unauthenticated', '請重新登入 LINE 後再試');
-    }
-    const actorUid = request.auth.uid;
-    const actorSnap = await bookingDb.collection('members').doc(actorUid).get();
-    if (!actorSnap.exists || (actorSnap.data() || {}).role !== 'owner') {
+    const identity = await getAuthenticatedMember(request);
+    const actorUid = identity.memberUid;
+    if (identity.member.role !== 'owner') {
       throw new HttpsError('permission-denied', '僅 Owner 可同步假日資料');
     }
     const year = Number(request.data && request.data.year);
@@ -949,16 +1253,12 @@ exports.prefetchNextBookingHolidayCalendar = onSchedule(
 );
 
 exports.createBooking = onCall({region: 'asia-east1'}, async (request) => {
-  if (!request.auth || !request.auth.uid) {
-    throw new HttpsError('unauthenticated', '請重新登入 LINE 後再試');
-  }
-
-  const actorUid = request.auth.uid;
-  const actorSnap = await bookingDb.collection('members').doc(actorUid).get();
-  if (!actorSnap.exists || !isEligibleMember(actorSnap.data() || {})) {
+  const identity = await getAuthenticatedMember(request);
+  const actorUid = identity.memberUid;
+  if (!isEligibleMember(identity.member)) {
     throw new HttpsError('permission-denied', '操作者目前不具有效會員資格');
   }
-  const actor = actorSnap.data() || {};
+  const actor = identity.member;
   const actorRole = actor.role || '';
 
   const input = (request.data || {}).booking || {};
@@ -996,6 +1296,7 @@ exports.createBooking = onCall({region: 'asia-east1'}, async (request) => {
       !ADMIN_ROLES.has(actorRole)) {
     throw new HttpsError('permission-denied', '教學預約僅限教練或管理員建立');
   }
+  await assertMemberHasBookingAccess(actorUid, actor, date);
 
   const booking = {
     date,
@@ -1049,7 +1350,14 @@ exports.createBooking = onCall({region: 'asia-east1'}, async (request) => {
 
   const bookingPlayerUids = Array.isArray(booking.players) ?
     [...new Set(booking.players.filter(Boolean))] : [];
+  if (mode === 'general' || mode === 'pickleball') {
+    await assertMembersHaveBookingAccess(bookingPlayerUids, date);
+  }
   const actorName = memberDisplayName(actor, actorUid);
+  const bookingAccessUids = [actorUid, ...bookingPlayerUids];
+  const bookingSubject = bookingSubjectUid(booking);
+  if (bookingSubject) bookingAccessUids.push(bookingSubject);
+  if (mode === 'teaching') bookingAccessUids.push(...(booking.students || []));
   await Promise.all(bookingPlayerUids.map((uid) =>
     normaliseExpiredViolationCycle(
       uid, actorUid, actorName, 'createBooking',
@@ -1071,8 +1379,9 @@ exports.createBooking = onCall({region: 'asia-east1'}, async (request) => {
     }
     const subjectRole = subject.role || '';
     if (!ADMIN_ROLES.has(subjectRole)) {
-      const expiryRaw = subject.membershipExpiry || subject.expireDate || '';
-      const expiry = normaliseExpiryDate(expiryRaw);
+      const expiry = await membershipExpiryForBooking(
+        subjectUid, subject, date,
+      );
       if (!expiry) {
         throw new HttpsError(
           'failed-precondition',
@@ -1120,6 +1429,9 @@ exports.createBooking = onCall({region: 'asia-east1'}, async (request) => {
       );
       await assertPlayersNotSuspendedInTransaction(
         transaction, bookingPlayerUids, 'suspended_booking_rejected',
+      );
+      await assertMembersHaveBookingAccessInTransaction(
+        transaction, bookingAccessUids, date,
       );
       const sameDateBookings = sameDateSnap.docs.map((doc) => ({
         id: doc.id,
@@ -1216,6 +1528,9 @@ exports.updateBooking = onCall({region: 'asia-east1'}, async (request) => {
       !ADMIN_ROLES.has(context.actorRole)) {
     throw new HttpsError('permission-denied', '教學預約僅限教練或管理員建立');
   }
+  await assertMemberHasBookingAccess(
+    context.actorUid, context.actor, date,
+  );
 
   const update = {
     date,
@@ -1256,7 +1571,14 @@ exports.updateBooking = onCall({region: 'asia-east1'}, async (request) => {
   }
   const bookingPlayerUids = Array.isArray(booking.players) ?
     [...new Set(booking.players.filter(Boolean))] : [];
+  if (mode === 'general' || mode === 'pickleball') {
+    await assertMembersHaveBookingAccess(bookingPlayerUids, date);
+  }
   const actorName = memberDisplayName(context.actor, context.actorUid);
+  const bookingAccessUids = [context.actorUid, ...bookingPlayerUids];
+  const bookingSubject = bookingSubjectUid(booking);
+  if (bookingSubject) bookingAccessUids.push(bookingSubject);
+  if (mode === 'teaching') bookingAccessUids.push(...(booking.students || []));
   await Promise.all(bookingPlayerUids.map((uid) =>
     normaliseExpiredViolationCycle(
       uid, context.actorUid, actorName, 'updateBooking',
@@ -1277,8 +1599,9 @@ exports.updateBooking = onCall({region: 'asia-east1'}, async (request) => {
     }
     const subjectRole = subject.role || '';
     if (!ADMIN_ROLES.has(subjectRole)) {
-      const expiryRaw = subject.membershipExpiry || subject.expireDate || '';
-      const expiry = normaliseExpiryDate(expiryRaw);
+      const expiry = await membershipExpiryForBooking(
+        subjectUid, subject, date,
+      );
       if (!expiry) {
         throw new HttpsError(
           'failed-precondition',
@@ -1334,6 +1657,9 @@ exports.updateBooking = onCall({region: 'asia-east1'}, async (request) => {
         .where('date', '==', context.booking.date));
     await assertPlayersNotSuspendedInTransaction(
       transaction, bookingPlayerUids, 'suspended_booking_rejected',
+    );
+    await assertMembersHaveBookingAccessInTransaction(
+      transaction, bookingAccessUids, date,
     );
     if (!currentBookingSnap.exists ||
         !isActiveBooking(currentBookingSnap.data() || {})) {
@@ -1676,6 +2002,9 @@ async function revokeInvalidExtensions(
 // ── Phase 1A: booking participant authorization + minimal audit ──────
 exports.addBookingParticipant = onCall({region: 'asia-east1'}, async (request) => {
   const context = await getBookingActorContext(request);
+  await assertMemberHasBookingAccess(
+    context.actorUid, context.actor, context.booking.date,
+  );
   const data = request.data || {};
   const targetUid = cleanString(data.targetUid, 128);
   const guestName = cleanString(data.guestName, 50);
@@ -1710,6 +2039,9 @@ exports.addBookingParticipant = onCall({region: 'asia-east1'}, async (request) =
     if (!isEligibleMember(targetMember)) {
       throw new HttpsError('failed-precondition', '此會員目前不具有效資格');
     }
+    await assertMemberHasBookingAccess(
+      targetUid, targetMember, context.booking.date,
+    );
     await normaliseExpiredViolationCycle(
       targetUid, context.actorUid, actorName, 'addBookingParticipant',
     );
@@ -1773,6 +2105,9 @@ exports.addBookingParticipant = onCall({region: 'asia-east1'}, async (request) =
     if (targetUid) {
       await assertPlayersNotSuspendedInTransaction(
         transaction, [targetUid], 'suspended_player_add_rejected',
+      );
+      await assertMembersHaveBookingAccessInTransaction(
+        transaction, [context.actorUid, targetUid], currentBooking.date,
       );
       if (currentPlayers.includes(targetUid)) {
         throw new HttpsError('already-exists', '此會員已在預約中');
@@ -1906,14 +2241,8 @@ exports.removeBookingParticipant = onCall({region: 'asia-east1'}, async (request
 });
 
 exports.leaveBooking = onCall({region: 'asia-east1'}, async (request) => {
-  if (!request.auth || !request.auth.uid) {
-    throw new HttpsError('unauthenticated', '請重新登入 LINE 後再試');
-  }
-  const actorUid = request.auth.uid;
-  const actorSnap = await bookingDb.collection('members').doc(actorUid).get();
-  if (!actorSnap.exists) {
-    throw new HttpsError('permission-denied', '找不到操作者會員資料');
-  }
+  const identity = await getAuthenticatedMember(request);
+  const actorUid = identity.memberUid;
   const bookingId = cleanString((request.data || {}).bookingId, 128);
   if (!bookingId) {
     throw new HttpsError('invalid-argument', 'bookingId 必填');
@@ -1933,7 +2262,7 @@ exports.leaveBooking = onCall({region: 'asia-east1'}, async (request) => {
     throw new HttpsError('failed-precondition', '距開始不足 30 分鐘，無法退出');
   }
 
-  const actor = actorSnap.data() || {};
+  const actor = identity.member;
   const actorName = actor.realName || actor.displayName || '';
   const lockRef = bookingDb.collection('bookingMutationLocks')
     .doc(bookingDateLockId(initialBooking.date));
@@ -2203,16 +2532,9 @@ exports.repairBookingOverlap = onCall(
 exports.submitBookingExtensionRequest = onCall(
   {region: 'asia-east1'},
   async (request) => {
-    if (!request.auth || !request.auth.uid) {
-      throw new HttpsError('unauthenticated', '請重新登入 LINE 後再試');
-    }
-    const requesterUid = request.auth.uid;
-    const memberSnap = await bookingDb.collection('members')
-      .doc(requesterUid).get();
-    if (!memberSnap.exists) {
-      throw new HttpsError('permission-denied', '找不到申請會員資料');
-    }
-    const member = memberSnap.data() || {};
+    const identity = await getAuthenticatedMember(request);
+    const requesterUid = identity.memberUid;
+    const member = identity.member;
     const requesterName = memberDisplayName(member, requesterUid);
     const input = request.data || {};
     const date = cleanString(input.date, 10);
@@ -2221,7 +2543,7 @@ exports.submitBookingExtensionRequest = onCall(
     const endTime = cleanString(input.endTime, 5);
     assertExtensionTimeInput(date, court, startTime, endTime);
     await assertBookingWithinOpenHours(date, startTime, endTime);
-    assertExtensionMemberEligible(member, date);
+    await assertExtensionMemberEligible(requesterUid, member, date);
     await normaliseExpiredViolationCycle(
       requesterUid, requesterUid, requesterName,
       'submitBookingExtensionRequest',
@@ -2360,13 +2682,10 @@ exports.submitBookingExtensionRequest = onCall(
 exports.approveBookingExtensionRequest = onCall(
   {region: 'asia-east1'},
   async (request) => {
-    if (!request.auth || !request.auth.uid) {
-      throw new HttpsError('unauthenticated', '請重新登入 LINE 後再試');
-    }
-    const actorUid = request.auth.uid;
-    const actorSnap = await bookingDb.collection('members').doc(actorUid).get();
-    const actor = actorSnap.exists ? actorSnap.data() || {} : {};
-    if (!actorSnap.exists || !ADMIN_ROLES.has(actor.role || '')) {
+    const identity = await getAuthenticatedMember(request);
+    const actorUid = identity.memberUid;
+    const actor = identity.member;
+    if (!ADMIN_ROLES.has(actor.role || '')) {
       throw new HttpsError('permission-denied', '僅管理員可核准加時申請');
     }
     const actorName = memberDisplayName(actor, actorUid);
@@ -2444,7 +2763,9 @@ exports.approveBookingExtensionRequest = onCall(
         throw new HttpsError('failed-precondition', '找不到申請會員資料');
       }
       const member = memberSnap.data() || {};
-      assertExtensionMemberEligible(member, extensionRequest.date);
+      await assertMembersHaveBookingAccessInTransaction(
+        transaction, [extensionRequest.requesterUid], extensionRequest.date,
+      );
 
       bookingId = `extension_${requestId}`;
       const bookingRef = bookingDb.collection('bookings').doc(bookingId);
@@ -2583,13 +2904,10 @@ exports.approveBookingExtensionRequest = onCall(
 exports.rejectBookingExtensionRequest = onCall(
   {region: 'asia-east1'},
   async (request) => {
-    if (!request.auth || !request.auth.uid) {
-      throw new HttpsError('unauthenticated', '請重新登入 LINE 後再試');
-    }
-    const actorUid = request.auth.uid;
-    const actorSnap = await bookingDb.collection('members').doc(actorUid).get();
-    const actor = actorSnap.exists ? actorSnap.data() || {} : {};
-    if (!actorSnap.exists || !ADMIN_ROLES.has(actor.role || '')) {
+    const identity = await getAuthenticatedMember(request);
+    const actorUid = identity.memberUid;
+    const actor = identity.member;
+    if (!ADMIN_ROLES.has(actor.role || '')) {
       throw new HttpsError('permission-denied', '僅管理員可拒絕加時申請');
     }
     const actorName = memberDisplayName(actor, actorUid);
@@ -2666,15 +2984,12 @@ exports.rejectBookingExtensionRequest = onCall(
 );
 
 async function getViolationActor(request, ownerOnly) {
-  if (!request.auth || !request.auth.uid) {
-    throw new HttpsError('unauthenticated', '請重新登入 LINE 後再試');
-  }
-  const actorUid = request.auth.uid;
-  const actorSnap = await bookingDb.collection('members').doc(actorUid).get();
-  const actor = actorSnap.exists ? actorSnap.data() || {} : {};
+  const identity = await getAuthenticatedMember(request);
+  const actorUid = identity.memberUid;
+  const actor = identity.member;
   const allowed = ownerOnly ? actor.role === 'owner' :
     ADMIN_ROLES.has(actor.role || '');
-  if (!actorSnap.exists || !allowed) {
+  if (!allowed) {
     throw new HttpsError(
       'permission-denied',
       ownerOnly ? '僅開發者可永久刪除違規紀錄' : '僅管理員可執行違規記點操作',
@@ -3153,14 +3468,10 @@ exports.deleteBookingViolation = onCall(
 );
 
 exports.restoreFinancialRecord = onCall({region: 'asia-east1'}, async (request) => {
-  if (!request.auth || !request.auth.uid) {
-    throw new HttpsError('unauthenticated', '請重新登入 LINE 後再試');
-  }
-
-  const actorUid = request.auth.uid;
-  const actorSnap = await bookingDb.collection('members').doc(actorUid).get();
-  const actor = actorSnap.exists ? actorSnap.data() || {} : {};
-  if (!actorSnap.exists || actor.role !== 'owner') {
+  const identity = await getAuthenticatedMember(request);
+  const actorUid = identity.memberUid;
+  const actor = identity.member;
+  if (actor.role !== 'owner') {
     throw new HttpsError('permission-denied', '僅 Owner 可恢復財務紀錄');
   }
   const actorName = cleanString(
@@ -3358,6 +3669,23 @@ function memberMergeFinanceKey(record) {
   return '';
 }
 
+function membershipPeriodsConflict(firstPeriods, secondPeriods) {
+  return (firstPeriods || []).some((first) =>
+    (secondPeriods || []).some((second) => {
+      const firstData = first.data || first;
+      const secondData = second.data || second;
+      const firstYear = Number(firstData.membershipYear) || 0;
+      const secondYear = Number(secondData.membershipYear) || 0;
+      if (firstYear && secondYear && firstYear === secondYear) return true;
+      const firstStart = cleanString(firstData.startDate, 10);
+      const firstEnd = cleanString(firstData.expiryDate, 10);
+      const secondStart = cleanString(secondData.startDate, 10);
+      const secondEnd = cleanString(secondData.expiryDate, 10);
+      return firstStart && firstEnd && secondStart && secondEnd &&
+        firstStart <= secondEnd && secondStart <= firstEnd;
+    }));
+}
+
 function assessMemberMergeState(state, options) {
   options = options || {};
   const blockers = [];
@@ -3410,6 +3738,19 @@ function assessMemberMergeState(state, options) {
   }
   if (state.lineSummary && state.manualSummary) {
     blockers.push('兩邊都有違規 summary');
+  }
+  if (membershipPeriodsConflict(
+    state.lineMembershipPeriods, state.manualMembershipPeriods,
+  )) {
+    blockers.push('兩邊有衝突的年度會員資格');
+  }
+  const lineDecisionYears = new Set((state.lineMembershipYearDecisions || [])
+    .filter((item) => item.data.status === 'not_joining')
+    .map((item) => Number(item.data.membershipYear)));
+  if ((state.manualMembershipYearDecisions || []).some((item) =>
+    item.data.status === 'not_joining' &&
+    lineDecisionYears.has(Number(item.data.membershipYear)))) {
+    blockers.push('兩邊有衝突的年度未加入決定');
   }
   if (Object.keys(lineMember.coachStudents || {}).length ||
       Object.keys(manualMember.coachStudents || {}).length) {
@@ -3469,6 +3810,9 @@ function assessMemberMergeState(state, options) {
       )).length,
     notifications: state.notifications.length,
     extensionRequests: state.extensionRequests.length,
+    membershipPeriods: (state.manualMembershipPeriods || []).length,
+    membershipYearDecisions:
+      (state.manualMembershipYearDecisions || []).length,
   };
   const hashPayload = {
     candidate: state.candidate,
@@ -3476,6 +3820,10 @@ function assessMemberMergeState(state, options) {
     manualMember: state.manualMember,
     manualFinancialRecords: state.manualFinancialRecords,
     lineFinancialRecords: state.lineFinancialRecords,
+    manualMembershipPeriods: state.manualMembershipPeriods,
+    lineMembershipPeriods: state.lineMembershipPeriods,
+    manualMembershipYearDecisions: state.manualMembershipYearDecisions,
+    lineMembershipYearDecisions: state.lineMembershipYearDecisions,
     bookings: state.bookings,
     manualViolations: state.manualViolations,
     lineViolations: state.lineViolations,
@@ -3484,6 +3832,9 @@ function assessMemberMergeState(state, options) {
     coachMembers: state.coachMembers,
     notifications: state.notifications,
     extensionRequests: state.extensionRequests,
+    identityLink: state.identityLink,
+    identityClaim: state.identityClaim,
+    memberIdentityLinks: state.memberIdentityLinks,
   };
   return {
     canMerge: blockers.length === 0,
@@ -3536,11 +3887,23 @@ async function loadMemberMergeState(read, candidateId) {
   const violations = bookingDb.collection('bookingViolations');
   const notifications = bookingDb.collection('notifications');
   const extensions = bookingDb.collection('bookingExtensionRequests');
+  const periods = bookingDb.collection('membershipPeriods');
+  const decisions = bookingDb.collection('membershipYearDecisions');
 
   const manualFinancialRecords = await readQuery(
     finance.where('memberId', '==', manualUid), 'financialRecords');
   const lineFinancialRecords = await readQuery(
     finance.where('memberId', '==', lineUid), 'financialRecords');
+  const manualMembershipPeriods = await readQuery(
+    periods.where('memberUid', '==', manualUid), 'membershipPeriods');
+  const lineMembershipPeriods = await readQuery(
+    periods.where('memberUid', '==', lineUid), 'membershipPeriods');
+  const manualMembershipYearDecisions = await readQuery(
+    decisions.where('memberUid', '==', manualUid),
+    'membershipYearDecisions');
+  const lineMembershipYearDecisions = await readQuery(
+    decisions.where('memberUid', '==', lineUid),
+    'membershipYearDecisions');
   const allBookings = await readQuery(bookings, 'bookings');
   const relatedBookings = allBookings.filter((item) =>
     bookingContainsMemberUid(item.data, manualUid) ||
@@ -3565,12 +3928,22 @@ async function loadMemberMergeState(read, candidateId) {
   }));
   const relatedNotifications = await readQuery(
     notifications.where('uid', '==', manualUid), 'notifications');
+  const lineNotifications = await readQuery(
+    notifications.where('uid', '==', lineUid), 'notifications');
   const manualExtensions = await readQuery(
     extensions.where('requesterUid', '==', manualUid),
     'bookingExtensionRequests');
   const lineExtensions = await readQuery(
     extensions.where('requesterUid', '==', lineUid),
     'bookingExtensionRequests');
+  const identityLinkSnap = await read(memberIdentityLinkRef(lineUid));
+  const identityClaimSnap = await read(
+    bookingDb.collection('memberIdentityClaims').doc(manualUid));
+  const memberIdentityLinks = await readQuery(
+    bookingDb.collection('memberIdentityLinks')
+      .where('memberUid', '==', manualUid),
+    'memberIdentityLinks',
+  );
 
   return {
     candidate: memberMergeDoc(
@@ -3579,6 +3952,10 @@ async function loadMemberMergeState(read, candidateId) {
     manualMember: memberMergeDoc(`members/${manualUid}`, manualSnap),
     manualFinancialRecords,
     lineFinancialRecords,
+    manualMembershipPeriods,
+    lineMembershipPeriods,
+    manualMembershipYearDecisions,
+    lineMembershipYearDecisions,
     bookings: union(relatedBookings),
     manualViolations,
     lineViolations,
@@ -3588,7 +3965,13 @@ async function loadMemberMergeState(read, candidateId) {
       `bookingViolationSummaries/${lineUid}`, lineSummarySnap),
     coachMembers,
     notifications: relatedNotifications,
+    lineNotifications,
     extensionRequests: union(manualExtensions.concat(lineExtensions)),
+    identityLink: memberMergeDoc(
+      `memberIdentityLinks/${lineUid}`, identityLinkSnap),
+    identityClaim: memberMergeDoc(
+      `memberIdentityClaims/${manualUid}`, identityClaimSnap),
+    memberIdentityLinks,
   };
 }
 
@@ -3642,6 +4025,10 @@ function buildMemberMergeChanges(state, assessment, actor, operationId, mergedAt
   }));
   state.manualFinancialRecords.forEach((item) => addChange(
     item, Object.assign({}, item.data, {memberId: lineUid})));
+  (state.manualMembershipPeriods || []).forEach((item) => addChange(
+    item, Object.assign({}, item.data, {memberUid: lineUid})));
+  (state.manualMembershipYearDecisions || []).forEach((item) => addChange(
+    item, Object.assign({}, item.data, {memberUid: lineUid})));
   state.bookings.filter((item) =>
     bookingContainsMemberUid(item.data, manualUid)).forEach((item) =>
     addChange(item, replaceMemberUidInBooking(item.data, manualUid, lineUid)));
@@ -3713,6 +4100,9 @@ function memberMergePreviewResponse(state, assessment, revalidationAssessment) {
       state.manualMember.path,
       state.candidate.path,
       ...state.manualFinancialRecords.map((item) => item.path),
+      ...(state.manualMembershipPeriods || []).map((item) => item.path),
+      ...(state.manualMembershipYearDecisions || [])
+        .map((item) => item.path),
       ...state.bookings.filter((item) =>
         bookingContainsMemberUid(item.data, state.manualMember.id))
         .map((item) => item.path),
@@ -3730,19 +4120,202 @@ function memberMergePreviewResponse(state, assessment, revalidationAssessment) {
   };
 }
 
-async function getOwnerMergeActor(request) {
-  if (!request.auth || !request.auth.uid) {
-    throw new HttpsError('unauthenticated', '請先登入');
+function assessMemberIdentityBindingState(state) {
+  const mergeAssessment = assessMemberMergeState(state);
+  const blockers = mergeAssessment.blockers.slice();
+  const lineUid = state.lineMember.id;
+  const manualUid = state.manualMember.id;
+  const lineStatus = state.lineMember.data.status || '';
+  if (state.candidate.id !== duplicateMemberPairId(lineUid, manualUid)) {
+    blockers.push('候選會員配對識別不一致');
   }
-  const actorSnap = await bookingDb.collection('members')
-    .doc(request.auth.uid).get();
-  const actor = actorSnap.exists ? actorSnap.data() || {} : {};
-  if (!actorSnap.exists || actor.role !== 'owner') {
+  if (['blocked', 'deleted', 'resigned', 'rejected'].includes(lineStatus)) {
+    blockers.push('LINE 登入身分目前為安全封鎖狀態');
+  }
+  if (state.identityLink) {
+    const link = state.identityLink.data || {};
+    if (link.status === 'active' && link.memberUid !== manualUid) {
+      blockers.push('此 LINE UID 已綁定其他永久會員');
+    } else {
+      blockers.push('此 LINE UID 已存在身分綁定紀錄');
+    }
+  }
+  if (state.identityClaim) {
+    const claim = state.identityClaim.data || {};
+    if (claim.status === 'active' && claim.lineUid !== lineUid) {
+      blockers.push('此永久會員已綁定其他 LINE UID');
+    } else {
+      blockers.push('此永久會員已存在身分認領紀錄');
+    }
+  }
+  (state.memberIdentityLinks || []).forEach((item) => {
+    if (item.id !== lineUid && (item.data || {}).status === 'active') {
+      blockers.push('此永久會員已綁定其他 LINE UID');
+    }
+  });
+  return Object.assign({}, mergeAssessment, {
+    canBind: blockers.length === 0,
+    blockers: [...new Set(blockers)],
+    previewHash: memberMergeHash({
+      basePreviewHash: mergeAssessment.previewHash,
+      action: 'identity_bind',
+      lineUid,
+      manualUid,
+    }),
+  });
+}
+
+function buildMemberIdentityBindingChanges(
+  state, assessment, actor, operationId, boundAt,
+) {
+  const changes = [];
+  const lineUid = state.lineMember.id;
+  const manualUid = state.manualMember.id;
+  const addChange = (item, after) => changes.push(
+    memberMergeChange(item.path, item.data, after));
+  const manualAfter = Object.assign({}, state.manualMember.data, {
+    lastIdentityOperationId: operationId,
+    updatedAt: boundAt,
+  });
+  if (!manualAfter.membershipType &&
+      assessment.effectiveMembership.membershipType) {
+    manualAfter.membershipType = assessment.effectiveMembership.membershipType;
+    manualAfter.membershipExpiry = assessment.effectiveMembership.membershipExpiry;
+    manualAfter.expireDate = assessment.effectiveMembership.membershipExpiry;
+  }
+  addChange(state.manualMember, manualAfter);
+  addChange(state.lineMember, Object.assign({}, state.lineMember.data, {
+    status: 'merged',
+    approved: false,
+    mergedInto: manualUid,
+    mergedAt: boundAt,
+    mergedByUid: actor.uid,
+    mergedByName: actor.name,
+    mergeOperationId: operationId,
+    updatedAt: boundAt,
+  }));
+  addChange(state.candidate, Object.assign({}, state.candidate.data, {
+    status: 'linked',
+    resolution: 'identity_bound',
+    resolvedAt: boundAt,
+    resolvedByUid: actor.uid,
+    resolvedByName: actor.name,
+    identityOperationId: operationId,
+  }));
+  changes.push(memberMergeChange(
+    `memberIdentityLinks/${lineUid}`,
+    state.identityLink ? state.identityLink.data : null,
+    {
+      lineUid,
+      memberUid: manualUid,
+      status: 'active',
+      candidateId: state.candidate.id,
+      operationId,
+      createdAt: boundAt,
+      createdByUid: actor.uid,
+      createdByName: actor.name,
+    },
+  ));
+  changes.push(memberMergeChange(
+    `memberIdentityClaims/${manualUid}`,
+    state.identityClaim ? state.identityClaim.data : null,
+    {
+      memberUid: manualUid,
+      lineUid,
+      status: 'active',
+      operationId,
+      createdAt: boundAt,
+    },
+  ));
+  state.lineFinancialRecords.forEach((item) => addChange(
+    item, Object.assign({}, item.data, {memberId: manualUid})));
+  (state.lineMembershipPeriods || []).forEach((item) => addChange(
+    item, Object.assign({}, item.data, {memberUid: manualUid})));
+  (state.lineMembershipYearDecisions || []).forEach((item) => addChange(
+    item, Object.assign({}, item.data, {memberUid: manualUid})));
+  state.bookings.filter((item) =>
+    bookingContainsMemberUid(item.data, lineUid)).forEach((item) =>
+    addChange(item, replaceMemberUidInBooking(item.data, lineUid, manualUid)));
+  state.lineViolations.forEach((item) => addChange(
+    item, Object.assign({}, item.data, {memberUid: manualUid})));
+  state.coachMembers.forEach((item) => {
+    const students = Object.assign({}, item.data.coachStudents || {});
+    if (!Object.prototype.hasOwnProperty.call(students, lineUid)) return;
+    students[manualUid] = students[lineUid];
+    delete students[lineUid];
+    addChange(item, Object.assign({}, item.data, {coachStudents: students}));
+  });
+  (state.lineNotifications || []).forEach((item) => addChange(
+    item, Object.assign({}, item.data, {uid: manualUid})));
+  if (state.lineSummary) {
+    const manualSummaryAfter = Object.assign({}, state.lineSummary.data, {
+      memberUid: manualUid,
+      identityOperationId: operationId,
+    });
+    changes.push(memberMergeChange(
+      `bookingViolationSummaries/${manualUid}`,
+      state.manualSummary ? state.manualSummary.data : null,
+      manualSummaryAfter,
+    ));
+    addChange(state.lineSummary, Object.assign({}, state.lineSummary.data, {
+      status: 'merged',
+      mergedInto: manualUid,
+      mergedAt: boundAt,
+      identityOperationId: operationId,
+    }));
+  }
+  return changes;
+}
+
+function memberIdentityBindingPreviewResponse(state, assessment) {
+  return {
+    canBind: assessment.canBind,
+    blockers: assessment.blockers,
+    warnings: assessment.warnings,
+    previewHash: assessment.previewHash,
+    lineMember: {
+      uid: state.lineMember.id,
+      realName: memberDisplayName(state.lineMember.data, state.lineMember.id),
+      status: state.lineMember.data.status || '',
+    },
+    permanentMember: {
+      uid: state.manualMember.id,
+      realName: memberDisplayName(state.manualMember.data, state.manualMember.id),
+      status: state.manualMember.data.status || '',
+    },
+    counts: Object.assign({}, assessment.counts, {
+      financialRecords: state.lineFinancialRecords.length,
+      membershipPeriods: (state.lineMembershipPeriods || []).length,
+      membershipYearDecisions:
+        (state.lineMembershipYearDecisions || []).length,
+      violations: state.lineViolations.length,
+      notifications: (state.lineNotifications || []).length,
+    }),
+  };
+}
+
+async function getIdentityAdminActor(request) {
+  const identity = await getAuthenticatedMember(request);
+  if (!ADMIN_ROLES.has(identity.member.role || '')) {
+    throw new HttpsError('permission-denied', '僅 Owner／Admin 可處理身分綁定');
+  }
+  return {
+    uid: identity.memberUid,
+    authUid: identity.authUid,
+    name: memberDisplayName(identity.member, identity.memberUid),
+  };
+}
+
+async function getOwnerMergeActor(request) {
+  const identity = await getAuthenticatedMember(request);
+  const actor = identity.member;
+  if (actor.role !== 'owner') {
     throw new HttpsError('permission-denied', '僅 Owner 可執行會員合併');
   }
   return {
-    uid: request.auth.uid,
-    name: memberDisplayName(actor, request.auth.uid),
+    uid: identity.memberUid,
+    authUid: identity.authUid,
+    name: memberDisplayName(actor, identity.memberUid),
   };
 }
 
@@ -3764,6 +4337,197 @@ async function assertMemberMergeAuthIdentity(lineUid, manualUid) {
       'failed-precondition', '手動來源帳號已有 Firebase Auth 身分，禁止自動重新驗證');
   }
 }
+
+exports.previewMemberIdentityBinding = onCall(
+  {region: 'asia-east1'}, async (request) => {
+    await getIdentityAdminActor(request);
+    const candidateId = cleanString(request.data && request.data.candidateId, 200);
+    if (!candidateId) throw new HttpsError('invalid-argument', '缺少候選 ID');
+    const state = await loadMemberMergeState((ref) => ref.get(), candidateId);
+    await assertMemberMergeAuthIdentity(
+      state.lineMember.id, state.manualMember.id);
+    return memberIdentityBindingPreviewResponse(
+      state, assessMemberIdentityBindingState(state));
+  },
+);
+
+exports.executeMemberIdentityBinding = onCall(
+  {region: 'asia-east1'}, async (request) => {
+    const actor = await getIdentityAdminActor(request);
+    const candidateId = cleanString(request.data && request.data.candidateId, 200);
+    const previewHash = cleanString(request.data && request.data.previewHash, 100);
+    if (!candidateId || !previewHash) {
+      throw new HttpsError('invalid-argument', '缺少候選 ID 或預覽憑證');
+    }
+    const initialState = await loadMemberMergeState(
+      (ref) => ref.get(), candidateId);
+    await assertMemberMergeAuthIdentity(
+      initialState.lineMember.id, initialState.manualMember.id);
+    const operationRef = bookingDb.collection('memberIdentityOperations').doc();
+    const auditRef = bookingDb.collection('memberIdentityAuditLogs').doc();
+    const boundAt = admin.firestore.Timestamp.now();
+    return bookingDb.runTransaction(async (transaction) => {
+      const state = await loadMemberMergeState(
+        (ref) => transaction.get(ref), candidateId);
+      const assessment = assessMemberIdentityBindingState(state);
+      if (!assessment.canBind) {
+        throw new HttpsError(
+          'failed-precondition', assessment.blockers.join('；'));
+      }
+      if (assessment.previewHash !== previewHash) {
+        throw new HttpsError(
+          'aborted', '資料已在預覽後變更，請重新預覽再執行綁定');
+      }
+      const changes = buildMemberIdentityBindingChanges(
+        state, assessment, actor, operationRef.id, boundAt);
+      if (changes.length > 100 ||
+          Buffer.byteLength(JSON.stringify(canonicalMergeValue(changes))) >
+            800000) {
+        throw new HttpsError(
+          'resource-exhausted', '受影響資料過多，請停止並由 Owner 人工確認');
+      }
+      changes.forEach((change) => {
+        transaction.set(bookingDb.doc(change.path), change.after);
+      });
+      transaction.set(operationRef, {
+        status: 'completed',
+        action: 'identity_bind',
+        candidateId,
+        lineUid: state.lineMember.id,
+        memberUid: state.manualMember.id,
+        actorUid: actor.uid,
+        actorAuthUid: actor.authUid,
+        actorName: actor.name,
+        createdAt: boundAt,
+        previewHash,
+        affectedDocuments: changes.map((change) => change.path),
+        changes,
+      });
+      transaction.set(auditRef, {
+        action: 'identity_bind',
+        candidateId,
+        operationId: operationRef.id,
+        lineUid: state.lineMember.id,
+        memberUid: state.manualMember.id,
+        actorUid: actor.uid,
+        actorAuthUid: actor.authUid,
+        actorName: actor.name,
+        timestamp: boundAt,
+        source: 'executeMemberIdentityBinding',
+      });
+      return {
+        ok: true,
+        operationId: operationRef.id,
+        memberUid: state.manualMember.id,
+      };
+    });
+  },
+);
+
+exports.rejectMemberIdentityBinding = onCall(
+  {region: 'asia-east1'}, async (request) => {
+    const actor = await getIdentityAdminActor(request);
+    const candidateId = cleanString(request.data && request.data.candidateId, 200);
+    const reason = cleanString(request.data && request.data.reason, 500);
+    if (!candidateId || !reason) {
+      throw new HttpsError('invalid-argument', '候選 ID 與拒絕原因必填');
+    }
+    const candidateRef = bookingDb.collection('duplicateMemberCandidates')
+      .doc(candidateId);
+    const auditRef = bookingDb.collection('memberIdentityAuditLogs').doc();
+    const rejectedAt = admin.firestore.Timestamp.now();
+    return bookingDb.runTransaction(async (transaction) => {
+      const candidateSnap = await transaction.get(candidateRef);
+      if (!candidateSnap.exists) {
+        throw new HttpsError('not-found', '找不到疑似重複會員候選');
+      }
+      const candidate = candidateSnap.data() || {};
+      if (candidate.status !== 'pending') {
+        throw new HttpsError('failed-precondition', '此候選已處理');
+      }
+      transaction.update(candidateRef, {
+        status: 'rejected',
+        resolution: 'not_same_person',
+        rejectedAt,
+        rejectedByUid: actor.uid,
+        rejectedByName: actor.name,
+        rejectReason: reason,
+      });
+      transaction.set(auditRef, {
+        action: 'identity_reject',
+        candidateId,
+        lineUid: candidate.lineMemberUid || '',
+        memberUid: candidate.manualMemberUid || '',
+        actorUid: actor.uid,
+        actorAuthUid: actor.authUid,
+        actorName: actor.name,
+        reason,
+        timestamp: rejectedAt,
+        source: 'rejectMemberIdentityBinding',
+      });
+      return {ok: true, candidateId};
+    });
+  },
+);
+
+exports.rollbackMemberIdentityBinding = onCall(
+  {region: 'asia-east1'}, async (request) => {
+    const actor = await getOwnerMergeActor(request);
+    const operationId = cleanString(request.data && request.data.operationId, 200);
+    const reason = cleanString(request.data && request.data.reason, 500);
+    if (!operationId || !reason) {
+      throw new HttpsError('invalid-argument', '操作 ID 與 rollback 原因必填');
+    }
+    const operationRef = bookingDb.collection('memberIdentityOperations')
+      .doc(operationId);
+    const auditRef = bookingDb.collection('memberIdentityAuditLogs').doc();
+    const rolledBackAt = admin.firestore.Timestamp.now();
+    return bookingDb.runTransaction(async (transaction) => {
+      const operationSnap = await transaction.get(operationRef);
+      if (!operationSnap.exists) throw new HttpsError('not-found', '找不到綁定操作');
+      const operation = operationSnap.data() || {};
+      if (operation.status !== 'completed' || !Array.isArray(operation.changes)) {
+        throw new HttpsError('failed-precondition', '此綁定操作不可 rollback');
+      }
+      const currentSnaps = [];
+      for (const change of operation.changes) {
+        currentSnaps.push(await transaction.get(bookingDb.doc(change.path)));
+      }
+      currentSnaps.forEach((snap, index) => {
+        const change = operation.changes[index];
+        const current = snap.exists ? snap.data() || {} : null;
+        if (memberMergeHash(current) !== change.afterHash) {
+          throw new HttpsError(
+            'aborted', `綁定後資料已變更，無法安全 rollback：${change.path}`);
+        }
+      });
+      operation.changes.forEach((change) => {
+        const ref = bookingDb.doc(change.path);
+        if (change.beforeExists) transaction.set(ref, change.before);
+        else transaction.delete(ref);
+      });
+      transaction.update(operationRef, {
+        status: 'rolled_back',
+        rolledBackAt,
+        rolledBackByUid: actor.uid,
+        rolledBackByName: actor.name,
+        rollbackReason: reason,
+      });
+      transaction.set(auditRef, {
+        action: 'identity_rollback',
+        operationId,
+        lineUid: operation.lineUid || '',
+        memberUid: operation.memberUid || '',
+        actorUid: actor.uid,
+        actorName: actor.name,
+        reason,
+        timestamp: rolledBackAt,
+        source: 'rollbackMemberIdentityBinding',
+      });
+      return {ok: true, operationId};
+    });
+  },
+);
 
 exports.previewMemberMerge = onCall({region: 'asia-east1'}, async (request) => {
   await getOwnerMergeActor(request);
@@ -3858,6 +4622,7 @@ exports.executeMemberMerge = onCall({region: 'asia-east1'}, async (request) => {
     throw new HttpsError('invalid-argument', '缺少候選 ID 或預覽憑證');
   }
   const operationRef = bookingDb.collection('memberMergeOperations').doc();
+  const auditRef = bookingDb.collection('memberIdentityAuditLogs').doc();
   const mergedAt = admin.firestore.Timestamp.now();
   return bookingDb.runTransaction(async (transaction) => {
     const state = await loadMemberMergeState(
@@ -3909,6 +4674,19 @@ exports.executeMemberMerge = onCall({region: 'asia-east1'}, async (request) => {
       },
       changes,
     });
+    transaction.set(auditRef, {
+      action: 'member_merge',
+      candidateId,
+      operationId: operationRef.id,
+      lineUid: state.lineMember.id,
+      memberUid: state.lineMember.id,
+      sourceMemberUid: state.manualMember.id,
+      actorUid: actor.uid,
+      actorAuthUid: actor.authUid || actor.uid,
+      actorName: actor.name,
+      timestamp: mergedAt,
+      source: 'executeMemberMerge',
+    });
     return {ok: true, operationId: operationRef.id, counts: assessment.counts};
   });
 });
@@ -3922,6 +4700,7 @@ exports.rollbackMemberMerge = onCall({region: 'asia-east1'}, async (request) => 
   }
   const operationRef = bookingDb.collection('memberMergeOperations')
     .doc(operationId);
+  const auditRef = bookingDb.collection('memberIdentityAuditLogs').doc();
   const rolledBackAt = admin.firestore.Timestamp.now();
   return bookingDb.runTransaction(async (transaction) => {
     const operationSnap = await transaction.get(operationRef);
@@ -3954,6 +4733,19 @@ exports.rollbackMemberMerge = onCall({region: 'asia-east1'}, async (request) => 
       rolledBackByName: actor.name,
       rollbackReason: reason,
     });
+    transaction.set(auditRef, {
+      action: 'member_merge_rollback',
+      operationId,
+      lineUid: operation.targetUid || '',
+      memberUid: operation.targetUid || '',
+      sourceMemberUid: operation.sourceUid || '',
+      actorUid: actor.uid,
+      actorAuthUid: actor.authUid || actor.uid,
+      actorName: actor.name,
+      reason,
+      timestamp: rolledBackAt,
+      source: 'rollbackMemberMerge',
+    });
     return {ok: true, operationId};
   });
 });
@@ -3973,6 +4765,9 @@ exports.detectDuplicateManualMember = onDocumentWritten(
     if (!shouldDetectDuplicateMember(before, after, beforeExists)) return;
 
     const lineMemberUid = event.params.memberId;
+    const identityLinkSnap = await memberIdentityLinkRef(lineMemberUid).get();
+    if (identityLinkSnap.exists &&
+        (identityLinkSnap.data() || {}).status === 'active') return;
     const normalisedName = normaliseMemberName(after.realName);
     const manualSnap = await bookingDb.collection('members')
       .where('memberSource', '==', 'manual')
@@ -4008,21 +4803,1079 @@ exports.detectDuplicateManualMember = onDocumentWritten(
   },
 );
 
+// ── Annual membership periods / renewals ────────────────────────────
+// members/{uid} remains the permanent identity.  membershipPeriods is the
+// immutable year/term history; members membership fields are only the active
+// cache and are never advanced before the period start date.
+function isIsoDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return parsed.getUTCFullYear() === year &&
+    parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day;
+}
+
+function addMembershipMonths(startDate, months) {
+  const [year, month, day] = startDate.split('-').map(Number);
+  const targetIndex = month - 1 + months;
+  const targetYear = year + Math.floor(targetIndex / 12);
+  const targetMonth = ((targetIndex % 12) + 12) % 12;
+  const lastDay = new Date(Date.UTC(targetYear, targetMonth + 1, 0))
+    .getUTCDate();
+  return `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-` +
+    `${String(Math.min(day, lastDay)).padStart(2, '0')}`;
+}
+
+function membershipTypeForPlan(plan) {
+  return plan === 'monthly' ? 'monthly' : 'annual';
+}
+
+function membershipPeriodStatus(startDate, expiryDate, today) {
+  if (today < startDate) return 'scheduled';
+  if (today > expiryDate) return 'expired';
+  return 'active';
+}
+
+function membershipPeriodId(memberUid, spec) {
+  const key = `${Number(spec.membershipYear)}|${memberUid}`;
+  return crypto.createHash('sha256').update(key).digest('hex');
+}
+
+function buildMembershipRenewalSpec(input, today = taipeiDateString()) {
+  const plan = cleanString(input.membershipPlan, 30);
+  if (!MEMBERSHIP_PLANS.has(plan)) throw new Error('invalid_membership_plan');
+  const paymentDate = cleanString(input.paymentDate, 10);
+  if (!isIsoDate(paymentDate)) throw new Error('invalid_payment_date');
+  const membershipType = membershipTypeForPlan(plan);
+  const membershipYear = Number(input.membershipYear);
+  const accountingYear = Number(input.accountingYear);
+  if (!Number.isInteger(accountingYear) || accountingYear < 2025 ||
+      accountingYear > 2036) throw new Error('invalid_accounting_year');
+  let accountingDate;
+  let membershipStartDate;
+  let membershipExpiry;
+  let periodMonths = null;
+  if (membershipType === 'annual') {
+    if (!Number.isInteger(membershipYear) || membershipYear < 2025 ||
+        membershipYear > 2036) throw new Error('invalid_membership_year');
+    accountingDate = `${accountingYear}-01-01`;
+    membershipStartDate = `${membershipYear}-01-01`;
+    membershipExpiry = `${membershipYear}-12-31`;
+  } else {
+    accountingDate = cleanString(input.accountingDate, 10);
+    if (!isIsoDate(accountingDate)) throw new Error('invalid_accounting_date');
+    if (Number(accountingDate.slice(0, 4)) !== accountingYear) {
+      throw new Error('accounting_year_mismatch');
+    }
+    periodMonths = Number(input.periodMonths || 1);
+    if (!Number.isInteger(periodMonths) || periodMonths < 1 ||
+        periodMonths > 12) throw new Error('invalid_period_months');
+    membershipStartDate = accountingDate;
+    membershipExpiry = addMembershipMonths(accountingDate, periodMonths);
+    if (membershipStartDate.startsWith('2026-') &&
+        membershipExpiry > '2026-12-31') membershipExpiry = '2026-12-31';
+  }
+  return {
+    membershipPlan: plan,
+    membershipType,
+    membershipYear: membershipType === 'annual' ? membershipYear :
+      Number(accountingDate.slice(0, 4)),
+    paymentDate,
+    accountingDate,
+    accountingYear,
+    membershipStartDate,
+    membershipExpiry,
+    periodMonths,
+    status: membershipPeriodStatus(
+      membershipStartDate, membershipExpiry, today,
+    ),
+  };
+}
+
+function renewalOperationDocId(actorUid, requestId) {
+  return crypto.createHash('sha256')
+    .update(`${actorUid}\n${requestId}`, 'utf8').digest('hex');
+}
+
+function membershipPlanLabel(plan) {
+  return ({
+    annual_standard: '一般年費',
+    annual_senior: '銀爸銀媽',
+    annual_unclassified: '年費會員（待分類）',
+    monthly: '月費',
+  })[plan] || '';
+}
+
+function membershipPeriodOperationId(actorUid, action, targetKey, requestId) {
+  return crypto.createHash('sha256')
+    .update(`${actorUid}\n${action}\n${targetKey}\n${requestId}`, 'utf8')
+    .digest('hex');
+}
+
+function assertMembershipManager(
+  actorUid, actor, targetUid, target, allowSelf = false,
+) {
+  const actorRole = actor.role || '';
+  const targetRole = target.role || 'member';
+  if (!ADMIN_ROLES.has(actorRole)) {
+    throw new HttpsError('permission-denied', '僅管理員可管理年度會員資格');
+  }
+  if (!allowSelf && actorUid === targetUid) {
+    throw new HttpsError('failed-precondition', '不可操作自己的年度離會資格');
+  }
+  if ((!allowSelf || actorUid !== targetUid) &&
+      (targetRole === 'owner' ||
+       (actorRole === 'admin' && targetRole === 'admin'))) {
+    throw new HttpsError('permission-denied', '無權限操作此會員');
+  }
+}
+
+function membershipPeriodAuditData(
+  operationId, action, periodId, period, actorUid, actorName,
+  before, after, reason,
+) {
+  return {
+    operationId,
+    action,
+    membershipPeriodId: periodId,
+    memberUid: period.memberUid || '',
+    membershipYear: Number(period.membershipYear) || null,
+    actorUid,
+    actorName,
+    before,
+    after,
+    reason,
+    createdAt: SERVER_TS(),
+    source: 'web_callable',
+  };
+}
+
+function membershipYearDecisionId(memberUid, membershipYear) {
+  return `${membershipYear}_${memberUid}`;
+}
+
+function financialRecordMembershipYear(record) {
+  const direct = Number(record.membershipYear || record.billingYear ||
+    record.year);
+  if (Number.isInteger(direct) && direct > 0) return direct;
+  const date = cleanString(record.accountingDate || record.date, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? Number(date.slice(0, 4)) : 0;
+}
+
+async function mutateMembershipYearDecision(request, action) {
+  const identity = await getAuthenticatedMember(request);
+  const input = request.data || {};
+  const memberUid = cleanString(input.memberUid, 128);
+  const membershipYear = Number(input.membershipYear);
+  const reason = cleanString(input.reason || input.note, 500);
+  const requestId = cleanString(input.requestId, 128);
+  if (!memberUid || !Number.isInteger(membershipYear) ||
+      membershipYear < 2025 || membershipYear > 2100 || !requestId) {
+    throw new HttpsError('invalid-argument', '會員、年度或請求識別碼不正確');
+  }
+  if (action === 'revoke' && !reason) {
+    throw new HttpsError('invalid-argument', '撤銷原因必填');
+  }
+  const actorUid = identity.memberUid;
+  const decisionId = membershipYearDecisionId(memberUid, membershipYear);
+  const operationId = membershipPeriodOperationId(
+    actorUid, `year_decision_${action}`, decisionId, requestId,
+  );
+  const actorRef = bookingDb.collection('members').doc(actorUid);
+  const targetRef = bookingDb.collection('members').doc(memberUid);
+  const decisionRef = bookingDb.collection('membershipYearDecisions')
+    .doc(decisionId);
+  const decisionsQuery = bookingDb.collection('membershipYearDecisions')
+    .where('memberUid', '==', memberUid);
+  const operationRef = bookingDb.collection('membershipPeriodOperations')
+    .doc(operationId);
+  const periodsQuery = bookingDb.collection('membershipPeriods')
+    .where('memberUid', '==', memberUid);
+  const financeQuery = bookingDb.collection('financialRecords')
+    .where('memberId', '==', memberUid);
+  return bookingDb.runTransaction(async (transaction) => {
+    const [actorSnap, targetSnap, decisionSnap, decisionsSnap, operationSnap,
+      periodsSnap, financeSnap] = await Promise.all([
+      transaction.get(actorRef), transaction.get(targetRef),
+      transaction.get(decisionRef), transaction.get(decisionsQuery),
+      transaction.get(operationRef),
+      transaction.get(periodsQuery), transaction.get(financeQuery),
+    ]);
+    if (operationSnap.exists) {
+      const saved = operationSnap.data() || {};
+      if (saved.action !== `year_decision_${action}` ||
+          saved.memberUid !== memberUid ||
+          Number(saved.membershipYear) !== membershipYear) {
+        throw new HttpsError('already-exists', '請求識別碼已用於其他操作');
+      }
+      return {ok: true, idempotent: true, decisionId};
+    }
+    if (!actorSnap.exists || !targetSnap.exists) {
+      throw new HttpsError('not-found', '找不到操作者或會員資料');
+    }
+    const actor = actorSnap.data() || {};
+    const target = targetSnap.data() || {};
+    assertMembershipManager(actorUid, actor, memberUid, target);
+    const matchingDecisions = decisionsSnap.docs.filter((doc) =>
+      Number((doc.data() || {}).membershipYear) === membershipYear);
+    const resolvedDecisionSnap = decisionSnap.exists ? decisionSnap :
+      matchingDecisions[0];
+    if (matchingDecisions.filter((doc) =>
+      (doc.data() || {}).status === 'not_joining').length > 1) {
+      throw new HttpsError('failed-precondition', '此年度存在重複未加入決定，請人工確認');
+    }
+    const resolvedDecisionRef = resolvedDecisionSnap ?
+      resolvedDecisionSnap.ref : decisionRef;
+    const resolvedDecisionId = resolvedDecisionSnap ?
+      resolvedDecisionSnap.id : decisionId;
+    const currentDecision = resolvedDecisionSnap ?
+      resolvedDecisionSnap.data() || {} : {};
+    if (action === 'mark') {
+      if (currentDecision.status === 'not_joining') {
+        return {ok: true, idempotent: true, decisionId: resolvedDecisionId};
+      }
+      const hasPeriodConflict = periodsSnap.docs.some((doc) => {
+        const period = doc.data() || {};
+        return Number(period.membershipYear) === membershipYear &&
+          !['revoked', 'cancelled'].includes(period.status || '');
+      });
+      const hasFinanceConflict = financeSnap.docs.some((doc) => {
+        const record = doc.data() || {};
+        return (record.status || 'active') !== 'void' &&
+          ['annual', 'monthly'].includes(record.type || record.membershipType) &&
+          financialRecordMembershipYear(record) === membershipYear;
+      });
+      if (hasPeriodConflict || hasFinanceConflict) {
+        throw new HttpsError(
+          'failed-precondition',
+          '此年度已有會員資格或繳費紀錄，請先處理衝突',
+        );
+      }
+      const hasPriorPeriod = periodsSnap.docs.some((doc) => {
+        const period = doc.data() || {};
+        return Number(period.membershipYear) < membershipYear &&
+          !['revoked', 'cancelled'].includes(period.status || '');
+      });
+      if (!hasPriorPeriod) {
+        throw new HttpsError('failed-precondition', '此會員不在指定年度待續會名單');
+      }
+    } else if (currentDecision.status !== 'not_joining') {
+      throw new HttpsError('failed-precondition', '此年度沒有可撤銷的未加入決定');
+    }
+    const actorName = memberDisplayName(actor, actorUid);
+    const memberName = memberDisplayName(target, memberUid);
+    const before = decisionSnap.exists ? {
+      status: currentDecision.status || '',
+      note: currentDecision.note || '',
+    } : null;
+    const now = SERVER_TS();
+    const after = action === 'mark' ? {
+      status: 'not_joining', note: reason,
+    } : {
+      status: 'revoked', note: currentDecision.note || '',
+    };
+    if (action === 'mark') {
+      transaction.set(resolvedDecisionRef, {
+        memberUid,
+        memberName,
+        membershipYear,
+        status: 'not_joining',
+        note: reason,
+        decidedAt: now,
+        decidedByUid: actorUid,
+        decidedByName: actorName,
+        updatedAt: now,
+      }, {merge: true});
+    } else {
+      transaction.update(resolvedDecisionRef, {
+        status: 'revoked',
+        revokedAt: now,
+        revokedByUid: actorUid,
+        revokedByName: actorName,
+        revokeReason: reason,
+        updatedAt: now,
+      });
+    }
+    transaction.set(
+      bookingDb.collection('membershipPeriodAuditLogs').doc(operationId),
+      membershipPeriodAuditData(
+        operationId,
+        action === 'mark' ? 'membership_year_not_joining' :
+          'membership_year_not_joining_revoked',
+        resolvedDecisionId, {memberUid, membershipYear}, actorUid, actorName,
+        before, after, reason,
+      ),
+    );
+    transaction.set(operationRef, {
+      action: `year_decision_${action}`,
+      memberUid,
+      membershipYear,
+      decisionId: resolvedDecisionId,
+      reason,
+      actorUid,
+      status: 'completed',
+      createdAt: now,
+    });
+    return {ok: true, idempotent: false, decisionId: resolvedDecisionId};
+  });
+}
+
+async function mutateMembershipYearStatus(request, action) {
+  const identity = await getAuthenticatedMember(request);
+  const input = request.data || {};
+  const memberUid = cleanString(input.memberUid, 128);
+  const membershipYear = Number(input.membershipYear);
+  const reason = cleanString(input.reason, 500);
+  const requestId = cleanString(input.requestId, 128);
+  if (!memberUid || !Number.isInteger(membershipYear) ||
+      !reason || !requestId) {
+    throw new HttpsError('invalid-argument', '會員、年度、原因或請求識別碼不正確');
+  }
+  if (action === 'restore' && input.confirmRestore !== true) {
+    throw new HttpsError('failed-precondition', '恢復年度資格需要管理員明確確認');
+  }
+  const actorUid = identity.memberUid;
+  const targetKey = `${memberUid}|${membershipYear}`;
+  const operationId = membershipPeriodOperationId(
+    actorUid, action, targetKey, requestId,
+  );
+  const operationRef = bookingDb.collection('membershipPeriodOperations')
+    .doc(operationId);
+  const targetRef = bookingDb.collection('members').doc(memberUid);
+  const periodsQuery = bookingDb.collection('membershipPeriods')
+    .where('memberUid', '==', memberUid);
+  return bookingDb.runTransaction(async (transaction) => {
+    const [actorSnap, targetSnap, operationSnap, periodsSnap] =
+      await Promise.all([
+        transaction.get(bookingDb.collection('members').doc(actorUid)),
+        transaction.get(targetRef), transaction.get(operationRef),
+        transaction.get(periodsQuery),
+      ]);
+    if (operationSnap.exists) {
+      const saved = operationSnap.data() || {};
+      if (saved.action !== action || saved.memberUid !== memberUid ||
+          Number(saved.membershipYear) !== membershipYear) {
+        throw new HttpsError('already-exists', '請求識別碼已用於其他操作');
+      }
+      return {ok: true, idempotent: true, affectedCount: saved.affectedCount || 0};
+    }
+    if (!actorSnap.exists || !targetSnap.exists) {
+      throw new HttpsError('not-found', '找不到操作者或會員資料');
+    }
+    const actor = actorSnap.data() || {};
+    const target = targetSnap.data() || {};
+    assertMembershipManager(actorUid, actor, memberUid, target);
+    const periods = periodsSnap.docs.filter((doc) =>
+      Number((doc.data() || {}).membershipYear) === membershipYear);
+    if (!periods.length) {
+      throw new HttpsError('failed-precondition', '此會員沒有指定年度資格紀錄');
+    }
+    const actorName = memberDisplayName(actor, actorUid);
+    const now = SERVER_TS();
+    const today = taipeiDateString();
+    let affectedCount = 0;
+    periods.forEach((periodSnap) => {
+      const period = periodSnap.data() || {};
+      if (action === 'resign') {
+        if (period.status === 'resigned') return;
+        if (!['active', 'scheduled'].includes(period.status || '')) return;
+        const before = {
+          status: period.status || '',
+          membershipPlan: period.membershipPlan || '',
+        };
+        const after = {
+          status: 'resigned',
+          membershipPlan: period.membershipPlan || '',
+        };
+        transaction.update(periodSnap.ref, {
+          status: 'resigned',
+          statusBeforeResign: period.status || '',
+          resignedAt: now,
+          resignedByUid: actorUid,
+          resignedByName: actorName,
+          reason,
+          resignReason: reason,
+          updatedAt: now,
+        });
+        transaction.set(
+          bookingDb.collection('membershipPeriodAuditLogs')
+            .doc(`${operationId}_${periodSnap.id}`),
+          membershipPeriodAuditData(
+            operationId, 'membership_resigned', periodSnap.id, period,
+            actorUid, actorName, before, after, reason,
+          ),
+        );
+      } else {
+        if (period.status !== 'resigned') return;
+        const restoredStatus = membershipPeriodStatus(
+          period.startDate, period.expiryDate, today,
+        );
+        const before = {
+          status: period.status,
+          membershipPlan: period.membershipPlan || '',
+        };
+        const after = {
+          status: restoredStatus,
+          membershipPlan: period.membershipPlan || '',
+        };
+        transaction.update(periodSnap.ref, {
+          status: restoredStatus,
+          restoredAt: now,
+          restoredByUid: actorUid,
+          restoredByName: actorName,
+          restoreReason: reason,
+          updatedAt: now,
+        });
+        transaction.set(
+          bookingDb.collection('membershipPeriodAuditLogs')
+            .doc(`${operationId}_${periodSnap.id}`),
+          membershipPeriodAuditData(
+            operationId, 'membership_restored', periodSnap.id, period,
+            actorUid, actorName, before, after, reason,
+          ),
+        );
+      }
+      affectedCount += 1;
+    });
+    if (!affectedCount) {
+      throw new HttpsError(
+        'failed-precondition',
+        action === 'resign' ? '此年度沒有可離會的有效資格' : '此年度沒有可恢復的離會資格',
+      );
+    }
+    transaction.set(operationRef, {
+      action,
+      memberUid,
+      membershipYear,
+      affectedCount,
+      reason,
+      actorUid,
+      createdAt: now,
+      status: 'completed',
+    });
+    return {ok: true, idempotent: false, affectedCount};
+  });
+}
+
+function membershipInputError(error) {
+  const labels = {
+    invalid_membership_plan: '會員分類不正確',
+    invalid_payment_date: '實際收款日格式不正確',
+    invalid_accounting_date: '財務歸屬日格式不正確',
+    invalid_accounting_year: '財務歸屬年度不正確',
+    accounting_year_mismatch: '財務歸屬日與歸屬年度不一致',
+    invalid_membership_year: '會籍年度不正確',
+    invalid_period_months: '月費期數不正確',
+  };
+  return labels[error && error.message] || '續會資料格式不正確';
+}
+
+exports.createMembershipRenewal = onCall(
+  {region: 'asia-east1'}, async (request) => {
+    const identity = await getAuthenticatedMember(request);
+    const input = request.data || {};
+    const memberUid = cleanString(input.memberUid, 128);
+    const requestId = cleanString(input.idempotencyKey, 128);
+    const amount = Number(input.amount);
+    if (!memberUid || !requestId || !Number.isInteger(amount) || amount <= 0) {
+      throw new HttpsError('invalid-argument', '會員、金額或請求識別碼不正確');
+    }
+    let spec;
+    try {
+      spec = buildMembershipRenewalSpec(input);
+    } catch (error) {
+      throw new HttpsError('invalid-argument', membershipInputError(error));
+    }
+    const actorUid = identity.memberUid;
+    const operationId = renewalOperationDocId(actorUid, requestId);
+    const operationRef = bookingDb.collection('membershipRenewalOperations')
+      .doc(operationId);
+    const memberRef = bookingDb.collection('members').doc(memberUid);
+    const periodId = membershipPeriodId(memberUid, spec);
+    const periodRef = bookingDb.collection('membershipPeriods').doc(periodId);
+    const decisionsQuery = bookingDb.collection('membershipYearDecisions')
+      .where('memberUid', '==', memberUid);
+    const financeRef = bookingDb.collection('financialRecords')
+      .doc(`renewal_${operationId}`);
+
+    return bookingDb.runTransaction(async (transaction) => {
+      const actorRef = bookingDb.collection('members').doc(actorUid);
+      const [actorSnap, memberSnap, operationSnap, periodSnap, decisionsSnap,
+        financeSnap, memberFinanceSnap] = await Promise.all([
+        transaction.get(actorRef),
+        transaction.get(memberRef),
+        transaction.get(operationRef),
+        transaction.get(periodRef),
+        transaction.get(decisionsQuery),
+        transaction.get(financeRef),
+        transaction.get(bookingDb.collection('financialRecords')
+          .where('memberId', '==', memberUid)),
+      ]);
+      const actor = actorSnap.exists ? actorSnap.data() || {} : {};
+      if (!actorSnap.exists || !ADMIN_ROLES.has(actor.role || '')) {
+        throw new HttpsError('permission-denied', '僅管理員可建立會員續會');
+      }
+      if (operationSnap.exists) {
+        const saved = operationSnap.data() || {};
+        if (saved.memberUid !== memberUid) {
+          throw new HttpsError('already-exists', '此請求識別碼已用於其他會員');
+        }
+        return {
+          ok: true, idempotent: true, operationId,
+          financialRecordId: saved.financialRecordId || financeRef.id,
+          membershipPeriodId: saved.membershipPeriodId || periodId,
+        };
+      }
+      if (!memberSnap.exists) {
+        throw new HttpsError('not-found', '找不到會員資料');
+      }
+      if (decisionsSnap.docs.some((doc) => {
+        const decision = doc.data() || {};
+        return Number(decision.membershipYear) === spec.membershipYear &&
+          decision.status === 'not_joining';
+      })) {
+        throw new HttpsError(
+          'failed-precondition', '請先撤銷此年度「今年不加入」再建立繳費資格',
+        );
+      }
+      const member = memberSnap.data() || {};
+      if (member.status === 'merged' || member.mergedInto ||
+          member.status === 'blocked') {
+        throw new HttpsError('failed-precondition', '此會員狀態不可續會');
+      }
+      const duplicates = memberFinanceSnap.docs.some((doc) => {
+        const record = doc.data() || {};
+        if ((record.status || 'active') === 'void') return false;
+        if (record.type !== spec.membershipType) return false;
+        if (spec.membershipType === 'annual') {
+          return Number(record.membershipYear) === spec.membershipYear;
+        }
+        return Number(record.billingYear) ===
+            Number(spec.accountingDate.slice(0, 4)) &&
+          Number(record.billingMonth) ===
+            Number(spec.accountingDate.slice(5, 7));
+      });
+      if (duplicates || financeSnap.exists) {
+        throw new HttpsError('already-exists', '此會員該年度／帳期已有繳費資格');
+      }
+      const existingPeriod = periodSnap.exists ? periodSnap.data() || {} : null;
+      if (existingPeriod) {
+        if (existingPeriod.memberUid !== memberUid ||
+            Number(existingPeriod.membershipYear) !== spec.membershipYear ||
+            existingPeriod.membershipType !== spec.membershipType ||
+            ['revoked', 'cancelled', 'resigned'].includes(existingPeriod.status || '')) {
+          throw new HttpsError('failed-precondition', '同年度會員資格存在衝突，請人工確認');
+        }
+        if (spec.membershipType === 'annual') {
+          throw new HttpsError('already-exists', '此會員該年度已有年費資格');
+        }
+      }
+      const actorName = memberDisplayName(actor, actorUid);
+      const memberName = memberDisplayName(member, memberUid);
+      const now = SERVER_TS();
+      const finance = {
+        type: spec.membershipType,
+        memberId: memberUid,
+        memberDisplayName: cleanString(member.displayName, 100),
+        memberRealName: cleanString(member.realName, 100),
+        memberNameSnapshot: memberName,
+        date: spec.paymentDate,
+        accountingDate: spec.accountingDate,
+        year: spec.accountingYear,
+        amount,
+        note: cleanString(input.note, 300),
+        membershipType: spec.membershipType,
+        membershipPlan: spec.membershipPlan,
+        membershipYear: spec.membershipYear,
+        membershipStartDate: spec.membershipStartDate,
+        membershipExpiry: spec.membershipExpiry.replace(/-/g, '/'),
+        periodMonths: spec.periodMonths,
+        billingYear: spec.membershipType === 'monthly' ?
+          Number(spec.accountingDate.slice(0, 4)) : null,
+        billingMonth: spec.membershipType === 'monthly' ?
+          Number(spec.accountingDate.slice(5, 7)) : null,
+        renewalOperationId: operationId,
+        createdByUid: actorUid,
+        createdByName: actorName,
+        createdAt: now,
+        updatedAt: null,
+        status: 'active',
+      };
+      const combinedStartDate = existingPeriod && existingPeriod.startDate <
+        spec.membershipStartDate ? existingPeriod.startDate : spec.membershipStartDate;
+      const combinedExpiryDate = existingPeriod && existingPeriod.expiryDate >
+        spec.membershipExpiry ? existingPeriod.expiryDate : spec.membershipExpiry;
+      const period = {
+        memberUid,
+        memberName,
+        membershipYear: spec.membershipYear,
+        membershipType: spec.membershipType,
+        membershipPlan: spec.membershipPlan,
+        membershipPlanLabel: membershipPlanLabel(spec.membershipPlan),
+        startDate: combinedStartDate,
+        expiryDate: combinedExpiryDate,
+        status: membershipPeriodStatus(
+          combinedStartDate, combinedExpiryDate, taipeiDateString(),
+        ),
+        financialRecordId: existingPeriod && existingPeriod.financialRecordId ||
+          financeRef.id,
+        financialRecordIds: admin.firestore.FieldValue.arrayUnion(financeRef.id),
+        renewalOperationId: operationId,
+        renewalOperationIds: admin.firestore.FieldValue.arrayUnion(operationId),
+        updatedAt: now,
+        updatedByUid: actorUid,
+        updatedByName: actorName,
+      };
+      if (!existingPeriod) {
+        Object.assign(period, {
+          createdAt: now,
+          createdByUid: actorUid,
+          createdByName: actorName,
+        });
+      }
+      transaction.set(financeRef, finance);
+      transaction.set(periodRef, period, {merge: true});
+      transaction.set(
+        bookingDb.collection('membershipPeriodAuditLogs')
+          .doc(`renewal_${operationId}`),
+        membershipPeriodAuditData(
+          operationId, existingPeriod ? 'membership_period_extended' :
+            'membership_period_created', periodId,
+          existingPeriod || {memberUid, membershipYear: spec.membershipYear},
+          actorUid, actorName,
+          existingPeriod ? {
+            startDate: existingPeriod.startDate || '',
+            expiryDate: existingPeriod.expiryDate || '',
+            financialRecordIds: existingPeriod.financialRecordIds ||
+              (existingPeriod.financialRecordId ?
+                [existingPeriod.financialRecordId] : []),
+          } : null,
+          {
+            startDate: combinedStartDate,
+            expiryDate: combinedExpiryDate,
+            addedFinancialRecordId: financeRef.id,
+          },
+          '會員續會繳費',
+        ),
+      );
+      transaction.set(operationRef, {
+        status: 'completed',
+        memberUid,
+        financialRecordId: financeRef.id,
+        membershipPeriodId: periodId,
+        requestId,
+        createdAt: now,
+        createdByUid: actorUid,
+      });
+      const memberUpdate = {};
+      // A future annual period must not become the active member cache early.
+      if (period.status === 'active') {
+        Object.assign(memberUpdate, {
+          membershipType: spec.membershipType,
+          membershipPlan: spec.membershipPlan,
+          membershipExpiry: combinedExpiryDate.replace(/-/g, '/'),
+          expireDate: combinedExpiryDate.replace(/-/g, '/'),
+          updatedAt: now,
+        });
+      } else if (period.status === 'scheduled') {
+        Object.assign(memberUpdate, {
+          membershipRenewalYears: admin.firestore.FieldValue.arrayUnion(
+            spec.membershipYear,
+          ),
+          nextMembershipPeriodId: periodId,
+          nextMembershipStartDate: spec.membershipStartDate,
+          nextMembershipExpiry: combinedExpiryDate.replace(/-/g, '/'),
+          renewedAt: now,
+          updatedAt: now,
+        });
+      }
+      if (Object.keys(memberUpdate).length) {
+        transaction.update(memberRef, memberUpdate);
+      }
+      return {
+        ok: true, idempotent: false, operationId,
+        financialRecordId: financeRef.id,
+        membershipPeriodId: periodId,
+        periodStatus: period.status,
+      };
+    });
+  },
+);
+
+exports.resignMembershipYear = onCall(
+  {region: 'asia-east1'}, (request) =>
+    mutateMembershipYearStatus(request, 'resign'),
+);
+
+exports.restoreMembershipYear = onCall(
+  {region: 'asia-east1'}, (request) =>
+    mutateMembershipYearStatus(request, 'restore'),
+);
+
+exports.markMembershipYearNotJoining = onCall(
+  {region: 'asia-east1'}, (request) =>
+    mutateMembershipYearDecision(request, 'mark'),
+);
+
+exports.revokeMembershipYearNotJoining = onCall(
+  {region: 'asia-east1'}, (request) =>
+    mutateMembershipYearDecision(request, 'revoke'),
+);
+
+exports.updateMembershipPeriodClassification = onCall(
+  {region: 'asia-east1'}, async (request) => {
+    const identity = await getAuthenticatedMember(request);
+    const input = request.data || {};
+    const periodId = cleanString(input.membershipPeriodId, 128);
+    const membershipPlan = cleanString(input.membershipPlan, 30);
+    const reason = cleanString(input.reason, 500);
+    const requestId = cleanString(input.requestId, 128);
+    if (!periodId || !MEMBERSHIP_PLANS.has(membershipPlan) ||
+        !reason || !requestId) {
+      throw new HttpsError('invalid-argument', '年度資格、分類、原因或請求識別碼不正確');
+    }
+    const actorUid = identity.memberUid;
+    const operationId = membershipPeriodOperationId(
+      actorUid, 'classification', periodId, requestId,
+    );
+    const periodRef = bookingDb.collection('membershipPeriods').doc(periodId);
+    const operationRef = bookingDb.collection('membershipPeriodOperations')
+      .doc(operationId);
+    return bookingDb.runTransaction(async (transaction) => {
+      const [actorSnap, periodSnap, operationSnap] = await Promise.all([
+        transaction.get(bookingDb.collection('members').doc(actorUid)),
+        transaction.get(periodRef), transaction.get(operationRef),
+      ]);
+      if (operationSnap.exists) {
+        const saved = operationSnap.data() || {};
+        if (saved.action !== 'classification' ||
+            saved.membershipPeriodId !== periodId) {
+          throw new HttpsError('already-exists', '請求識別碼已用於其他操作');
+        }
+        return {ok: true, idempotent: true};
+      }
+      if (!actorSnap.exists || !periodSnap.exists) {
+        throw new HttpsError('not-found', '找不到操作者或年度資格');
+      }
+      const actor = actorSnap.data() || {};
+      const period = periodSnap.data() || {};
+      const targetRef = bookingDb.collection('members').doc(period.memberUid || '');
+      const targetSnap = await transaction.get(targetRef);
+      if (!targetSnap.exists) throw new HttpsError('not-found', '找不到會員資料');
+      assertMembershipManager(
+        actorUid, actor, period.memberUid, targetSnap.data() || {}, true,
+      );
+      if (membershipTypeForPlan(membershipPlan) !== period.membershipType) {
+        throw new HttpsError('failed-precondition', '年度分類不可改變原年費／月費類型');
+      }
+      if (period.membershipPlan === membershipPlan) {
+        return {ok: true, idempotent: true, unchanged: true};
+      }
+      const actorName = memberDisplayName(actor, actorUid);
+      const before = {
+        membershipPlan: period.membershipPlan || '',
+        membershipPlanLabel: period.membershipPlanLabel || '',
+        membershipType: period.membershipType || '',
+      };
+      const after = {
+        membershipPlan,
+        membershipPlanLabel: membershipPlanLabel(membershipPlan),
+        membershipType: period.membershipType || '',
+      };
+      transaction.update(periodRef, Object.assign({}, after, {
+        updatedAt: SERVER_TS(),
+        updatedByUid: actorUid,
+        updatedByName: actorName,
+      }));
+      transaction.set(
+        bookingDb.collection('membershipPeriodAuditLogs').doc(operationId),
+        membershipPeriodAuditData(
+          operationId, 'membership_classification_changed', periodId,
+          period, actorUid, actorName, before, after, reason,
+        ),
+      );
+      transaction.set(operationRef, {
+        action: 'classification',
+        membershipPeriodId: periodId,
+        memberUid: period.memberUid,
+        membershipYear: period.membershipYear,
+        actorUid,
+        reason,
+        status: 'completed',
+        createdAt: SERVER_TS(),
+      });
+      return {ok: true, idempotent: false};
+    });
+  },
+);
+
+exports.backfillMembershipPeriod = onCall(
+  {region: 'asia-east1'}, async (request) => {
+    const identity = await getAuthenticatedMember(request);
+    const input = request.data || {};
+    const recordId = cleanString(input.financialRecordId, 128);
+    const plan = cleanString(input.membershipPlan, 30);
+    if (!recordId || !BACKFILL_MEMBERSHIP_PLANS.has(plan)) {
+      throw new HttpsError('invalid-argument', '補登資料不正確');
+    }
+    const actorUid = identity.memberUid;
+    const recordRef = bookingDb.collection('financialRecords').doc(recordId);
+    return bookingDb.runTransaction(async (transaction) => {
+      const actorRef = bookingDb.collection('members').doc(actorUid);
+      const [actorSnap, recordSnap] = await Promise.all([
+        transaction.get(actorRef), transaction.get(recordRef),
+      ]);
+      const actor = actorSnap.exists ? actorSnap.data() || {} : {};
+      if (!actorSnap.exists || !ADMIN_ROLES.has(actor.role || '')) {
+        throw new HttpsError('permission-denied', '僅管理員可補登年度分類');
+      }
+      if (!recordSnap.exists) throw new HttpsError('not-found', '找不到財務紀錄');
+      const record = recordSnap.data() || {};
+      if ((record.status || 'active') !== 'active' ||
+          !['annual', 'monthly'].includes(record.type)) {
+        throw new HttpsError('failed-precondition', '僅可補登有效年費／月費紀錄');
+      }
+      const year = Number(record.membershipYear || record.billingYear ||
+        String(record.date || '').slice(0, 4));
+      if (![2026, 2027].includes(year)) {
+        throw new HttpsError('failed-precondition', '本功能僅供補登 2026／2027 年資格');
+      }
+      const memberUid = cleanString(record.memberId, 128);
+      if (!memberUid) {
+        throw new HttpsError('failed-precondition', '原財務紀錄缺少 memberId，請先人工核對');
+      }
+      const memberRef = bookingDb.collection('members').doc(memberUid);
+      const financeQuery = bookingDb.collection('financialRecords')
+        .where('memberId', '==', memberUid);
+      const [memberSnap, financeSnap] = await Promise.all([
+        transaction.get(memberRef), transaction.get(financeQuery),
+      ]);
+      if (!memberSnap.exists) {
+        throw new HttpsError('failed-precondition', '找不到永久會員身分');
+      }
+      const member = memberSnap.data() || {};
+      assertMembershipManager(actorUid, actor, memberUid, member, true);
+      const officialMembershipType = cleanString(member.membershipType, 20);
+      if (!['annual', 'monthly'].includes(officialMembershipType)) {
+        throw new HttpsError('failed-precondition', '永久會員資料缺少正式會員類型');
+      }
+      if (membershipTypeForPlan(plan) !== officialMembershipType) {
+        throw new HttpsError('failed-precondition', '補登分類與正式會員類型不一致');
+      }
+      const sourceRecords = financeSnap.docs.map((doc) => ({
+        id: doc.id, data: doc.data() || {},
+      })).filter((item) => {
+        const itemRecord = item.data;
+        return (itemRecord.status || 'active') === 'active' &&
+          ['annual', 'monthly'].includes(itemRecord.type) &&
+          financialRecordMembershipYear(itemRecord) === year;
+      });
+      if (!sourceRecords.length) {
+        throw new HttpsError('failed-precondition', '找不到可佐證的年度繳費紀錄');
+      }
+      const sourceTypes = new Set(sourceRecords.map((item) => item.data.type));
+      const fingerprints = new Set();
+      const suspectedDuplicate = sourceRecords.some((item) => {
+        const itemRecord = item.data;
+        const fingerprint = [itemRecord.type,
+          cleanString(itemRecord.date, 10),
+          cleanString(itemRecord.accountingDate, 10),
+          Number(itemRecord.amount || 0),
+          normaliseExpiryDate(itemRecord.membershipExpiry || ''),
+          Number(itemRecord.periodMonths || 0)].join('|');
+        if (fingerprints.has(fingerprint)) return true;
+        fingerprints.add(fingerprint);
+        return false;
+      });
+      const sourcePayments = sourceRecords.map((item) => ({
+        financialRecordId: item.id,
+        type: item.data.type,
+        paymentDate: cleanString(item.data.date, 10),
+        accountingDate: cleanString(item.data.accountingDate, 10),
+        amount: Number(item.data.amount || 0),
+      })).sort((first, second) =>
+        first.financialRecordId.localeCompare(second.financialRecordId));
+      const qualificationRecords = sourceRecords.filter((item) =>
+        item.data.type === officialMembershipType);
+      if (!qualificationRecords.length) {
+        throw new HttpsError('failed-precondition', '年度繳費與正式會員類型無法對應');
+      }
+      const starts = qualificationRecords.map((item) =>
+        officialMembershipType === 'annual' ?
+        `${year}-01-01` : cleanString(
+          item.data.accountingDate || item.data.date, 10,
+        )).filter(isIsoDate).sort();
+      const expiries = qualificationRecords.map((item) =>
+        normaliseExpiryDate(item.data.membershipExpiry || ''),
+      ).filter(isIsoDate).sort();
+      if (!starts.length || !expiries.length) {
+        throw new HttpsError('failed-precondition', '原紀錄缺少有效資格日期');
+      }
+      const periodId = membershipPeriodId(memberUid, {membershipYear: year});
+      const periodRef = bookingDb.collection('membershipPeriods').doc(periodId);
+      const operationId = crypto.createHash('sha256')
+        .update(`membership_period_backfill|${periodId}`, 'utf8').digest('hex');
+      const operationRef = bookingDb.collection('membershipPeriodOperations')
+        .doc(operationId);
+      const [periodSnap, operationSnap] = await Promise.all([
+        transaction.get(periodRef), transaction.get(operationRef),
+      ]);
+      if (periodSnap.exists) {
+        const saved = periodSnap.data() || {};
+        const savedIds = (saved.financialRecordIds ||
+          (saved.financialRecordId ? [saved.financialRecordId] : [])).slice().sort();
+        const sourceIds = sourcePayments.map((item) => item.financialRecordId);
+        if (saved.memberUid !== memberUid ||
+            Number(saved.membershipYear) !== year ||
+            saved.membershipPlan !== plan ||
+            JSON.stringify(savedIds) !== JSON.stringify(sourceIds)) {
+          throw new HttpsError('already-exists', '此會員年度資格與預演資料不一致');
+        }
+        return {ok: true, idempotent: true, membershipPeriodId: periodRef.id};
+      }
+      if (operationSnap.exists) {
+        throw new HttpsError('failed-precondition', '遷移操作已存在但資格文件不存在，請人工確認');
+      }
+      const startDate = starts[0];
+      const expiryDate = expiries[expiries.length - 1];
+      const period = {
+        memberUid,
+        memberName: cleanString(record.memberNameSnapshot ||
+          record.memberRealName || record.memberDisplayName, 100),
+        membershipYear: year,
+        membershipType: officialMembershipType,
+        membershipPlan: plan,
+        membershipPlanLabel: membershipPlanLabel(plan),
+        startDate,
+        expiryDate,
+        status: member.status === 'deleted' ? 'resigned' :
+          membershipPeriodStatus(startDate, expiryDate, taipeiDateString()),
+        financialRecordId: sourcePayments[0].financialRecordId,
+        financialRecordIds: sourcePayments.map((item) =>
+          item.financialRecordId),
+        sourcePayments,
+        evidenceFlags: {
+          mixedAnnualMonthly: sourceTypes.size > 1,
+          suspectedDuplicate,
+        },
+        historicalSnapshotSource: 'members',
+        source: 'membership_period_backfill',
+        migrationOperationId: operationId,
+        createdAt: SERVER_TS(),
+        createdByUid: actorUid,
+        createdByName: memberDisplayName(actor, actorUid),
+      };
+      transaction.create(periodRef, period);
+      transaction.create(operationRef, {
+        action: 'membership_period_backfill',
+        status: 'completed',
+        rollbackAvailable: true,
+        membershipPeriodId: periodId,
+        memberUid,
+        membershipYear: year,
+        financialRecordIds: period.financialRecordIds,
+        evidenceFlags: period.evidenceFlags,
+        before: null,
+        after: {
+          membershipPlan: plan,
+          startDate,
+          expiryDate,
+          financialRecordIds: period.financialRecordIds,
+          evidenceFlags: period.evidenceFlags,
+        },
+        actorUid,
+        createdAt: SERVER_TS(),
+      });
+      transaction.create(
+        bookingDb.collection('membershipPeriodAuditLogs')
+          .doc(operationId),
+        membershipPeriodAuditData(
+          operationId, 'membership_period_backfilled', periodId, period,
+          actorUid, memberDisplayName(actor, actorUid), null,
+          {membershipPlan: plan, startDate, expiryDate,
+            financialRecordIds: period.financialRecordIds,
+            evidenceFlags: period.evidenceFlags},
+          `${year} 年度資格補建`,
+        ),
+      );
+      return {ok: true, idempotent: false, membershipPeriodId: periodRef.id};
+    });
+  },
+);
+
+exports.rollbackMembershipPeriodBackfill = onCall(
+  {region: 'asia-east1'}, async (request) => {
+    const identity = await getAuthenticatedMember(request);
+    const operationId = cleanString((request.data || {}).operationId, 128);
+    const reason = cleanString((request.data || {}).reason, 500);
+    if (!operationId || !reason) {
+      throw new HttpsError('invalid-argument', '遷移操作與回復原因必填');
+    }
+    const actorUid = identity.memberUid;
+    const operationRef = bookingDb.collection('membershipPeriodOperations')
+      .doc(operationId);
+    return bookingDb.runTransaction(async (transaction) => {
+      const [actorSnap, operationSnap] = await Promise.all([
+        transaction.get(bookingDb.collection('members').doc(actorUid)),
+        transaction.get(operationRef),
+      ]);
+      const actor = actorSnap.exists ? actorSnap.data() || {} : {};
+      if (!actorSnap.exists || actor.role !== 'owner') {
+        throw new HttpsError('permission-denied', '僅 Owner 可回復年度資格遷移');
+      }
+      if (!operationSnap.exists) throw new HttpsError('not-found', '找不到遷移操作');
+      const operation = operationSnap.data() || {};
+      if (operation.action !== 'membership_period_backfill') {
+        throw new HttpsError('failed-precondition', '此操作不可使用本回復流程');
+      }
+      if (operation.status === 'rolled_back') {
+        return {ok: true, idempotent: true};
+      }
+      if (operation.status !== 'completed' || !operation.rollbackAvailable) {
+        throw new HttpsError('failed-precondition', '此遷移目前不可回復');
+      }
+      const periodRef = bookingDb.collection('membershipPeriods')
+        .doc(operation.membershipPeriodId || '');
+      const periodSnap = await transaction.get(periodRef);
+      if (!periodSnap.exists ||
+          (periodSnap.data() || {}).migrationOperationId !== operationId) {
+        throw new HttpsError('failed-precondition', '年度資格已變更，停止自動回復');
+      }
+      const period = periodSnap.data() || {};
+      const actorName = memberDisplayName(actor, actorUid);
+      transaction.delete(periodRef);
+      transaction.update(operationRef, {
+        status: 'rolled_back',
+        rollbackAvailable: false,
+        rolledBackAt: SERVER_TS(),
+        rolledBackByUid: actorUid,
+        rolledBackByName: actorName,
+        rollbackReason: reason,
+      });
+      transaction.create(
+        bookingDb.collection('membershipPeriodAuditLogs')
+          .doc(`rollback_${operationId}`),
+        membershipPeriodAuditData(
+          operationId, 'membership_period_backfill_rolled_back',
+          periodSnap.id, period, actorUid, actorName,
+          period, null, reason,
+        ),
+      );
+      return {ok: true, idempotent: false};
+    });
+  },
+);
+
 // ── createManualMember ────────────────────────────────────────────────
 // 管理員手動建立會員（無 LINE 帳號者）。
 // 由 Admin SDK 寫入 Firestore（bypass rules），
 // 呼叫者身份驗證：request.auth.uid → members/{uid}.role 必須為 owner/admin。
 // docId = Firestore auto-ID，uid 欄位 = docId（與 LINE 會員結構一致）。
 exports.createManualMember = onCall({ region: 'asia-east1' }, async (request) => {
-  // ① 必須已完成 Firebase Auth 登入
-  if (!request.auth || !request.auth.uid) {
-    throw new HttpsError('unauthenticated', 'Firebase Auth 尚未登入，請重新用 LINE 登入後再試');
-  }
-
-  // ② 呼叫者 role 以 Firestore member doc 為準（不信任 client、不依賴可能過期的 token claims）
+  // ① 呼叫者 role 以身分對照後的永久 member doc 為準。
   const db = admin.firestore();
-  const callerSnap = await db.collection('members').doc(request.auth.uid).get();
-  const callerRole = callerSnap.exists ? (callerSnap.data().role || '') : '';
+  const identity = await getAuthenticatedMember(request);
+  const callerRole = identity.member.role || '';
   if (callerRole !== 'owner' && callerRole !== 'admin') {
     throw new HttpsError('permission-denied',
       '僅 owner/admin 可手動建立會員（目前身份 role: ' + (callerRole || 'unknown') + '）');
@@ -4059,11 +5912,11 @@ exports.createManualMember = onCall({ region: 'asia-east1' }, async (request) =>
     createdAt:         now,
     updatedAt:         now,
     approvedAt:        now,
-    approvedBy:        request.auth.uid,
+    approvedBy:        identity.memberUid,
     lastLoginAt:       null,
   });
 
-  console.info('[createManualMember]', realName, '| role:', role, '| by:', request.auth.uid, '→', ref.id);
+  console.info('[createManualMember]', realName, '| role:', role, '| by:', identity.memberUid, '→', ref.id);
   return { ok: true, uid: ref.id };
 });
 

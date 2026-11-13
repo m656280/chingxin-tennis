@@ -39,6 +39,7 @@ vm.runInContext([
   extractFunction('memberMergeSnapshotDifferences'),
   extractFunction('buildRevalidatedMemberMergeCandidate'),
   extractFunction('memberMergeFinanceKey'),
+  extractFunction('membershipPeriodsConflict'),
   extractFunction('assessMemberMergeState'),
   extractFunction('memberMergeChange'),
   extractFunction('buildMemberMergeChanges'),
@@ -71,6 +72,14 @@ const state = {
     membershipExpiry: '2026-12-31',
   })],
   lineFinancialRecords: [],
+  manualMembershipPeriods: [],
+  lineMembershipPeriods: [],
+  manualMembershipYearDecisions: [item(
+    'membershipYearDecisions/2027_MANUAL_UID', {
+      memberUid: 'MANUAL_UID', membershipYear: 2027,
+      status: 'not_joining',
+    })],
+  lineMembershipYearDecisions: [],
   bookings: [],
   manualViolations: [],
   lineViolations: [],
@@ -94,7 +103,7 @@ const changes = context.buildMemberMergeChanges(
   state, preview, {uid: 'OWNER_UID', name: 'Owner'}, 'OPERATION_ID',
   '2026-08-25T00:00:00.000Z',
 );
-assert.strictEqual(changes.length, 4);
+assert.strictEqual(changes.length, 5);
 const financeChange = changes.find((change) =>
   change.path === 'financialRecords/FINANCE_1');
 assert(financeChange);
@@ -109,6 +118,11 @@ const manualChange = changes.find((change) =>
 assert.strictEqual(manualChange.after.status, 'merged');
 assert.strictEqual(manualChange.after.mergedInto, 'LINE_UID');
 assert.strictEqual(manualChange.after.mergeOperationId, 'OPERATION_ID');
+assert.strictEqual(
+  changes.find((change) =>
+    change.path === 'membershipYearDecisions/2027_MANUAL_UID').after.memberUid,
+  'LINE_UID',
+);
 
 const booking = {
   createdBy: 'MANUAL_UID', players: ['MANUAL_UID', 'OTHER'],

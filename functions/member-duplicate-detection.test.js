@@ -76,7 +76,7 @@ assert.notStrictEqual(
 [
   'duplicateMemberCandidatesCache',
   'function loadDuplicateMemberCandidates',
-  "if(role==='owner') loadDuplicateMemberCandidates()",
+  "if(role==='owner'||role==='admin') loadDuplicateMemberCandidates()",
   '⚠️ 疑似重複會員（',
   'LINE 本人登入會員',
   '疑似對應手動會員',
@@ -90,4 +90,4 @@ assert(rules.includes('allow create, update, delete: if false;'));
 console.log('PASS only member creation or normalised realName changes trigger detection');
 console.log('PASS lastLoginAt-only updates and manual member writes are skipped');
 console.log('PASS exact-name normalisation and deterministic pair IDs');
-console.log('PASS Owner-only UI and Firestore Rules wiring');
+console.log('PASS Owner/Admin review UI and Firestore Rules wiring');

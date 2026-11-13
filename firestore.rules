@@ -139,13 +139,24 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function actorMemberId() {
+      let linkPath = /databases/$(database)/documents/memberIdentityLinks/$(request.auth.uid);
+      let hasLink = isSignedIn() && exists(linkPath);
+      let link = hasLink ? get(linkPath).data : {};
+      return hasLink
+             && link.status == 'active'
+             && link.lineUid == request.auth.uid
+             && link.memberUid is string
+        ? link.memberUid : request.auth.uid;
+    }
+
     function hasActorMember() {
       return isSignedIn()
-             && exists(/databases/$(database)/documents/members/$(request.auth.uid));
+             && exists(/databases/$(database)/documents/members/$(actorMemberId()));
     }
 
     function actorRole() {
-      return get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role;
+      return get(/databases/$(database)/documents/members/$(actorMemberId())).data.role;
     }
 
     function isAdminLike() {
@@ -178,9 +189,11 @@ service cloud.firestore {
     // members
     // ──────────────────────────────────────────────────────────────────────
     match /members/{userId} {
-      // 讀：全員可讀（場地頁、預約頁需要顯示所有使用者名稱）
-      // TODO [L1]: 改為 request.auth != null 後限制
-      allow read: if true;
+      // 會員只能讀取身分綁定解析後的自己；管理員維持會員管理所需權限。
+      // 一般會員名錄改由 Callable 回傳去敏化資料，避免整份會員授權資料外洩。
+      allow get: if isSignedIn()
+                 && (userId == actorMemberId() || isAdminLike());
+      allow list: if isAdminLike();
 
       // 建立（v1.1：新增分支 ②）：
       // ① LIFF 首次登入自我註冊：role=member、status=pending、不可帶 approved
@@ -190,29 +203,50 @@ service cloud.firestore {
       //    status 直接為 approved，role 僅限 member/coach（不可建 owner/admin）
       allow create: if (
                       // ① LIFF 自我註冊
-                      request.resource.data.role == 'member'
+                      isSignedIn()
+                      && request.auth.uid == userId
+                      && request.resource.data.uid == userId
+                      && request.resource.data.role == 'member'
                       && request.resource.data.status == 'pending'
                       && !('approved' in request.resource.data)
+                      && request.resource.data.memberSource == 'line'
                       && request.resource.data.keys().hasAll(['uid', 'displayName', 'status', 'role', 'createdAt'])
                     ) || (
                       // ② admin/owner 手動建立
-                      request.auth != null
-                      && request.auth.token.role in ['owner', 'admin']
+                      isAdminLike()
+                      && request.resource.data.uid == userId
                       && request.resource.data.memberSource == 'manual'
                       && request.resource.data.status == 'approved'
                       && isSafeMemberRole(request.resource.data.role)
                       && request.resource.data.keys().hasAll(['uid', 'displayName', 'status', 'role', 'createdAt'])
                     );
 
-      // 更新：
-      // ① 如果 role 欄位未被異動 → 允許（display info, lastLoginAt, status 等）
-      // ② 如果 role 欄位被異動 → 只允許設為 member / coach（不允許 owner / admin）
-      // ← [L1] 限制：admin 可以把人升為 coach，但任何人都可以把自己改成 coach
-      //              真正的 owner-only / admin-only 保護需要 Firebase Auth
+      // 更新：本人僅限個人欄位；教練僅限自己的學生資料；會員管理沿用 Admin/Owner。
       allow update: if (
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])
-          || isSafeMemberRole(request.resource.data.role)
+        (
+          // 本人僅能修改個人顯示／偏好資料；不可修改任何授權或年度資格欄位。
+          userId == actorMemberId()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+               'displayName', 'photoURL', 'pictureUrl', 'lineDisplayName',
+               'lastLoginAt', 'realName', 'ntrp', 'preferredPosition',
+               'updatedAt', 'hasLoggedIn'
+             ])
         )
+        || (
+          // 教練沿用既有學生認領資料維護權限，但不得修改自身授權欄位。
+          userId == actorMemberId()
+          && actorRole() == 'coach'
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['coachStudents', 'updatedAt'])
+        )
+        || (
+          // Admin／Owner 沿用既有會員管理權限與角色階層限制。
+          isAdminLike()
+          && (
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])
+            || isSafeMemberRole(request.resource.data.role)
+            || (actorRole() == 'owner' && request.resource.data.role == 'admin')
+          )
         // owner 帳號的 role 不可被任何 client 端請求修改
         && (resource.data.role != 'owner'
             || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']))
@@ -221,8 +255,7 @@ service cloud.firestore {
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])
           || (
             request.resource.data.status == 'deleted'
-            && isAdminLike()
-            && request.auth.uid != userId
+            && actorMemberId() != userId
             && resource.data.role != 'owner'
             && (actorRole() == 'owner' || resource.data.role != 'admin')
             && request.resource.data.approved == false
@@ -233,7 +266,6 @@ service cloud.firestore {
           || (
             resource.data.status == 'deleted'
             && request.resource.data.status == 'approved'
-            && isAdminLike()
             && request.resource.data.approved == true
             && request.resource.data.restoredAt is timestamp
             && request.resource.data.diff(resource.data).affectedKeys()
@@ -250,7 +282,9 @@ service cloud.firestore {
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
              'mergedInto', 'mergedAt', 'mergedByUid', 'mergedByName',
              'mergeOperationId', 'mergedFromUids', 'lastMergeOperationId'
-           ]);
+           ])
+        )
+      );
 
       // 刪除：全部封鎖。
       // permanentDeleteMember 是 owner-only 且極少使用，
@@ -283,7 +317,7 @@ service cloud.firestore {
             (
               (
                 (('createdBy' in resource.data)
-                  && resource.data.createdBy == request.auth.uid)
+                  && resource.data.createdBy == actorMemberId())
                 || isAdminLike()
               )
               && !request.resource.data.diff(resource.data).affectedKeys()
@@ -299,7 +333,7 @@ service cloud.firestore {
                 || (
                   actorRole() == 'coach'
                   && ('coachId' in resource.data)
-                  && resource.data.coachId == request.auth.uid
+                  && resource.data.coachId == actorMemberId()
                 )
               )
               && request.resource.data.diff(resource.data).affectedKeys()
@@ -331,7 +365,7 @@ service cloud.firestore {
     match /bookingExtensionRequests/{requestId} {
       allow read: if isSignedIn()
                   && (isAdminLike()
-                      || resource.data.requesterUid == request.auth.uid);
+                      || resource.data.requesterUid == actorMemberId());
       allow create, update, delete: if false;
     }
 
@@ -364,14 +398,14 @@ service cloud.firestore {
     match /bookingViolations/{violationId} {
       allow read: if isSignedIn()
                   && (isAdminLike()
-                      || resource.data.memberUid == request.auth.uid);
+                      || resource.data.memberUid == actorMemberId());
       allow create, update, delete: if false;
     }
 
     // 目前違規週期與停權狀態，client 僅能讀取，不得竄改。
     match /bookingViolationSummaries/{memberUid} {
       allow read: if isSignedIn()
-                  && (isAdminLike() || memberUid == request.auth.uid);
+                  && (isAdminLike() || memberUid == actorMemberId());
       allow create, update, delete: if false;
     }
 
@@ -381,15 +415,69 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
-    // 疑似重複會員候選：僅 Owner / Developer 可查看，僅後端 trigger 可寫。
+    // 疑似重複會員候選：Owner/Admin 可確認身分，僅後端可寫。
     match /duplicateMemberCandidates/{candidateId} {
-      allow read: if isOwner();
+      allow read: if isAdminLike();
+      allow create, update, delete: if false;
+    }
+
+    // LINE Auth UID → 永久 member ID。本人可讀自己的 active link；僅後端可寫。
+    match /memberIdentityLinks/{lineUid} {
+      allow read: if isAdminLike()
+                  || (isSignedIn() && lineUid == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
+    // 永久會員反向唯一認領、操作紀錄與 audit 僅供管理端查閱。
+    match /memberIdentityClaims/{memberUid} {
+      allow read: if isAdminLike();
+      allow create, update, delete: if false;
+    }
+
+    match /memberIdentityOperations/{operationId} {
+      allow read: if isAdminLike();
+      allow create, update, delete: if false;
+    }
+
+    match /memberIdentityAuditLogs/{auditId} {
+      allow read: if isAdminLike();
       allow create, update, delete: if false;
     }
 
     // 會員合併操作及 rollback 快照：僅 Owner 可查閱，僅 Callable 可寫。
     match /memberMergeOperations/{operationId} {
       allow read: if isOwner();
+      allow create, update, delete: if false;
+    }
+
+    // 年度／期間會員資格：永久歷史由後端續會 Callable 寫入。
+    match /membershipPeriods/{periodId} {
+      allow read: if isAdminLike()
+                  || (isSignedIn() && resource.data.memberUid == actorMemberId());
+      allow create, update, delete: if false;
+    }
+
+    // 指定年度「今年不加入」決定：Admin/Owner 管理、會員可讀自己的狀態；僅 Callable 寫入。
+    match /membershipYearDecisions/{decisionId} {
+      allow read: if isAdminLike()
+                  || (isSignedIn() && resource.data.memberUid == actorMemberId());
+      allow create, update, delete: if false;
+    }
+
+    // 續會冪等操作紀錄：只供管理員查閱、只允許 Admin SDK 寫入。
+    match /membershipRenewalOperations/{operationId} {
+      allow read: if isAdminLike();
+      allow create, update, delete: if false;
+    }
+
+    // 年度資格狀態／分類操作與 audit 均由 Callable Transaction 寫入。
+    match /membershipPeriodOperations/{operationId} {
+      allow read: if isAdminLike();
+      allow create, update, delete: if false;
+    }
+
+    match /membershipPeriodAuditLogs/{auditId} {
+      allow read: if isAdminLike();
       allow create, update, delete: if false;
     }
 
@@ -401,7 +489,7 @@ service cloud.firestore {
       // TODO [L2]: 改為限制 isAdmin 或 memberId == request.auth.uid 後限制
       allow read: if !isViolationNotification(resource.data)
                   || (isSignedIn()
-                      && (resource.data.uid == request.auth.uid
+                      && (resource.data.uid == actorMemberId()
                           || isAdminLike()));
 
       // 建立：驗證必要欄位
@@ -432,28 +520,31 @@ service cloud.firestore {
     // announcements
     // ──────────────────────────────────────────────────────────────────────
     match /announcements/{annId} {
-      // 讀：全員可讀
+      // 全體公告可公開讀取；寫入僅限既有 Admin/Owner 管理流程。
       allow read: if true;
 
-      // 寫：目前無法驗證 admin 身份，暫時全開
-      // TODO [L3]: 改為 isAdmin 後限制
-      allow create: if request.resource.data.keys().hasAll(['content', 'createdAt'])
+      allow create: if isAdminLike()
+                    && request.resource.data.keys().hasAll(['title', 'content', 'updatedAt'])
+                    && request.resource.data.title is string
                     && request.resource.data.content is string
-                    && request.resource.data.content.size() > 0;
-      allow update: if true;
-      allow delete: if true;
+                    && request.resource.data.title.size() > 0
+                    && request.resource.data.content.size() > 0
+                    && request.resource.data.updatedAt is timestamp;
+      allow update, delete: if isAdminLike();
     }
 
     // ──────────────────────────────────────────────────────────────────────
     // notifications
     // ──────────────────────────────────────────────────────────────────────
     match /notifications/{notifId} {
-      // 讀：全員可讀（前端用 where uid == myUid 過濾）
-      // TODO [L4]: 改為 resource.data.uid == request.auth.uid 後限制
-      allow read: if true;
+      // 個人通知僅本人與管理員可讀；全體公告使用 announcements collection。
+      allow read: if isSignedIn()
+                  && (resource.data.uid == actorMemberId() || isAdminLike());
 
-      // 建立：預約系統在建立/取消/移場時建立通知
-      allow create: if request.resource.data.keys().hasAll(['uid', 'createdAt'])
+      // Client 端通知僅保留 Admin/Owner 既有取消、作廢與修復流程。
+      // Callable / Admin SDK 寫入不受 Rules 影響。
+      allow create: if isAdminLike()
+                    && request.resource.data.keys().hasAll(['uid', 'createdAt'])
                     && request.resource.data.uid is string
                     && request.resource.data.uid.size() > 0
                     && (
@@ -473,15 +564,12 @@ service cloud.firestore {
       allow update: if request.resource.data.diff(resource.data).affectedKeys()
                        .hasOnly(['read', 'updatedAt'])
                     && request.resource.data.read == true
-                    && (
-                      !isViolationNotification(resource.data)
-                      || (isSignedIn()
-                          && (resource.data.uid == request.auth.uid
-                              || isAdminLike()))
-                    );
+                    && isSignedIn()
+                    && (resource.data.uid == actorMemberId() || isAdminLike());
 
-      // 刪除：允許（booking 永久刪除時清理對應通知）
-      allow delete: if !isViolationNotification(resource.data);
+      // 本人可清理自己的通知；Admin/Owner 保留 booking 永久刪除清理流程。
+      allow delete: if isSignedIn()
+                    && (resource.data.uid == actorMemberId() || isAdminLike());
     }
 
     // ──────────────────────────────────────────────────────────────────────

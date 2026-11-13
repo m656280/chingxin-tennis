@@ -31,6 +31,7 @@ class HttpsError extends Error {
 const context = {
   ADMIN_ROLES: new Set(['owner', 'admin']),
   EXTENSION_DURATION_MINUTES: 60,
+  LEGACY_MEMBERSHIP_FALLBACK_END: '2026-12-31',
   HttpsError,
   Date,
   Number,
@@ -40,12 +41,14 @@ vm.createContext(context);
 vm.runInContext([
   'const ADMIN_ROLES = globalThis.ADMIN_ROLES;',
   'const EXTENSION_DURATION_MINUTES = globalThis.EXTENSION_DURATION_MINUTES;',
+  'const LEGACY_MEMBERSHIP_FALLBACK_END = globalThis.LEGACY_MEMBERSHIP_FALLBACK_END;',
   extractFunction('cleanString'),
   extractFunction('isActiveBooking'),
   extractFunction('isEligibleMember'),
   extractFunction('bookingStartMs'),
   extractFunction('normaliseBookingMode'),
   extractFunction('normaliseExpiryDate'),
+  extractFunction('evaluateMembershipAccess'),
   extractFunction('hasValidMembershipForBooking'),
   extractFunction('timeToMinutes'),
   extractFunction('bookingEndMs'),
