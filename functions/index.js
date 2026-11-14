@@ -4830,6 +4830,10 @@ function membershipTypeForPlan(plan) {
   return plan === 'monthly' ? 'monthly' : 'annual';
 }
 
+function membershipPlanAllowedForYear(plan, membershipYear) {
+  return plan !== 'annual_senior' || Number(membershipYear) >= 2027;
+}
+
 function membershipPeriodStatus(startDate, expiryDate, today) {
   if (today < startDate) return 'scheduled';
   if (today > expiryDate) return 'expired';
@@ -4858,6 +4862,9 @@ function buildMembershipRenewalSpec(input, today = taipeiDateString()) {
   if (membershipType === 'annual') {
     if (!Number.isInteger(membershipYear) || membershipYear < 2025 ||
         membershipYear > 2036) throw new Error('invalid_membership_year');
+    if (!membershipPlanAllowedForYear(plan, membershipYear)) {
+      throw new Error('membership_plan_not_available_for_year');
+    }
     accountingDate = `${accountingYear}-01-01`;
     membershipStartDate = `${membershipYear}-01-01`;
     membershipExpiry = `${membershipYear}-12-31`;
@@ -5266,6 +5273,7 @@ function membershipInputError(error) {
     accounting_year_mismatch: '財務歸屬日與歸屬年度不一致',
     invalid_membership_year: '會籍年度不正確',
     invalid_period_months: '月費期數不正確',
+    membership_plan_not_available_for_year: '銀爸銀媽分類自 2027 年起適用',
   };
   return labels[error && error.message] || '續會資料格式不正確';
 }
@@ -5568,6 +5576,11 @@ exports.updateMembershipPeriodClassification = onCall(
       if (membershipTypeForPlan(membershipPlan) !== period.membershipType) {
         throw new HttpsError('failed-precondition', '年度分類不可改變原年費／月費類型');
       }
+      if (!membershipPlanAllowedForYear(
+        membershipPlan, Number(period.membershipYear),
+      )) {
+        throw new HttpsError('failed-precondition', '銀爸銀媽分類自 2027 年起適用');
+      }
       if (period.membershipPlan === membershipPlan) {
         return {ok: true, idempotent: true, unchanged: true};
       }
@@ -5639,6 +5652,9 @@ exports.backfillMembershipPeriod = onCall(
         String(record.date || '').slice(0, 4));
       if (![2026, 2027].includes(year)) {
         throw new HttpsError('failed-precondition', '本功能僅供補登 2026／2027 年資格');
+      }
+      if (!membershipPlanAllowedForYear(plan, year)) {
+        throw new HttpsError('failed-precondition', '銀爸銀媽分類自 2027 年起適用');
       }
       const memberUid = cleanString(record.memberId, 128);
       if (!memberUid) {

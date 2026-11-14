@@ -89,6 +89,8 @@ const frontContext = {
   membershipPeriodsCache: [Object.assign({memberUid: 'STUDENT'}, period2027)],
   membershipPeriodsLoaded: true,
   _mName: (value) => value.realName || '',
+  isAdminLike: () => frontContext.adminLike,
+  adminLike: false,
 };
 vm.createContext(frontContext);
 vm.runInContext(extractFunctionFrom(
@@ -97,8 +99,16 @@ vm.runInContext(extractFunctionFrom(
 assert.strictEqual(frontContext._teachingStudentEligibilityMessage(
   ['STUDENT'], '2027-01-01'), '');
 frontContext.membershipPeriodsCache = [];
+assert.strictEqual(frontContext._teachingStudentEligibilityMessage(
+  ['STUDENT'], '2027-01-01'), '');
+frontContext.adminLike = true;
 assert(frontContext._teachingStudentEligibilityMessage(
   ['STUDENT'], '2027-01-01').includes('無有效會籍'));
+frontContext.adminLike = false;
+frontContext.usersCache.STUDENT.status = 'deleted';
+assert(frontContext._teachingStudentEligibilityMessage(
+  ['STUDENT'], '2027-01-01').includes('無有效會籍'));
+frontContext.usersCache.STUDENT.status = 'approved';
 frontContext.membershipPeriodsLoaded = false;
 assert.strictEqual(frontContext._teachingStudentEligibilityMessage(
   ['STUDENT'], '2027-01-01'), '');

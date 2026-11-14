@@ -2007,7 +2007,7 @@ body.membership-access-restricted .bottomNav { justify-content:center; }
       此筆紀錄已作廢，若儲存將重新啟用。
     </div>
     <div class="formRow">
-      <label class="formLabel">類型</label>
+      <label class="formLabel">財務類型</label>
       <select class="formSelect" id="finFormType" onchange="_finToggleYearRow()">
         <option value="annual">年費</option>
         <option value="monthly">月費</option>
@@ -2025,7 +2025,7 @@ body.membership-access-restricted .bottomNav { justify-content:center; }
       <select class="formSelect" id="finFormAccountingYear" onchange="_finSyncAccountingDate()"></select>
     </div>
     <div class="formRow" id="finFormMembershipPlanRow">
-      <label class="formLabel">會員分類</label>
+      <label class="formLabel">年費會員子分類（2027 起）</label>
       <select class="formSelect" id="finFormMembershipPlan"></select>
     </div>
     <div class="formRow" id="finFormPeriodRow" style="display:none">
@@ -9996,6 +9996,23 @@ async function _submitMembershipRenewal(type,member,date,amount,note){
 }
 
 /* ── Finance: Year Row Toggle ── */
+function _financeMembershipPlanUi(type,membershipYear){
+  var year=Number(membershipYear);
+  if(type==='annual'){
+    var supportsSenior=Number.isInteger(year)&&year>=2027;
+    return {
+      visible:supportsSenior,
+      defaultValue:'annual_standard',
+      options:supportsSenior
+        ?'<option value="annual_standard">一般年費</option><option value="annual_senior">銀爸銀媽（年費制）</option>'
+        :'<option value="annual_standard">年費</option>'
+    };
+  }
+  if(type==='monthly'){
+    return {visible:false,defaultValue:'monthly',options:'<option value="monthly">月費</option>'};
+  }
+  return {visible:false,defaultValue:'',options:''};
+}
 function _finToggleYearRow(){
   var type      = document.getElementById('finFormType').value;
   var yearRow   = document.getElementById('finFormYearRow');
@@ -10003,16 +10020,17 @@ function _finToggleYearRow(){
   var planRow   = document.getElementById('finFormMembershipPlanRow');
   var accountingRow=document.getElementById('finFormAccountingDateRow');
   var planSel=document.getElementById('finFormMembershipPlan');
+  var membershipYear=(document.getElementById('finFormYear')||{}).value||'';
+  var planUi=_financeMembershipPlanUi(type,membershipYear);
   if(yearRow)   yearRow.style.display   = (type === 'annual')  ? '' : 'none';
   if(periodRow) periodRow.style.display = (type === 'monthly') ? '' : 'none';
-  if(planRow) planRow.style.display=(type==='annual'||type==='monthly')?'':'none';
+  if(planRow) planRow.style.display=planUi.visible?'':'none';
   if(accountingRow) accountingRow.style.display='';
   if(planSel){
     var old=planSel.value;
-    planSel.innerHTML=type==='annual'
-      ?'<option value="annual_standard">一般年費</option><option value="annual_senior">銀爸銀媽（年費制）</option>'
-      :'<option value="monthly">月費</option>';
-    if([].some.call(planSel.options,function(o){return o.value===old;})) planSel.value=old;
+    planSel.innerHTML=planUi.options;
+    planSel.value=[].some.call(planSel.options,function(o){return o.value===old;})
+      ?old:planUi.defaultValue;
   }
   _finSyncAccountingDate();
 }
@@ -10039,7 +10057,7 @@ function _finMembershipYearChanged(){
   var membershipYear=(document.getElementById('finFormYear')||{}).value||'';
   var accountingYear=document.getElementById('finFormAccountingYear');
   if(accountingYear&&membershipYear) accountingYear.value=membershipYear;
-  _finSyncAccountingDate();
+  _finToggleYearRow();
 }
 
 function _finPaymentDateChanged(){
@@ -13000,9 +13018,9 @@ function _teachingStudentEligibilityMessage(studentUids,date){
     var expiry=String(member.membershipExpiry||member.expireDate||'').trim().replace(/\//g,'-').slice(0,10);
     var legacyEligible=date<='2026-12-31'
       && /^\d{4}-\d{2}-\d{2}$/.test(expiry)&&date<=expiry;
-    // Coaches cannot read every student's period. If periods are not loaded,
-    // do not pre-block; the Callable remains the authority.
-    if(membershipPeriodsLoaded&&!periodEligible&&!legacyEligible) eligible=false;
+    // 只有 Owner/Admin 會載入所有會員的 periods。教練端僅有自己的 period，
+    // 不可把「查不到學生 period」當成無資格；Callable 仍會逐位後端驗證。
+    if(isAdminLike()&&membershipPeriodsLoaded&&!periodEligible&&!legacyEligible) eligible=false;
     if(!eligible) invalidNames.push(_mName(member)||uid);
   });
   return invalidNames.length

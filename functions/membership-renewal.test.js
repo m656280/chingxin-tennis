@@ -31,6 +31,7 @@ vm.runInContext([
   extractFunction(source, 'isIsoDate'),
   extractFunction(source, 'addMembershipMonths'),
   extractFunction(source, 'membershipTypeForPlan'),
+  extractFunction(source, 'membershipPlanAllowedForYear'),
   extractFunction(source, 'membershipPeriodStatus'),
   extractFunction(source, 'membershipPeriodId'),
   extractFunction(source, 'buildMembershipRenewalSpec'),
@@ -58,6 +59,12 @@ const active2027 = context.buildMembershipRenewalSpec({
 }, '2027-01-01');
 assert.strictEqual(active2027.status, 'active');
 assert.strictEqual(active2027.membershipType, 'annual');
+assert.throws(() => context.buildMembershipRenewalSpec({
+  membershipPlan: 'annual_senior',
+  membershipYear: 2026,
+  accountingYear: 2026,
+  paymentDate: '2026-01-01',
+}, '2026-01-01'), /membership_plan_not_available_for_year/);
 
 const monthly2027 = context.buildMembershipRenewalSpec({
   membershipPlan: 'monthly',
@@ -103,10 +110,15 @@ assert.notStrictEqual(
 );
 
 const frontContext = {};
+frontContext._renderMonthlyBalance = () => '';
+frontContext._renderExpiringSoon = () => '';
 vm.createContext(frontContext);
 vm.runInContext([
   extractFunction(frontend, '_financeAccountingDate'),
   extractFunction(frontend, '_inExportRange'),
+  extractFunction(frontend, '_financeMembershipPlanUi'),
+  extractFunction(frontend, '_statCard'),
+  extractFunction(frontend, '_renderFinOverview'),
 ].join('\n'), frontContext);
 const prepaid = {
   date: '2026-11-09', accountingDate: '2027-01-01', year: 2027,
@@ -134,6 +146,44 @@ function annualTotal(year) {
 }
 assert.strictEqual(annualTotal(2026), 600);
 assert.strictEqual(annualTotal(2027), 2100);
+
+const typeSelect = frontend.match(/<select class="formSelect" id="finFormType"[\s\S]*?<\/select>/);
+assert(typeSelect, 'finance type select missing');
+assert.deepStrictEqual(
+  Array.from(typeSelect[0].matchAll(/<option value="([^"]+)">/g), (match) => match[1]),
+  ['annual', 'monthly', 'day_pass', 'donate', 'expense'],
+);
+const annual2026Ui = frontContext._financeMembershipPlanUi('annual', 2026);
+assert.strictEqual(annual2026Ui.visible, false);
+assert(!annual2026Ui.options.includes('annual_senior'));
+const annual2027Ui = frontContext._financeMembershipPlanUi('annual', 2027);
+assert.strictEqual(annual2027Ui.visible, true);
+assert(annual2027Ui.options.includes('annual_standard'));
+assert(annual2027Ui.options.includes('annual_senior'));
+assert.strictEqual(frontContext._financeMembershipPlanUi('annual', 2029).visible, true);
+assert.strictEqual(frontContext._financeMembershipPlanUi('monthly', 2027).defaultValue, 'monthly');
+['day_pass', 'donate', 'expense'].forEach((type) => {
+  assert.strictEqual(frontContext._financeMembershipPlanUi(type, 2027).visible, false);
+});
+[
+  "annual:'年費'", "monthly:'月費'", "day_pass:'臨打'",
+  "donate:'抖內'", "expense:'支出'",
+].forEach((label) => assert(frontend.includes(label), `${label} report label missing`));
+assert(source.includes('type: spec.membershipType'));
+assert(source.includes('membershipPlan: spec.membershipPlan'));
+assert(source.includes('membershipPlanAllowedForYear('));
+const emptyYearOverview = frontContext._renderFinOverview(
+  [], 0, 0, 0, 0, 0, 0, 0,
+  (amount) => `NT$ ${amount.toLocaleString()}`,
+);
+['年費', '月費', '臨打', '抖內', '支出'].forEach((label) => {
+  assert(emptyYearOverview.includes(label), `${label} missing from empty year`);
+});
+assert.strictEqual((emptyYearOverview.match(/NT\$ 0/g) || []).length >= 6, true);
+[
+  'function exportFinancePDF()', 'function exportFinanceCSV()',
+  'function openFinDupCheck()', 'function _renderMonthlyBalance(',
+].forEach((feature) => assert(frontend.includes(feature), `${feature} missing`));
 
 assert(source.includes("bookingDb.collection('membershipRenewalOperations')"));
 assert(source.includes('bookingDb.runTransaction(async (transaction)'));
