@@ -2017,13 +2017,10 @@ body.membership-access-restricted .bottomNav { justify-content:center; }
       </select>
     </div>
     <div class="formRow" id="finFormYearRow">
-      <label class="formLabel">會籍年度</label>
+      <label class="formLabel">所屬年度</label>
       <select class="formSelect" id="finFormYear" onchange="_finMembershipYearChanged()"></select>
     </div>
-    <div class="formRow" id="finFormAccountingYearRow">
-      <label class="formLabel">財務歸屬年度</label>
-      <select class="formSelect" id="finFormAccountingYear" onchange="_finSyncAccountingDate()"></select>
-    </div>
+    <input type="hidden" id="finFormAccountingYear">
     <div class="formRow" id="finFormMembershipPlanRow">
       <label class="formLabel">年費會員子分類（2027 起）</label>
       <select class="formSelect" id="finFormMembershipPlan"></select>
@@ -2044,6 +2041,10 @@ body.membership-access-restricted .bottomNav { justify-content:center; }
     </div>
     <div class="formRow">
       <label class="formLabel">會員</label>
+      <input class="formInput" id="finFormMemberSearch" type="search" placeholder="搜尋中文姓名或暱稱" style="margin-bottom:8px"
+        oncompositionstart="this.dataset.composing='1'"
+        oncompositionend="this.dataset.composing='0';_finMemberSearchInput(this)"
+        oninput="_finMemberSearchInput(this)">
       <select class="formSelect" id="finFormMember" onchange="_finMemberSelectChange(this)">
         <option value="">— 選擇會員 / 備註用 —</option>
       </select>
@@ -5166,23 +5167,35 @@ function _annualRosterYearControlsHtml(){
 }
 
 function _annualRosterSummaryHtml(rows){
-  var official=(rows||[]).filter(function(row){return row.status==='qualified'||row.status==='scheduled';});
+  var stats=_annualRosterStats(rows);
+  var official=stats.official;
   var paymentDerived=(rows||[]).filter(function(row){return row.paymentDerived;}).length;
   var unclassifiedAnnual=official.filter(function(row){return row.membershipPlan==='annual_unclassified';}).length;
   var supportsSenior=Number(_annualRosterYear)>=2027;
-  function typeCount(type){return official.filter(function(row){return row.membershipType===type;}).length;}
-  function planCount(plan){return official.filter(function(row){return row.membershipPlan===plan;}).length;}
   return '<section class="annualRosterSummary">'
     +'<div class="annualRosterSummaryTitle"><div><strong>'+_annualRosterYear+' 年度會員名冊</strong><div style="font-size:11px;color:var(--color-text-muted);margin-top:3px">期間：'+_annualRosterYear+'/01/01－'+_annualRosterYear+'/12/31</div></div>'
     +(_annualRosterYear===_membershipUiYear()?'<span class="annualRosterPill">現行年度</span>':'')+'</div>'
     +(paymentDerived?'<div style="margin:0 0 10px;padding:8px 10px;border-radius:8px;background:#fff4dc;color:#8a681f;font-size:11px">'+paymentDerived+' 位已依有效年度繳費列入名冊；會員權限仍以年度資格生效日判斷。</div>':'')
     +(unclassifiedAnnual?'<div style="margin:0 0 10px;padding:8px 10px;border-radius:8px;background:#fff4dc;color:#8a681f;font-size:11px">'+unclassifiedAnnual+' 位年費會員的子分類仍待人工確認。</div>':'')
     +'<div class="annualRosterStats'+(supportsSenior?'':' three')+'">'
-      +'<div class="annualRosterStat"><strong>'+official.length+'</strong><span>總會員</span></div>'
-      +'<div class="annualRosterStat"><strong>'+typeCount('annual')+'</strong><span>年費會員</span></div>'
-      +'<div class="annualRosterStat"><strong>'+typeCount('monthly')+'</strong><span>月費會員</span></div>'
-      +(supportsSenior?'<div class="annualRosterStat"><strong>'+planCount('annual_senior')+'</strong><span>銀爸銀媽</span></div>':'')
+      +'<div class="annualRosterStat"><strong>'+stats.total+'</strong><span>總會員</span></div>'
+      +'<div class="annualRosterStat"><strong>'+stats.annual+'</strong><span>年費會員</span></div>'
+      +'<div class="annualRosterStat"><strong>'+stats.monthly+'</strong><span>月費會員</span></div>'
+      +(supportsSenior?'<div class="annualRosterStat"><strong>'+stats.senior+'</strong><span>銀爸銀媽</span></div>':'')
     +'</div></section>';
+}
+
+function _annualRosterStats(rows){
+  var official=(rows||[]).filter(function(row){
+    return row.status==='qualified'||row.status==='scheduled';
+  });
+  return {
+    official:official,
+    total:official.length,
+    annual:official.filter(function(row){return row.membershipType==='annual';}).length,
+    monthly:official.filter(function(row){return row.membershipType==='monthly';}).length,
+    senior:official.filter(function(row){return row.membershipPlan==='annual_senior';}).length
+  };
 }
 
 function _annualRosterFilteredRows(){
@@ -5299,9 +5312,10 @@ function _renderMembersTab(el){
     :'');
   if(adminLike) html+=_duplicateMemberEntryHtml();
 
-  // 帳號層級的正式會員統計固定讀 members；不隨年度名冊切換。
+  // 2026 保留既有主檔統計；2027 起只計入已取得該年度資格者。
   if(adminLike){
-    var currentStats=_currentMemberStats(usersCache);
+    var currentStats=Number(_annualRosterYear)>=2027
+      ?_annualRosterStats(annualRows):_currentMemberStats(usersCache);
     html+='<div class="memberCurrentStats" style="display:flex;gap:8px;margin-bottom:12px">'
       +_memberStatCard('總會員',currentStats.total,'#2a4a2e','')
       +_memberStatCard('年費會員',currentStats.annual,'#2a5a9a','annual')
@@ -9933,22 +9947,51 @@ function _calcMembershipExpiry(membershipType, dateStr, membershipYear, periodMo
 }
 
 /* ── Finance: Form ── */
-function _finPopulateMemberSelect(selectedId){
+function _financeMemberChoices(members,periods,membershipYear,selectedId,query){
+  var year=Number(membershipYear);
+  var q=String(query||'').trim().toLowerCase();
+  var choices=[];
+  Object.values(members||{}).forEach(function(u){
+    var uid=u.userId||u.uid||'';
+    if(!uid)return;
+    var status=String(u.status||'').toLowerCase();
+    var yearPeriods=(periods||[]).filter(function(period){
+      return period.memberUid===uid&&Number(period.membershipYear)===year
+        &&['revoked','cancelled'].indexOf(period.status||'')<0;
+    });
+    var yearResigned=yearPeriods.length>0&&yearPeriods.every(function(period){
+      return period.status==='resigned';
+    });
+    var unavailable=status==='blocked'||status==='deleted'||status==='resigned'
+      ||status==='merged'||u.mergedInto||yearResigned;
+    if(unavailable&&uid!==selectedId)return;
+    var real=String(u.realName||'').trim();
+    var nickname=String(u.displayName||u.name||'').trim();
+    var label=real&&nickname&&real!==nickname?real+'（'+nickname+'）':(real||nickname);
+    if(!label)return;
+    if(q&&[real,nickname].join(' ').toLowerCase().indexOf(q)<0&&uid!==selectedId)return;
+    choices.push({uid:uid,label:(unavailable?'[已離會] ':'')+label});
+  });
+  return choices.sort(function(a,b){return a.label.localeCompare(b.label,'zh-Hant');});
+}
+
+function _finPopulateMemberSelect(selectedId,query){
   const sel = document.getElementById('finFormMember');
   sel.innerHTML = '<option value="">— 選擇會員 / 備註用 —</option>';
-  const list = Object.values(usersCache).filter(function(u){
-    return u.role!=='blocked'&&u.status!=='blocked'&&u.status!=='merged'&&!u.mergedInto;
-  });
-  list.forEach(function(u){
-    const uid  = u.userId || u.uid || '';
-    const name = u.displayName || u.name || '';
-    if(!uid || !name) return;
+  var year=(document.getElementById('finFormYear')||{}).value||'';
+  _financeMemberChoices(usersCache,membershipPeriodsCache,year,selectedId,query).forEach(function(choice){
     const opt = document.createElement('option');
-    opt.value = uid; opt.textContent = (u.status==='deleted'?'[已離會] ':'')+
-      (u.realName ? (u.realName + '（' + name + '）') : name);
-    if(uid === selectedId) opt.selected = true;
+    opt.value=choice.uid;opt.textContent=choice.label;
+    if(choice.uid===selectedId)opt.selected=true;
     sel.appendChild(opt);
   });
+}
+
+function _finMemberSearchInput(input){
+  if(input&&input.dataset.composing==='1')return;
+  var sel=document.getElementById('finFormMember');
+  var query=input?input.value:'';
+  _finPopulateMemberSelect(query.trim()?'':(sel?sel.value:''),query);
 }
 
 async function _submitMembershipRenewal(type,member,date,amount,note){
@@ -10022,7 +10065,7 @@ function _finToggleYearRow(){
   var planSel=document.getElementById('finFormMembershipPlan');
   var membershipYear=(document.getElementById('finFormYear')||{}).value||'';
   var planUi=_financeMembershipPlanUi(type,membershipYear);
-  if(yearRow)   yearRow.style.display   = (type === 'annual')  ? '' : 'none';
+  if(yearRow)   yearRow.style.display   = '';
   if(periodRow) periodRow.style.display = (type === 'monthly') ? '' : 'none';
   if(planRow) planRow.style.display=planUi.visible?'':'none';
   if(accountingRow) accountingRow.style.display='';
@@ -10045,8 +10088,8 @@ function _finSyncAccountingDate(){
     accounting.disabled=true;
   }else{
     accounting.disabled=false;
-    if(!accounting.value||accounting.value.slice(0,4)!==accountingYear){
-      var payment=(document.getElementById('finFormDate')||{}).value||'';
+    var payment=(document.getElementById('finFormDate')||{}).value||'';
+    if(!accounting.dataset.touched||!accounting.value||accounting.value.slice(0,4)!==accountingYear){
       accounting.value=payment&&payment.slice(0,4)===accountingYear
         ?payment:accountingYear+'-01-01';
     }
@@ -10058,6 +10101,9 @@ function _finMembershipYearChanged(){
   var accountingYear=document.getElementById('finFormAccountingYear');
   if(accountingYear&&membershipYear) accountingYear.value=membershipYear;
   _finToggleYearRow();
+  var search=document.getElementById('finFormMemberSearch');
+  var member=document.getElementById('finFormMember');
+  _finPopulateMemberSelect(member?member.value:'',search?search.value:'');
 }
 
 function _finPaymentDateChanged(){
@@ -10065,7 +10111,7 @@ function _finPaymentDateChanged(){
   var payment=(document.getElementById('finFormDate')||{}).value||'';
   var accounting=document.getElementById('finFormAccountingDate');
   var accountingYear=(document.getElementById('finFormAccountingYear')||{}).value||'';
-  if(type==='monthly'&&accounting&&!accounting.dataset.touched&&payment.slice(0,4)===accountingYear) accounting.value=payment;
+  if(type!=='annual'&&accounting&&!accounting.dataset.touched&&payment.slice(0,4)===accountingYear) accounting.value=payment;
 }
 
 function _newRenewalIdempotencyKey(){
@@ -10113,11 +10159,7 @@ function _finPopulateAccountingYearSelect(selectedYear){
   if(!sel) return;
   var cur=new Date().getFullYear();
   var chosen=selectedYear?parseInt(selectedYear,10):cur;
-  var html='';
-  for(var y=2025;y<=2036;y++){
-    html+='<option value="'+y+'"'+(y===chosen?' selected':'')+'>'+y+' 年度</option>';
-  }
-  sel.innerHTML=html;
+  sel.value=String(chosen);
 }
 
 /* ── 從會員管理頁直接開啟新增財務記錄（預選此會員）── */
@@ -10141,7 +10183,7 @@ function openFinanceForm(){
   var ownerDeleteZone = document.getElementById('finOwnerDeleteZone');
   if(ownerDeleteZone) ownerDeleteZone.style.display = 'none';
   document.getElementById('financeFormTitle').textContent = '新增財務紀錄';
-  _finPopulateMemberSelect('');
+  document.getElementById('finFormMemberSearch').value='';
   document.getElementById('finFormType').value = 'annual';
   document.getElementById('finFormDate').value = formatDate(today);
   document.getElementById('finFormAccountingDate').value = formatDate(today);
@@ -10149,8 +10191,9 @@ function openFinanceForm(){
   document.getElementById('finFormAccountingDate').onchange=function(){this.dataset.touched='1';};
   document.getElementById('finFormAmount').value = '';
   document.getElementById('finFormNote').value = '';
-  _finPopulateYearSelect(null);      // 預設當年度
-  _finPopulateAccountingYearSelect(null);
+  _finPopulateYearSelect(null);      // 單一所屬年度
+  _finPopulateAccountingYearSelect((document.getElementById('finFormYear')||{}).value);
+  _finPopulateMemberSelect('');
   _finToggleYearRow();               // annual → 顯示 year row
   _renewalIdempotencyKey=_newRenewalIdempotencyKey();
   document.getElementById('sheetBackdrop').classList.add('open');
@@ -10539,9 +10582,11 @@ function editFinanceRecord(id){
   document.getElementById('finFormDate').value   = rec.date   || '';
   document.getElementById('finFormAmount').value = rec.amount || '';
   document.getElementById('finFormNote').value   = rec.note   || '';
+  document.getElementById('finFormMemberSearch').value='';
+  var _editYear=rec.membershipYear||rec.year||parseInt(_financeAccountingDate(rec).slice(0,4),10)||null;
+  _finPopulateYearSelect(_editYear);
+  _finPopulateAccountingYearSelect(_editYear);
   _finPopulateMemberSelect(rec.memberId || '');
-  _finPopulateYearSelect(rec.membershipYear || null);
-  _finPopulateAccountingYearSelect(rec.year || parseInt(_financeAccountingDate(rec).slice(0,4),10) || null);
   var _editPeriodSel = document.getElementById('finFormPeriod');
   if(_editPeriodSel) _editPeriodSel.value = String(parseInt(rec.periodMonths,10)||1);
   _finToggleYearRow();

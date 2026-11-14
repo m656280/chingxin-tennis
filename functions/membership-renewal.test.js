@@ -83,6 +83,15 @@ assert.throws(() => context.buildMembershipRenewalSpec({
   accountingYear: 2027, accountingDate: '2026-12-01',
   paymentDate: '2026-11-09', periodMonths: 1,
 }, '2026-11-09'), /accounting_year_mismatch/);
+assert.throws(() => context.buildMembershipRenewalSpec({
+  membershipPlan: 'annual_standard', membershipYear: 2027,
+  accountingYear: 2026, paymentDate: '2026-11-09',
+}, '2026-11-09'), /membership_accounting_year_mismatch/);
+assert.throws(() => context.buildMembershipRenewalSpec({
+  membershipPlan: 'monthly', membershipYear: 2028,
+  accountingYear: 2027, accountingDate: '2027-01-01',
+  paymentDate: '2026-12-20', periodMonths: 1,
+}, '2026-12-20'), /membership_accounting_year_mismatch/);
 
 assert.strictEqual(
   context.renewalOperationDocId('OWNER', 'REQUEST'),
@@ -117,6 +126,7 @@ vm.runInContext([
   extractFunction(frontend, '_financeAccountingDate'),
   extractFunction(frontend, '_inExportRange'),
   extractFunction(frontend, '_financeMembershipPlanUi'),
+  extractFunction(frontend, '_financeMemberChoices'),
   extractFunction(frontend, '_statCard'),
   extractFunction(frontend, '_renderFinOverview'),
 ].join('\n'), frontContext);
@@ -153,6 +163,8 @@ assert.deepStrictEqual(
   Array.from(typeSelect[0].matchAll(/<option value="([^"]+)">/g), (match) => match[1]),
   ['annual', 'monthly', 'day_pass', 'donate', 'expense'],
 );
+assert(!frontend.includes('id="finFormAccountingYearRow"'));
+assert(frontend.includes('<label class="formLabel">所屬年度</label>'));
 const annual2026Ui = frontContext._financeMembershipPlanUi('annual', 2026);
 assert.strictEqual(annual2026Ui.visible, false);
 assert(!annual2026Ui.options.includes('annual_senior'));
@@ -165,6 +177,36 @@ assert.strictEqual(frontContext._financeMembershipPlanUi('monthly', 2027).defaul
 ['day_pass', 'donate', 'expense'].forEach((type) => {
   assert.strictEqual(frontContext._financeMembershipPlanUi(type, 2027).visible, false);
 });
+const memberChoices = frontContext._financeMemberChoices({
+  same: {uid:'same', realName:'王小美', displayName:'王小美', status:'approved'},
+  nickname: {uid:'nickname', realName:'陸貞如', displayName:'Lu', status:'approved'},
+  notRenewed: {uid:'notRenewed', realName:'待續會員', displayName:'Renew', status:'approved'},
+  deleted: {uid:'deleted', realName:'離會會員', displayName:'Gone', status:'deleted'},
+  resigned: {uid:'resigned', realName:'年度離會', displayName:'Left', status:'approved'},
+}, [{memberUid:'resigned', membershipYear:2027, status:'resigned'}], 2027, '', '陸');
+assert.strictEqual(memberChoices.length, 1);
+assert.strictEqual(memberChoices[0].uid, 'nickname');
+assert.strictEqual(memberChoices[0].label, '陸貞如（Lu）');
+const allChoices = frontContext._financeMemberChoices({
+  notRenewed: {uid:'notRenewed', realName:'待續會員', status:'approved'},
+  deleted: {uid:'deleted', realName:'離會會員', status:'deleted'},
+  resigned: {uid:'resigned', realName:'年度離會', status:'approved'},
+}, [{memberUid:'resigned', membershipYear:2027, status:'resigned'}], 2027, '', '');
+assert.deepStrictEqual(Array.from(allChoices, (choice) => choice.uid), ['notRenewed']);
+assert.strictEqual(frontContext._financeMemberChoices({
+  deleted: {uid:'deleted', realName:'離會會員', status:'deleted'},
+}, [], 2027, 'deleted', '')[0].label, '[已離會] 離會會員');
+const sameNameChoice = frontContext._financeMemberChoices({
+  same: {uid:'same', realName:'王小美', displayName:'王小美', status:'approved'},
+}, [], 2027, '', '')[0];
+assert.strictEqual(sameNameChoice.label, '王小美');
+const renewalChoices = frontContext._financeMemberChoices({
+  notRenewed: {uid:'notRenewed', realName:'待續會員', displayName:'Renew', status:'approved'},
+}, [], 2027, '', 'Renew');
+assert.strictEqual(renewalChoices.length, 1);
+assert.strictEqual(frontContext._financeMemberChoices({
+  deleted: {uid:'deleted', realName:'離會會員', status:'deleted'},
+}, [], 2027, '', '').length, 0);
 [
   "annual:'年費'", "monthly:'月費'", "day_pass:'臨打'",
   "donate:'抖內'", "expense:'支出'",

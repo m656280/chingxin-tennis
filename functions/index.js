@@ -4855,13 +4855,16 @@ function buildMembershipRenewalSpec(input, today = taipeiDateString()) {
   const accountingYear = Number(input.accountingYear);
   if (!Number.isInteger(accountingYear) || accountingYear < 2025 ||
       accountingYear > 2036) throw new Error('invalid_accounting_year');
+  if (!Number.isInteger(membershipYear) || membershipYear < 2025 ||
+      membershipYear > 2036) throw new Error('invalid_membership_year');
+  if (membershipYear !== accountingYear) {
+    throw new Error('membership_accounting_year_mismatch');
+  }
   let accountingDate;
   let membershipStartDate;
   let membershipExpiry;
   let periodMonths = null;
   if (membershipType === 'annual') {
-    if (!Number.isInteger(membershipYear) || membershipYear < 2025 ||
-        membershipYear > 2036) throw new Error('invalid_membership_year');
     if (!membershipPlanAllowedForYear(plan, membershipYear)) {
       throw new Error('membership_plan_not_available_for_year');
     }
@@ -5271,6 +5274,7 @@ function membershipInputError(error) {
     invalid_accounting_date: '財務歸屬日格式不正確',
     invalid_accounting_year: '財務歸屬年度不正確',
     accounting_year_mismatch: '財務歸屬日與歸屬年度不一致',
+    membership_accounting_year_mismatch: '會籍年度與財務所屬年度必須一致',
     invalid_membership_year: '會籍年度不正確',
     invalid_period_months: '月費期數不正確',
     membership_plan_not_available_for_year: '銀爸銀媽分類自 2027 年起適用',

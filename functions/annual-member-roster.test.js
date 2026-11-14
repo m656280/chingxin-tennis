@@ -29,6 +29,7 @@ vm.runInContext([
   extractFunction(frontend, '_annualRosterStatus'),
   extractFunction(frontend, '_buildAnnualRosterRows'),
   extractFunction(frontend, '_currentMemberStats'),
+  extractFunction(frontend, '_annualRosterStats'),
   extractFunction(frontend, '_annualRosterPlanOptionsHtml'),
 ].join('\n'), context);
 
@@ -61,6 +62,7 @@ const members = {
   resignedA: {realName: '離會會員', status: 'approved', createdAt: '2026-04-01'},
   blockedA: {realName: '封鎖會員', status: 'blocked', createdAt: '2026-05-01'},
   renewalA: {realName: '待續會員', status: 'approved', createdAt: '2026-06-01'},
+  notRenewedA: {realName: '尚未續會', status: 'approved', createdAt: '2026-06-15'},
   missingA: {realName: '待補建會員', status: 'approved', createdAt: '2026-07-01'},
   invalidA: {realName: '無效繳費會員', status: 'approved', createdAt: '2026-07-01'},
   futureA: {realName: '未來會員', status: 'approved', createdAt: '2027-02-01'},
@@ -84,6 +86,9 @@ const periods = [
     membershipPlan: 'annual_standard', expiryDate: '2026-12-31', status: 'active'},
   {memberUid: 'renewalA', membershipYear: 2026,
     membershipPlan: 'annual_standard', expiryDate: '2026-12-31', status: 'expired'},
+  {memberUid: 'notRenewedA', membershipYear: 2026,
+    membershipType: 'annual', membershipPlan: 'annual_standard',
+    expiryDate: '2026-12-31', status: 'expired'},
   {memberUid: 'renewalA', memberName: '待續會員', membershipYear: 2027,
     membershipType: 'annual', membershipPlan: 'annual_unclassified',
     membershipPlanLabel: '年費會員（待分類）', startDate: '2027-01-01',
@@ -137,6 +142,12 @@ assert.strictEqual(rows2027.find((row) => row.memberUid === 'missingA').membersh
 assert.strictEqual(rows2027.find((row) => row.memberUid === 'missingA').expiryDate, '');
 assert.strictEqual(rows2027.find((row) => row.memberUid === 'invalidA').status, 'missing');
 assert.strictEqual(rows2027.find((row) => row.memberUid === 'invalidA').paymentDerived, false);
+assert.strictEqual(rows2027.find((row) => row.memberUid === 'notRenewedA').status, 'pending');
+const stats2027 = context._annualRosterStats(rows2027);
+assert.strictEqual(stats2027.total, 2);
+assert.strictEqual(stats2027.annual, 2);
+assert.strictEqual(stats2027.monthly, 0);
+assert.strictEqual(stats2027.senior, 1);
 
 context.financeRecords = context.financeRecords.filter((record) => record.memberId !== 'renewalA');
 const periodsWithoutRenewal2027 = periods.filter((period) => !(
