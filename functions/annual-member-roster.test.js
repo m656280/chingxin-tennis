@@ -4,7 +4,7 @@ const assert = require('assert');
 const fs = require('fs');
 const vm = require('vm');
 
-const frontend = fs.readFileSync(require.resolve('../index.html'), 'utf8');
+const frontend = fs.readFileSync(process.env.FRONTEND_PATH || require.resolve('../index.html'), 'utf8');
 
 function extractFunction(text, name) {
   const marker = `function ${name}(`;
@@ -21,16 +21,18 @@ function extractFunction(text, name) {
   throw new Error(`${name} incomplete`);
 }
 
-const context = {financeRecords: [], _annualRosterYear: 2026, _annualRosterPlanFilter: ''};
+const context = {financeRecords: [], usersCache: {}, _annualRosterYear: 2026, _annualRosterPlanFilter: ''};
 vm.createContext(context);
 vm.runInContext([
   extractFunction(frontend, '_annualRosterYears'),
   extractFunction(frontend, '_memberExistedByYear'),
   extractFunction(frontend, '_annualRosterStatus'),
+  extractFunction(frontend, '_annualRosterPaymentRecords'),
   extractFunction(frontend, '_buildAnnualRosterRows'),
   extractFunction(frontend, '_currentMemberStats'),
   extractFunction(frontend, '_annualRosterStats'),
   extractFunction(frontend, '_annualRosterPlanOptionsHtml'),
+  extractFunction(frontend, '_annualRosterMissingDetails'),
 ].join('\n'), context);
 
 const planOptions2026 = context._annualRosterPlanOptionsHtml();
@@ -199,6 +201,37 @@ const rows2026NoFinanceFallback = context._buildAnnualRosterRows(2026, periods, 
 assert.strictEqual(rows2026NoFinanceFallback.find((row) => row.memberUid === 'missingA').status, 'missing');
 assert.strictEqual(rows2026NoFinanceFallback.find((row) => row.memberUid === 'missingA').paymentDerived, false);
 
+context.usersCache = {
+  missingA: {realName:'缺年度會員',status:'approved',membershipType:'annual',memberSource:'manual'},
+  deletedA: {realName:'已離會會員',status:'deleted',membershipType:'monthly',memberSource:'line'},
+  futureA: {realName:'次年度會員',status:'approved',membershipType:'annual',memberSource:'manual'},
+};
+context.financeRecords = [{
+  id:'finance-2027',memberId:'missingA',type:'annual',membershipYear:2027,
+  date:'2026-11-15',amount:1200,status:'active',
+}, {
+  id:'finance-void',memberId:'deletedA',type:'monthly',membershipYear:2027,
+  date:'2026-11-15',amount:800,status:'void',
+}, {
+  id:'finance-2028',memberId:'futureA',type:'annual',membershipYear:2028,
+  date:'2027-11-15',amount:1200,status:'active',
+}];
+const missingDetails = context._annualRosterMissingDetails([
+  {memberUid:'missingA',memberName:'缺年度會員',status:'missing',membershipPlanLabel:'—'},
+  {memberUid:'deletedA',memberName:'已離會會員',status:'missing',membershipPlanLabel:'—'},
+  {memberUid:'futureA',memberName:'次年度會員',status:'missing',membershipPlanLabel:'—'},
+  {memberUid:'qualifiedA',memberName:'有效會員',status:'qualified',membershipPlanLabel:'一般年費'},
+], 2027, [{memberUid:'futureA',membershipYear:2028,status:'scheduled'}]);
+assert.strictEqual(missingDetails.length, 3);
+assert.strictEqual(missingDetails[0].isAnomaly, true);
+assert.strictEqual(missingDetails[0].records.length, 1);
+assert(missingDetails[0].reason.includes('有效年／月費紀錄'));
+assert.strictEqual(missingDetails[1].isAnomaly, false);
+assert.strictEqual(missingDetails[1].relatedRecords.length, 1);
+assert(missingDetails[1].excludedReason.includes('已離會'));
+assert.strictEqual(missingDetails[2].isAnomaly, false);
+assert(missingDetails[2].excludedReason.includes('正確年度資格'));
+
 const rosterFunction = extractFunction(frontend, '_buildAnnualRosterRows');
 assert(rosterFunction.includes('var rosterPeriods=memberPeriods'));
 assert(!rosterFunction.includes("source:'financial_record_preview'"));
@@ -220,6 +253,8 @@ assert(frontend.includes("_memberStatCard('月費會員',currentStats.monthly"))
 assert(frontend.includes("_memberStatCard('銀爸銀媽',currentStats.senior"));
 assert(frontend.includes("Number(_annualRosterYear)>=2027?_memberStatCard('銀爸銀媽'"));
 assert(frontend.includes("supportsSenior=Number(_annualRosterYear)>=2027"));
+assert(frontend.includes('aria-label="查看尚無年度紀錄明細"'));
+assert(frontend.includes('已排除但可查詢'));
 assert(!frontend.includes('id="memberRoleSwitcher"'));
 assert(!frontend.includes('_memberManageView'));
 assert(!frontend.includes('function _renderAnnualRosterTab('));

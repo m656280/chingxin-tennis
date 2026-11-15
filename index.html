@@ -877,6 +877,8 @@ body.membership-access-restricted .bottomNav { justify-content:center; }
 .annualRosterStats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:7px; }
 .annualRosterStats.three { grid-template-columns:repeat(3,minmax(0,1fr)); }
 .annualRosterStat { padding:9px 5px; text-align:center; border:1px solid var(--color-border-soft); border-radius:10px; background:var(--color-surface-alt); }
+.annualRosterStat.action { width:100%; color:inherit; font:inherit; cursor:pointer; }
+.annualRosterStat.action:active { opacity:.7; }
 .annualRosterStat strong { display:block; font-size:20px; line-height:1.2; }
 .annualRosterStat span { display:block; margin-top:3px; color:var(--color-text-muted); font-size:10px; }
 .annualRosterTools { display:grid; grid-template-columns:minmax(0,1fr) 138px 138px; gap:7px; margin:10px 0; }
@@ -5104,6 +5106,17 @@ function _annualRosterStatus(periods,nowDate){
   return 'missing';
 }
 
+function _annualRosterPaymentRecords(memberUid,year){
+  return (typeof financeRecords==='undefined'?[]:financeRecords).filter(function(record){
+    if((record.status||'active')!=='active'||(record.type!=='annual'&&record.type!=='monthly'))return false;
+    if((record.memberId||record.memberUid||'')!==memberUid)return false;
+    var recordYear=typeof _financeRecordMembershipYear==='function'
+      ?_financeRecordMembershipYear(record)
+      :Number(record.membershipYear||record.year||String(record.accountingDate||record.date||'').slice(0,4));
+    return Number(recordYear)===Number(year);
+  });
+}
+
 function _buildAnnualRosterRows(year,periods,members,nowDate,decisions){
   var rosterNow=nowDate?new Date(nowDate):new Date();
   if(isNaN(rosterNow.getTime()))rosterNow=new Date();
@@ -5127,14 +5140,7 @@ function _buildAnnualRosterRows(year,periods,members,nowDate,decisions){
   Object.keys(candidateIds).forEach(function(uid){
     var member=memberMap[uid]||{};
     var memberPeriods=byMember[uid]||[];
-    var paymentRecords=(typeof financeRecords==='undefined'?[]:financeRecords).filter(function(record){
-      if((record.status||'active')!=='active'||(record.type!=='annual'&&record.type!=='monthly'))return false;
-      if((record.memberId||record.memberUid||'')!==uid)return false;
-      var recordYear=typeof _financeRecordMembershipYear==='function'
-        ?_financeRecordMembershipYear(record)
-        :Number(record.membershipYear||record.year||String(record.accountingDate||record.date||'').slice(0,4));
-      return Number(recordYear)===Number(year);
-    });
+    var paymentRecords=_annualRosterPaymentRecords(uid,year);
     // 年度名冊只認 membershipPeriods。財務存在但 period 缺漏時僅標示異常，
     // 不得由前端推導或建立年度資格。
     var rosterPeriods=memberPeriods;
@@ -5347,6 +5353,8 @@ function _renderAnnualRosterSection(rows){
 
 function _renderAnnualMemberStats(rows){
   function count(status){return rows.filter(function(row){return row.status===status;}).length;}
+  var missingCount=_annualRosterMissingDetails(rows,_annualRosterYear,membershipPeriodsCache)
+    .filter(function(item){return item.isAnomaly;}).length;
   return _annualRosterYearControlsHtml()+_annualRosterSummaryHtml(rows)
     +'<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">'
       +'<div class="annualRosterStat"><strong>'+count('qualified')+'</strong><span>正式會員</span></div>'
@@ -5354,8 +5362,133 @@ function _renderAnnualMemberStats(rows){
       +'<div class="annualRosterStat"><strong>'+count('pending')+'</strong><span>待續會</span></div>'
       +'<div class="annualRosterStat"><strong>'+count('not_joining')+'</strong><span>今年不加入</span></div>'
       +'<div class="annualRosterStat"><strong>'+count('resigned')+'</strong><span>年度離會</span></div>'
-      +'<div class="annualRosterStat"><strong>'+count('missing')+'</strong><span>尚無年度紀錄</span></div>'
+      +'<button type="button" class="annualRosterStat action" onclick="_openAnnualRosterMissingDetails()" aria-label="查看尚無年度紀錄明細"><strong>'+missingCount+'</strong><span>尚無年度紀錄</span></button>'
     +'</div>';
+}
+
+function _annualRosterMissingDetails(rows,year,periods){
+  return (rows||[]).filter(function(row){return row.status==='missing';}).map(function(row){
+    var member=usersCache[row.memberUid]||{};
+    var records=_annualRosterPaymentRecords(row.memberUid,year);
+    var relatedRecords=(typeof financeRecords==='undefined'?[]:financeRecords).filter(function(record){
+      return (record.type==='annual'||record.type==='monthly')
+        &&(record.memberId||record.memberUid||'')===row.memberUid;
+    });
+    var selectedYearRelated=relatedRecords.filter(function(record){
+      var recordYear=typeof _financeRecordMembershipYear==='function'
+        ?_financeRecordMembershipYear(record)
+        :Number(record.membershipYear||record.year||String(record.accountingDate||record.date||'').slice(0,4));
+      return Number(recordYear)===Number(year);
+    });
+    var activeOtherYearWithPeriod=relatedRecords.some(function(record){
+      var recordYear=typeof _financeRecordMembershipYear==='function'
+        ?_financeRecordMembershipYear(record)
+        :Number(record.membershipYear||record.year||String(record.accountingDate||record.date||'').slice(0,4));
+      if((record.status||'active')!=='active'||Number(recordYear)===Number(year))return false;
+      return (periods||[]).some(function(period){
+        return period.memberUid===row.memberUid&&Number(period.membershipYear)===Number(recordYear)
+          &&['revoked','cancelled'].indexOf(period.status)<0;
+      });
+    });
+    var voidOnlyForYear=selectedYearRelated.length>0&&selectedYearRelated.every(function(record){
+      return (record.status||'active')!=='active';
+    });
+    var isAnomaly=true;
+    var excludedReason='';
+    if(member.status==='deleted'){
+      isAnomaly=false;
+      excludedReason='已離會會員的歷史資料，不計入真正異常。';
+    }else if(voidOnlyForYear){
+      isAnomaly=false;
+      excludedReason='該年度關聯財務均已作廢，不計入真正異常。';
+    }else if(!records.length&&activeOtherYearWithPeriod){
+      isAnomaly=false;
+      excludedReason='跨年度會費已有正確年度資格，不屬於本年度異常。';
+    }
+    var memberType=row.membershipPlanLabel&&row.membershipPlanLabel!=='—'
+      ?row.membershipPlanLabel
+      :(member.membershipType==='monthly'?'月費':member.membershipType==='annual'?'年費':'未設定');
+    var reason=records.length
+      ?'已有 '+year+' 年有效年／月費紀錄，但缺少 membershipPeriods 年度資格。'
+      :(member.status==='deleted'&&selectedYearRelated.some(function(record){return record.status==='void';})
+        ?'會員主檔為已離會，且 '+year+' 年關聯會費紀錄均已作廢，因此沒有有效年度資格。'
+        :member.status==='deleted'
+        ?'會員主檔為已離會，且無 '+year+' 年有效年／月費紀錄或年度資格。'
+        :relatedRecords.some(function(record){
+          var recordYear=typeof _financeRecordMembershipYear==='function'
+            ?_financeRecordMembershipYear(record)
+            :Number(record.membershipYear||record.year||String(record.accountingDate||record.date||'').slice(0,4));
+          return (record.status||'active')==='active'&&Number(recordYear)!==Number(year);
+        })
+        ?'會員僅有其他年度的有效會費，沒有 '+year+' 年有效會費或年度資格。'
+        :'會員主檔存在，但無 '+year+' 年有效年／月費紀錄或年度資格。');
+    return {
+      memberUid:row.memberUid,
+      memberName:row.memberName||member.realName||member.displayName||row.memberUid,
+      memberType:memberType,
+      memberStatus:member.status||'未設定',
+      memberSource:member.memberSource||'未設定',
+      year:Number(year),
+      records:records,
+      relatedRecords:relatedRecords,
+      isAnomaly:isAnomaly,
+      excludedReason:excludedReason,
+      reason:reason,
+    };
+  });
+}
+
+function _closeAnnualRosterMissingDetails(){
+  var modal=document.getElementById('annualRosterMissingDetailsModal');
+  if(modal)modal.remove();
+}
+
+function _inspectAnnualRosterMissingRecord(memberUid,recordId){
+  _closeAnnualRosterMissingDetails();
+  if(recordId){openFinanceDetail(recordId);return;}
+  _openAnnualRosterMember(memberUid);
+}
+
+function _openAnnualRosterMissingDetails(){
+  _closeAnnualRosterMissingDetails();
+  var year=Number(_annualRosterYear);
+  var rows=_buildAnnualRosterRows(year,membershipPeriodsCache,usersCache,null,membershipYearDecisionsCache);
+  var details=_annualRosterMissingDetails(rows,year,membershipPeriodsCache);
+  var anomalies=details.filter(function(item){return item.isAnomaly;});
+  var excluded=details.filter(function(item){return !item.isAnomaly;});
+  function detailsHtml(items){return items.map(function(item){
+    var financeHtml=item.relatedRecords.length?item.relatedRecords.map(function(record){
+      var date=record.date||'—';
+      var amount='NT$ '+Number(record.amount||0).toLocaleString('en-US');
+      var recordYear=typeof _financeRecordMembershipYear==='function'
+        ?_financeRecordMembershipYear(record)
+        :Number(record.membershipYear||record.year||String(record.accountingDate||record.date||'').slice(0,4));
+      var statusLabel=(record.status||'active')==='active'?'有效':'作廢';
+      return '<div style="margin-top:7px;padding:8px;border-radius:8px;background:var(--color-surface-alt);font-size:12px">'
+        +'<div>'+_esc(record.type==='monthly'?'月費':'年費')+'｜歸屬 '+_esc(recordYear||'未設定')+'｜'+_esc(statusLabel)+'</div>'
+        +'<div style="margin-top:3px">繳費日期 '+_esc(String(date).replace(/-/g,'/'))+'｜'+_esc(amount)+'</div>'
+        +'<div style="margin-top:3px;color:var(--color-text-muted);word-break:break-all">Document ID：'+_esc(record.id||'—')+'</div></div>';
+    }).join(''):'<div style="margin-top:7px;color:var(--color-text-muted);font-size:12px">無關聯年／月費紀錄；以下資訊來自會員主檔。</div>';
+    var firstRecordId=item.relatedRecords.length?(item.relatedRecords[0].id||''):'';
+    return '<section style="padding:13px 0;border-bottom:1px solid var(--color-border-soft)">'
+      +'<div style="display:flex;justify-content:space-between;gap:10px"><strong>'+_esc(item.memberName)+'</strong><span style="font-size:12px;color:var(--color-text-muted)">'+_esc(item.memberType)+'</span></div>'
+      +'<div style="margin-top:5px;font-size:12px;color:var(--color-text-secondary)">所屬年度：'+item.year+'｜主檔狀態：'+_esc(item.memberStatus)+'｜來源：'+_esc(item.memberSource)+'</div>'
+      +financeHtml
+      +'<div style="margin-top:8px;padding:8px;border-radius:8px;background:'+(item.isAnomaly?'#fff4dc':'var(--color-surface-alt)')+';color:'+(item.isAnomaly?'#795d24':'var(--color-text-secondary)')+';font-size:12px">'+(item.isAnomaly?'異常原因：'+_esc(item.reason):'未計入原因：'+_esc(item.excludedReason))+'</div>'
+      +'<div style="display:flex;gap:8px;margin-top:10px"><button type="button" class="btnSecondary" style="flex:1" onclick="_closeAnnualRosterMissingDetails();_openAnnualRosterMember(\''+item.memberUid+'\')">查看會員</button>'
+      +'<button type="button" class="btnSecondary" style="flex:1" onclick="_inspectAnnualRosterMissingRecord(\''+item.memberUid+'\',\''+firstRecordId+'\')">檢查紀錄</button></div>'
+      +'</section>';
+  }).join('');}
+  var body=(anomalies.length?detailsHtml(anomalies):'<div class="emptyState" style="padding:24px 12px">目前沒有真正異常資料</div>')
+    +(excluded.length?'<details style="margin-top:14px"><summary style="cursor:pointer;color:var(--color-text-secondary)">已排除但可查詢（'+excluded.length+'）</summary>'+detailsHtml(excluded)+'</details>':'');
+  var modal=document.createElement('div');
+  modal.id='annualRosterMissingDetailsModal';
+  modal.style.cssText='position:fixed;inset:0;z-index:10022;background:rgba(0,0,0,.42);display:flex;align-items:flex-end;justify-content:center';
+  modal.innerHTML='<div style="width:100%;max-width:680px;max-height:90vh;overflow:auto;background:var(--color-surface);border-radius:18px 18px 0 0;padding:18px 18px 28px">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;gap:12px"><div><strong style="font-family:var(--font-display);font-size:20px">尚無年度紀錄（'+anomalies.length+'）</strong><div style="margin-top:3px;font-size:12px;color:var(--color-text-muted)">'+year+' 年｜已排除歷史／其他年度 '+excluded.length+' 筆</div></div><button type="button" onclick="_closeAnnualRosterMissingDetails()" style="border:0;background:none;font-size:26px;color:var(--color-text-muted)">×</button></div>'
+    +'<div style="margin-top:8px">'+body+'</div></div>';
+  modal.addEventListener('click',function(event){if(event.target===modal)_closeAnnualRosterMissingDetails();});
+  document.body.appendChild(modal);
 }
 
 function _renderMembersTab(el){
