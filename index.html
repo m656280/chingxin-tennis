@@ -4921,6 +4921,77 @@ function _calcMemberFeeStatus(m,nowDate){
     return {typeLabel:typeLabel, status:'expiring', statusLabel:'即將到期｜剩餘 '+diff+' 天'+renewalLabel, diff:diff, expStr:expStr};
   return {typeLabel:typeLabel, status:'paid', statusLabel:'已繳清｜有效至 '+expStr+renewalLabel, diff:diff, expStr:expStr};
 }
+function _financeYearFeeStatus(m,membershipYear,nowDate){
+  var uid=m.userId||m.uid||'';
+  var year=Number(membershipYear);
+  if(!Number.isInteger(year)||!membershipPeriodsLoaded){
+    return {typeLabel:'',status:'loading',statusLabel:'資格載入中',diff:null,expStr:''};
+  }
+  var periods=_memberYearPeriods(uid,year);
+  if(periods.length&&periods.every(function(period){return period.status==='resigned';})){
+    return {typeLabel:'',status:'resigned',statusLabel:'年度離會',diff:null,expStr:''};
+  }
+  var usable=periods.filter(function(period){
+    return ['revoked','cancelled','resigned'].indexOf(period.status||'')<0;
+  }).sort(function(a,b){return String(b.expiryDate||'').localeCompare(String(a.expiryDate||''));});
+  if(!usable.length){
+    return {typeLabel:'',status:'unpaid',statusLabel:year+' 年度未繳',diff:null,expStr:''};
+  }
+  var period=usable[0];
+  var isMonthly=period.membershipPlan==='monthly'||period.membershipType==='monthly';
+  var typeLabel=isMonthly?'月費會員':'年費會員';
+  var expStr=isMonthly?String(period.expiryDate||''):(year+'-12-31');
+  var now=nowDate?new Date(nowDate):new Date();
+  if(isNaN(now.getTime()))now=new Date();
+  now.setHours(0,0,0,0);
+  var dateKey=_membershipDateKey(now);
+  if(year>now.getFullYear()||String(period.startDate||'')>dateKey){
+    return {typeLabel:typeLabel,status:'scheduled',statusLabel:'已繳費・待生效',diff:null,expStr:expStr};
+  }
+  if(year<now.getFullYear()){
+    return {typeLabel:typeLabel,status:'historical',statusLabel:'歷史年度資格',diff:null,expStr:expStr};
+  }
+  var expiry=/^\d{4}-\d{2}-\d{2}$/.test(expStr)?new Date(expStr+'T00:00:00'):null;
+  var diff=expiry&&!isNaN(expiry.getTime())?Math.floor((expiry-now)/86400000):null;
+  var threshold=isMonthly?12:30;
+  if(diff!==null&&diff<0)return {typeLabel:typeLabel,status:'overdue',statusLabel:'已到期 '+Math.abs(diff)+' 天',diff:diff,expStr:expStr};
+  if(diff===0)return {typeLabel:typeLabel,status:'expiring',statusLabel:'即將到期｜今日到期',diff:0,expStr:expStr};
+  if(diff!==null&&diff<=threshold)return {typeLabel:typeLabel,status:'expiring',statusLabel:'即將到期｜剩餘 '+diff+' 天',diff:diff,expStr:expStr};
+  return {typeLabel:typeLabel,status:'paid',statusLabel:'已繳清｜有效至 '+expStr,diff:diff,expStr:expStr};
+}
+function _monthlyExpiryReminderItems(membershipYear,members,nowDate){
+  var skip={pending:1,blocked:1,rejected:1,resigned:1,deleted:1,merged:1};
+  return (members||Object.values(usersCache)).filter(function(member){
+    return !skip[member.status||''];
+  }).map(function(member){
+    return {member:member,feeStatus:_financeYearFeeStatus(member,membershipYear,nowDate)};
+  }).filter(function(item){
+    return item.feeStatus.typeLabel==='月費會員'
+      &&(item.feeStatus.status==='expiring'||item.feeStatus.status==='overdue');
+  }).sort(function(a,b){
+    return a.feeStatus.diff-b.feeStatus.diff
+      ||String(a.member.realName||a.member.displayName||'').localeCompare(
+        String(b.member.realName||b.member.displayName||''),'zh-Hant');
+  });
+}
+function _monthlyExpiryReminderHtml(membershipYear,members,nowDate){
+  var items=_monthlyExpiryReminderItems(membershipYear,members,nowDate);
+  if(!items.length)return '';
+  var html='<div style="background:rgba(231,76,60,0.06);border:1px solid rgba(231,76,60,0.22);border-radius:10px;padding:10px 12px;margin-bottom:14px">';
+  html+='<div style="font-size:11px;font-weight:600;letter-spacing:0.07em;color:#c0392b;margin-bottom:8px">'+membershipYear+' 月費到期提醒（'+items.length+'）</div>';
+  items.forEach(function(item){
+    var member=item.member;
+    var feeStatus=item.feeStatus;
+    var uid=member.userId||member.uid||'';
+    html+='<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;gap:8px">'
+      +'<span style="font-size:13px;color:var(--color-text-primary);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_esc(member.realName||member.displayName||'未知')+'</span>'
+      +'<div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;flex-shrink:0">'
+        +'<span class="feeStatusBadge '+feeStatus.status+'">'+_esc(feeStatus.statusLabel)+'</span>'
+        +'<button style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid rgba(184,92,74,0.55);background:transparent;color:#8C4637;cursor:pointer;white-space:nowrap" onclick="openFinanceFormForMember(\''+uid+'\')">建立繳費紀錄</button>'
+      +'</div></div>';
+  });
+  return html+'</div>';
+}
 function _memberFeeStatusHtml(m){
   var fs = _calcMemberFeeStatus(m);
   var lines = [];
@@ -5324,6 +5395,10 @@ function _renderMembersTab(el){
       +'</div>';
   }
 
+  if(adminLike){
+    html+=_monthlyExpiryReminderHtml(_annualRosterYear,Object.values(usersCache));
+  }
+
   // ── Admin-only: selected-year renewal summary + resigned / blocked ──
   if(adminLike){
     var renewalRows=annualRows.filter(function(row){return row.status==='pending';});
@@ -5720,10 +5795,15 @@ function _renderMemberListInTab(){
       ? '<span class="sourceBadge '+_src+'">'+ (_src==='manual'?'手動':'LINE') + '</span>'
       : '';
     var annualStatusColor=annualRow.status==='resigned'?'#b24b3b':annualRow.status==='scheduled'?'#8a681f':annualRow.status==='qualified'?'#416847':'var(--color-text-muted)';
+    var selectedYearFeeStatus=adminLike?_financeYearFeeStatus(m,_annualRosterYear):null;
+    var monthlyExpiryHtml=selectedYearFeeStatus&&selectedYearFeeStatus.typeLabel==='月費會員'
+      &&(selectedYearFeeStatus.status==='expiring'||selectedYearFeeStatus.status==='overdue')
+      ?'<br><span class="feeStatusBadge '+selectedYearFeeStatus.status+'">'+_esc(selectedYearFeeStatus.statusLabel)+'</span>':'';
     var annualQualificationHtml=adminLike?'<div style="margin-top:5px;font-size:11px;line-height:1.7;color:'+annualStatusColor+'">'+
       _annualRosterYear+'｜'+_esc(annualRow.statusLabel)+
       (annualRow.membershipPlan?'<br>'+_esc(annualRow.membershipPlanLabel)+(annualRow.expiryDate?'｜有效至 '+_esc(annualRow.expiryDate):''):'')+
       (annualRow.paymentDerived?'<br><span style="color:#8a681f">已依有效年度繳費列入名冊｜'+_esc(annualRow.membershipOriginLabel)+'</span>':'')+
+      monthlyExpiryHtml+
       '</div>':'<div style="margin-top:5px;line-height:1.8">'+_memberFeeStatusHtml(m)+'</div>';
     var violationStatusHtml='';
     var violationSummary=_violationSummary(rawUid);
